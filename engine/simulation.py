@@ -1,0 +1,620 @@
+"""
+Main Simulation Engine - The Heart of Neuronaut World
+
+This is the orchestrator that coordinates all systems:
+- Runs the main simulation loop
+- Updates all agents
+- Delegates to specialized managers
+- Manages world state
+- Coordinates events
+
+REFACTORED: Now a clean orchestrator with single responsibility.
+All complex logic extracted to specialized modules.
+"""
+
+import time
+import asyncio
+import random
+import logging
+from typing import List, Dict, Optional, Deque
+from datetime import datetime
+from collections import deque
+
+import sys
+import os
+
+logger = logging.getLogger(__name__)
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from agents.agent import Agent, Action, ActionType, Position, Gender
+from engine.psychology import NeedType, EmotionType
+from engine.events import EventCategory, EventImportance
+
+# REFACTORED MODULES (Phase 5 - Final Extraction)
+from engine.system_factory import SystemFactory
+from engine.lifecycle_manager import LifecycleManager
+from engine.system_coordinator import SystemCoordinator
+from engine.statistics_exporter import StatisticsExporter
+from engine.world_initializer import WorldInitializer
+
+# REFACTORED MODULES (Phase 2, Phase 3, Phase 4)
+from engine.agent_updates.perception_builder import PerceptionBuilder
+from engine.agent_updates.agent_updater import AgentUpdater
+from engine.agent_updates.action_handlers import ActionHandlers
+
+# ACTION HANDLER SYSTEM
+from engine.action_handlers import ActionContext, ActionHandlerRegistry
+from engine.handlers import (
+    MovementActionHandler,
+    SurvivalActionHandler,
+    SocialInteractionHandler,
+    ResourceGatheringHandler,
+    KnowledgeActionHandler,
+    AgricultureHandler,
+    ConstructionHandler,
+    EntertainmentHandler,
+    GovernanceHandler,
+    CombatActionHandler,
+    HealthHandler,
+    ReligionHandler,
+    TerritoryHandler,
+    ChemistryHandler,
+    EnergyHandler,
+    MaterialsHandler,
+    AdvancedEconomyHandler,
+)
+
+# UTILITIES
+from engine.utils.agent_helpers import AgentCacheHelper
+
+
+class SimulationEngine:
+    """
+    Main simulation engine - Clean orchestrator pattern.
+
+    This class now focuses ONLY on:
+    1. Running the simulation loop
+    2. Delegating to specialized managers
+    3. Coordinating tick updates
+    4. Executing agent actions
+    """
+
+    def __init__(self, world_width: int = 100, world_height: int = 100):
+        """
+        Initialize simulation engine.
+
+        All system creation delegated to SystemFactory.
+        All initialization logic delegated to specialized managers.
+        """
+        # ===== SYSTEM INITIALIZATION (Delegated to SystemFactory) =====
+        systems = SystemFactory.create_simulation_systems(world_width, world_height)
+
+        # Unpack all systems into self
+        self._unpack_systems(systems)
+
+        # ===== SPECIALIZED MANAGERS (Phase 5 Refactoring) =====
+        print("  Specialized managers...")
+        self.lifecycle_manager = LifecycleManager(self)
+        self.system_coordinator = SystemCoordinator(self)
+        self.statistics_exporter = StatisticsExporter(self)
+        self.world_initializer = WorldInitializer(self)
+        print("✅ Lifecycle, system coordination, statistics, and world initialization managers enabled!")
+
+        # ===== ACTION HANDLERS (Phase 4 Refactoring) =====
+        # Old action handlers from agent_updates module (kept for compatibility)
+        self.action_handlers = ActionHandlers(self)
+        print("🎯 Action Handlers enabled - Modular interaction handling (Phase 4)!")
+
+        # New action handler system (modular, testable)
+        self._action_context = ActionContext(self)
+        self._handler_registry = ActionHandlerRegistry()
+        self._register_action_handlers()
+        print("⚙️  Action Handler System enabled - Modular action execution!")
+
+        # ===== AGENT UTILITIES =====
+        # Agent lookup cache for O(1) performance
+        self._agent_helper = AgentCacheHelper()
+        print("🚀 Agent lookup cache enabled - O(1) agent queries!")
+
+        # Perception builder for cleaner agent decision-making (Phase 2 refactor)
+        self._perception_builder = PerceptionBuilder(self)
+        print("👁️  Perception Builder enabled - Modular perception construction!")
+
+        # Agent updater for cleaner agent update loop (Phase 3 refactor)
+        self._agent_updater = AgentUpdater(self)
+        print("🔄 Agent Updater enabled - Modular agent update loop!")
+
+        # ===== SIMULATION STATE =====
+        self.running = False
+        self.tick_rate = 1.0  # Seconds per tick
+        self.paused = False
+
+        # ===== STATISTICS =====
+        self.total_agents_created = 0
+        self.total_reactions_performed = 0  # Chemistry reactions
+
+        # Civilization milestone tracking
+        self.achieved_milestones = set()
+        self.milestone_history: Deque = deque(maxlen=1000)
+
+        # Death wipe tracking
+        self.death_wipe_detected = False
+        self.last_auto_save_tick = 0
+        self.civilization_history_exported = False
+
+        # Population history tracking
+        self.population_history: Deque = deque(maxlen=10000)
+        self.births_this_day = 0
+        self.deaths_this_day = 0
+        self.death_causes = {}
+        self.last_tracked_day = 0
+        print("📊 Population tracking enabled - track births/deaths over time!")
+
+        print("\n🎉 SIMULATION ENGINE READY - All systems operational!")
+
+    def _unpack_systems(self, systems: Dict):
+        """
+        Unpack systems dictionary into self attributes.
+
+        Args:
+            systems: Dictionary of initialized systems from SystemFactory
+        """
+        # Core systems
+        self.world = systems['world']
+        self.relationship_manager = systems['relationship_manager']
+        self.group_manager = systems['group_manager']
+        self.economy = systems['economy']
+        self.event_logger = systems['event_logger']
+
+        # Old systems
+        self.building_manager = systems['building_manager']
+        self.innovation_manager = systems['innovation_manager']
+        self.warfare_manager = systems['warfare_manager']
+        self.governance_manager = systems['governance_manager']
+        self.production_manager = systems['production_manager']
+        self.strategy_manager = systems['strategy_manager']
+
+        # Autonomous systems
+        self.experimentation_engine = systems['experimentation_engine']
+        self.dynamic_building_system = systems['dynamic_building_system']
+        self.knowledge_system = systems['knowledge_system']
+        self.consequence_engine = systems['consequence_engine']
+        self.role_emergence = systems['role_emergence']
+        self.tech_progression = systems['tech_progression']
+        self.persistence = systems['persistence']
+        self.persistence.simulation = self  # Set reference
+        self.purposeful_evaluator = systems['purposeful_evaluator']
+
+        # Progression systems
+        self.civilization = systems['civilization']
+        self.life_system = systems['life_system']
+        self.fun_system = systems['fun_system']
+
+        # Specialized systems
+        self.agriculture = systems['agriculture']
+        self.health = systems['health']
+        self.religion = systems['religion']
+        self.territory = systems['territory']
+        self.chemistry = systems['chemistry']
+        self.energy = systems['energy']
+        self.materials_science = systems['materials_science']
+
+        # Story and achievements
+        self.story_feed = systems['story_feed']
+        self.story_generator = systems['story_generator']
+        self.achievement_tracker = systems['achievement_tracker']
+
+        # Meta-progression
+        self.meta_progression = systems['meta_progression']
+
+        # Pathfinding
+        self.pathfinder = systems['pathfinder']
+        self.resource_memory = systems['resource_memory']
+
+        # Weather and disasters
+        self.weather = systems['weather']
+        self.disasters = systems['disasters']
+
+        # AI systems
+        self.config = systems['config']
+        self.llm_brain = systems['llm_brain']
+        self.swarm_intelligence = systems['swarm_intelligence']
+
+    def _register_action_handlers(self) -> None:
+        """
+        Register all action handlers with the registry.
+
+        All 17 handlers registered for 100% coverage.
+        """
+        handlers = [
+            # Basic Actions
+            MovementActionHandler(self._action_context),
+            SurvivalActionHandler(self._action_context),
+            SocialInteractionHandler(self._action_context),
+            ResourceGatheringHandler(self._action_context),
+
+            # Knowledge & Learning
+            KnowledgeActionHandler(self._action_context),
+
+            # Production & Building
+            AgricultureHandler(self._action_context),
+            ConstructionHandler(self._action_context),
+
+            # Culture & Entertainment
+            EntertainmentHandler(self._action_context),
+
+            # Society & Politics
+            GovernanceHandler(self._action_context),
+            CombatActionHandler(self._action_context),
+
+            # Health & Religion
+            HealthHandler(self._action_context),
+            ReligionHandler(self._action_context),
+
+            # Territory & Resources
+            TerritoryHandler(self._action_context),
+
+            # Advanced Science
+            ChemistryHandler(self._action_context),
+            EnergyHandler(self._action_context),
+            MaterialsHandler(self._action_context),
+
+            # Advanced Economy
+            AdvancedEconomyHandler(self._action_context),
+        ]
+
+        self._handler_registry.register_multiple(handlers)
+
+        # Log coverage statistics
+        stats = self._handler_registry.get_coverage_stats()
+        print(f"   Registered {len(handlers)} action handlers")
+        print(f"   Coverage: {stats['covered_count']}/{stats['total_action_types']} action types ({stats['coverage_percentage']:.1f}%)")
+
+        if stats['coverage_percentage'] >= 100:
+            print(f"   ✅ 100% ACTION COVERAGE ACHIEVED!")
+
+    def _rebuild_agent_cache(self) -> None:
+        """Rebuild the agent lookup cache for O(1) access by ID."""
+        self._agent_helper.rebuild_cache(self.world.agents)
+
+    def get_agent_by_id(self, agent_id: str) -> Optional[Agent]:
+        """Fast O(1) agent lookup by ID using cache."""
+        return self._agent_helper.get_agent_by_id(agent_id, self.world.agents)
+
+    # ===== DELEGATION TO SPECIALIZED MANAGERS =====
+
+    def initialize_world(self, num_agents: int = 50):
+        """Initialize world with starting population (delegated)."""
+        self.world_initializer.initialize_world(num_agents)
+
+    def create_agent(
+        self,
+        name: Optional[str] = None,
+        age: int = 20,
+        is_player: bool = False,
+        gender: Optional[Gender] = None
+    ) -> Agent:
+        """Create a new agent (delegated)."""
+        return self.world_initializer.create_agent(name, age, is_player, gender)
+
+    def get_population_statistics(self) -> Dict:
+        """Get population statistics (delegated)."""
+        return self.statistics_exporter.get_population_statistics()
+
+    def get_state_snapshot(self) -> Dict:
+        """Get complete world state snapshot (delegated)."""
+        return self.statistics_exporter.get_state_snapshot()
+
+    # ===== MAIN SIMULATION LOOP =====
+
+    async def run(self):
+        """Main simulation loop."""
+        self.running = True
+        print("🚀 Neuronaut World simulation started!")
+
+        while self.running:
+            if not self.paused:
+                try:
+                    await self.tick()
+                except Exception as e:
+                    print(f"❌ ERROR in tick(): {e}")
+                    import traceback
+                    traceback.print_exc()
+
+            # Sleep until next tick
+            await asyncio.sleep(self.tick_rate)
+
+    async def tick(self):
+        """
+        Single simulation tick.
+
+        Orchestrates all system updates in proper order.
+        """
+        current_tick = self.world.time.current_tick
+        current_season = self.world.time.season
+
+        # Update weather system
+        self.weather.update(current_season, current_tick)
+        weather_effects = self.weather.get_current_effects()
+
+        # Update disaster system
+        alive_count = sum(1 for a in self.world.agents if a.alive)
+        self.disasters.update(
+            current_tick,
+            current_season,
+            self.weather.current_weather.value,
+            alive_count
+        )
+
+        # Apply disaster effects to buildings and agents (DELEGATED)
+        for disaster in self.disasters.active_disasters:
+            if disaster.tick == current_tick:
+                self.system_coordinator.apply_disaster_to_world(disaster)
+
+        # Advance world time (with weather effects affecting resources!)
+        self.world.tick(weather_effects=weather_effects)
+
+        # Update all managers
+        self.building_manager.update_buildings()
+        self.governance_manager.update_governments()
+
+        # Update fun system (celebrations, games, etc.)
+        completed_celebrations = self.fun_system.update_celebrations(delta_time=1.0)
+
+        # Update agriculture system (crops, animals, seasons)
+        season_changed = self.agriculture.update_season(current_tick)
+        if season_changed:
+            logger.info(f"🌍 Season changed to {self.agriculture.current_season.value}!")
+
+        self.agriculture.update_crops(current_tick)
+        self.agriculture.update_animals(current_tick)
+
+        # Update health system (disease progression and spreading)
+        deaths_from_disease = self.health.update_diseases(current_tick, self.world.agents)
+
+        # Handle disease deaths
+        for agent_id in deaths_from_disease:
+            agent = next((a for a in self.world.agents if a.id == agent_id), None)
+            if agent and agent.alive:
+                agent.alive = False
+                agent.health = 0
+                logger.warning(f"💀 {agent.name} died from disease!")
+
+                self.event_logger.log_event(
+                    EventCategory.DEATH,
+                    EventImportance.MAJOR,
+                    f"{agent.name} succumbed to disease",
+                    f"{agent.name} died from an untreated illness at age {agent.age}.",
+                    current_tick,
+                    [agent_id]
+                )
+
+        # Spread contagious diseases between nearby agents
+        self.health.spread_diseases(self.world.agents, current_tick)
+
+        # Update religion system (rituals)
+        completed_rituals = self.religion.update_rituals(current_tick)
+
+        # Apply spiritual benefits from completed rituals
+        for ritual in completed_rituals:
+            for participant_id in ritual.participants:
+                participant = next((a for a in self.world.agents if a.id == participant_id), None)
+                if participant:
+                    participant.needs.satisfy_need(NeedType.MEANING, ritual.spiritual_benefit)
+                    participant.needs.satisfy_need(NeedType.BELONGING, ritual.social_cohesion)
+
+            logger.info(f"🙏 Religious {ritual.ritual_type.value} completed with {len(ritual.participants)} participants")
+
+        # Apply mood boost to celebration participants
+        for celebration in completed_celebrations:
+            for participant_id in celebration.participants:
+                agent = next((a for a in self.world.agents if a.id == participant_id), None)
+                if agent:
+                    agent.needs.satisfy_need(NeedType.BELONGING, celebration.mood_boost)
+                    agent.needs.satisfy_need(NeedType.MEANING, celebration.mood_boost * 0.5)
+                    agent.emotions.trigger_emotion(EmotionType.JOY, celebration.mood_boost)
+
+            self.event_logger.log_event(
+                EventCategory.CULTURAL,
+                EventImportance.MINOR,
+                f"✨ {celebration.celebration_name} concluded",
+                f"The celebration attended by {len(celebration.participants)} agents has concluded. Memories were made!",
+                current_tick,
+                list(celebration.participants)
+            )
+
+        # ===== AGENT UPDATE LOOP (Phase 3 Refactor) =====
+        # All agent update logic delegated to AgentUpdater
+        await self._agent_updater.update_all_agents(current_tick)
+
+        # Update economy
+        economic_events = self.economy.tick_update(current_tick, self.world.agents)
+
+        # Check for currency evolution
+        currency_message = self.economy.check_currency_evolution(current_tick)
+        if currency_message:
+            logger.info(currency_message)
+            self.event_logger.log_event(
+                EventCategory.ECONOMIC,
+                EventImportance.MAJOR,
+                "Currency Evolution",
+                currency_message,
+                current_tick,
+                []
+            )
+
+        # Log major economic events
+        if economic_events.get('defaulted_loans'):
+            for loan in economic_events['defaulted_loans']:
+                logger.warning(f"💸 Loan default: {loan.borrower_id} failed to repay {loan.amount_remaining:.0f}")
+
+        if economic_events.get('crisis_events'):
+            for crisis in economic_events['crisis_events']:
+                logger.warning(f"📉 Economic crisis: {crisis.get('type', 'unknown')}")
+
+        # ROLE EMERGENCE - Let agents discover their specializations!
+        if current_tick % 50 == 0:
+            self._update_role_emergence(current_tick)
+
+        # Remove dead agents (DELEGATED)
+        self.lifecycle_manager.handle_deaths()
+
+        # Check civilization milestones (DELEGATED)
+        self.system_coordinator.check_civilization_milestones(current_tick)
+
+        # Update population history (DELEGATED)
+        self.statistics_exporter.update_population_history()
+
+        # Auto-save and death wipe detection
+        self._handle_autosave_and_extinction(current_tick, alive_count)
+
+    def _update_role_emergence(self, current_tick: int):
+        """Handle role emergence detection for agents."""
+        for agent in self.world.agents:
+            if not agent.alive:
+                continue
+
+            patterns = self.role_emergence.detect_behavior_patterns(agent.id)
+
+            for pattern in patterns:
+                existing_roles = self.role_emergence.agent_roles.get(agent.id, [])
+                pattern_exists = any(
+                    r.behavior_pattern.pattern_type == pattern.pattern_type
+                    for r in existing_roles
+                )
+
+                if not pattern_exists and pattern.pattern_strength > 0.30:
+                    agent_role_name = self.role_emergence.generate_agent_role_name(
+                        pattern,
+                        agent_personality={'openness': agent.personality.openness if hasattr(agent, 'personality') else 0.5},
+                        agent_recent_discoveries=None,
+                        agent_culture_context=None
+                    )
+
+                    role = self.role_emergence.agent_discovers_role(
+                        agent.id,
+                        agent.name,
+                        pattern,
+                        agent_generated_name=agent_role_name
+                    )
+
+                    if role:
+                        title = f"{agent.name} becomes {agent_role_name}!"
+                        desc = f"{agent.name} has specialized in {', '.join(pattern.dominant_actions)} and now identifies as a {agent_role_name}."
+                        self.event_logger.log_event(
+                            EventCategory.CULTURAL,
+                            EventImportance.MODERATE,
+                            title, desc,
+                            current_tick,
+                            [agent.id]
+                        )
+
+    def _handle_autosave_and_extinction(self, current_tick: int, alive_count: int):
+        """Handle auto-save and extinction detection."""
+        # Death wipe detection
+        if alive_count == 0 and len(self.world.agents) > 0 and not self.death_wipe_detected:
+            self.death_wipe_detected = True
+            self._log_extinction_event(current_tick)
+
+        # Auto-save every 1000 ticks
+        elif alive_count > 0 and current_tick - self.last_auto_save_tick >= 1000:
+            try:
+                snapshot = self.persistence.save_simulation_state(self)
+                self.last_auto_save_tick = current_tick
+                print(f"\n💾 Auto-save: {snapshot.snapshot_id} (Day {self.world.time.day}, {alive_count} alive)")
+            except Exception as e:
+                print(f"❌ Auto-save failed: {e}")
+
+        # Warning if population declining
+        if alive_count > 0 and alive_count < 10 and not self.death_wipe_detected:
+            print(f"\n⚠️  WARNING: Only {alive_count} agents remain! Civilization at risk!")
+
+    def _log_extinction_event(self, current_tick: int):
+        """Log civilization extinction event."""
+        print("\n" + "="*60)
+        print("💀 CIVILIZATION EXTINCTION EVENT 💀")
+        print("="*60)
+        print(f"All {len(self.world.agents)} agents have died!")
+        print(f"Civilization lasted {self.world.time.day} days ({current_tick} ticks)")
+        print(f"Era: {self.civilization.current_era.value}")
+        print(f"Total discoveries: {len(self.experimentation_engine.discoveries)}")
+        print(f"Total buildings: {len(self.dynamic_building_system.buildings)}")
+
+        # Export history
+        if not self.civilization_history_exported:
+            try:
+                history_path = self.persistence.export_civilization_history(
+                    self,
+                    output_file=f"extinction_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+                )
+                print(f"\n📜 Civilization history exported to: {history_path}")
+                self.civilization_history_exported = True
+            except Exception as e:
+                print(f"\n❌ Failed to export history: {e}")
+
+        print("\n" + "="*60)
+
+    async def execute_action(self, agent: Agent, action: Action) -> Dict:
+        """
+        Execute an agent's action using the modular handler system.
+
+        Args:
+            agent: Agent performing the action
+            action: Action to execute
+
+        Returns:
+            Dictionary with result (success, emotional_impact, message, etc.)
+        """
+        current_tick = self.world.time.current_tick
+
+        # Get handler from registry
+        handler = self._handler_registry.get_handler(action.action_type)
+        if not handler:
+            logger.error(f"❌ No handler found for action type: {action.action_type}")
+            return {
+                'success': False,
+                'emotional_impact': 0.0,
+                'message': f'Action type {action.action_type} not implemented'
+            }
+
+        # Validate action can be performed
+        can_execute, reason = handler.validate(agent, action)
+        if not can_execute:
+            return {
+                'success': False,
+                'emotional_impact': -0.05,
+                'message': reason
+            }
+
+        # Execute via handler
+        result = handler.execute(agent, action)
+
+        # Special post-processing for reproduction (SEEK_ROMANCE)
+        if action.action_type == ActionType.SEEK_ROMANCE and result.success:
+            result_dict = result.to_dict()
+            if result_dict.get('reproduction_attempted'):
+                target = self._get_agent_by_id(action.target_agent)
+                if target:
+                    child_data = self.life_system.attempt_reproduction(
+                        agent.id, target.id, agent.age, target.age,
+                        agent.wealth, target.wealth
+                    )
+                    if child_data:
+                        self.lifecycle_manager.handle_birth(agent, target, child_data, current_tick)
+                        result_dict['child_born'] = True
+                        result_dict['child_id'] = child_data['id']
+            return result_dict
+
+        return result.to_dict()
+
+    def _get_agent_by_id(self, agent_id: str) -> Optional[Agent]:
+        """Get agent by ID."""
+        for agent in self.world.agents:
+            if agent.id == agent_id:
+                return agent
+        return None
+
+    def stop(self):
+        """Stop simulation."""
+        self.running = False
+        print("Simulation stopped")

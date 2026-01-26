@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Player Inventory - Neuronaut World</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 50%, #7e22ce 100%);
+            color: white;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 8px;
+        }
+
+        .player-selector {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 30px;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .player-selector label {
+            font-size: 1.1em;
+            font-weight: 600;
+        }
+
+        .player-selector select {
+            flex: 1;
+            padding: 12px 16px;
+            font-size: 1em;
+            background: rgba(255, 255, 255, 0.9);
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+        }
+
+        .panel {
+            background: rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 16px;
+            padding: 30px;
+        }
+
+        .panel-title {
+            font-size: 1.8em;
+            font-weight: 700;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        /* Inventory Categories */
+        .category-section {
+            margin-bottom: 30px;
+        }
+
+        .category-header {
+            background: rgba(255, 255, 255, 0.15);
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.2s;
+        }
+
+        .category-header:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .category-header.active {
+            background: rgba(255, 255, 255, 0.25);
+        }
+
+        .category-name {
+            font-size: 1.2em;
+            font-weight: 600;
+        }
+
+        .category-count {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 4px 12px;
+            border-radius: 16px;
+            font-size: 0.9em;
+        }
+
+        .category-items {
+            display: none;
+            padding: 0 8px;
+        }
+
+        .category-items.active {
+            display: block;
+        }
+
+        .item-row {
+            background: rgba(255, 255, 255, 0.08);
+            padding: 12px;
+            margin-bottom: 8px;
+            border-radius: 6px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .item-info {
+            flex: 1;
+        }
+
+        .item-name {
+            font-weight: 600;
+            font-size: 1.1em;
+            margin-bottom: 4px;
+        }
+
+        .item-description {
+            opacity: 0.8;
+            font-size: 0.9em;
+            margin-bottom: 6px;
+        }
+
+        .item-tags {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .item-tag {
+            background: rgba(126, 34, 206, 0.4);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.75em;
+        }
+
+        .item-quantity {
+            background: rgba(34, 197, 94, 0.3);
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 1.3em;
+            font-weight: 700;
+            min-width: 60px;
+            text-align: center;
+        }
+
+        /* Crafting Section */
+        .recipe-list {
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .recipe-card {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 16px;
+            transition: all 0.2s;
+        }
+
+        .recipe-card:hover {
+            background: rgba(255, 255, 255, 0.15);
+            transform: translateX(4px);
+        }
+
+        .recipe-card.craftable {
+            border-color: rgba(34, 197, 94, 0.5);
+            background: rgba(34, 197, 94, 0.1);
+        }
+
+        .recipe-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 12px;
+        }
+
+        .recipe-name {
+            font-size: 1.3em;
+            font-weight: 600;
+        }
+
+        .recipe-difficulty {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 4px 12px;
+            border-radius: 16px;
+            font-size: 0.85em;
+        }
+
+        .recipe-description {
+            opacity: 0.9;
+            margin-bottom: 16px;
+            line-height: 1.5;
+        }
+
+        .recipe-requirements {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+        }
+
+        .requirement-label {
+            font-weight: 600;
+            margin-bottom: 8px;
+            opacity: 0.8;
+            font-size: 0.9em;
+        }
+
+        .requirement-items {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .requirement-item {
+            background: rgba(255, 255, 255, 0.15);
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 0.9em;
+        }
+
+        .requirement-item.missing {
+            background: rgba(239, 68, 68, 0.3);
+            border: 1px solid rgba(239, 68, 68, 0.5);
+        }
+
+        .special-requirements {
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .special-req {
+            background: rgba(251, 191, 36, 0.3);
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 0.85em;
+        }
+
+        .craft-btn {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .craft-btn:hover:not(:disabled) {
+            transform: scale(1.02);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .craft-btn:disabled {
+            background: rgba(255, 255, 255, 0.1);
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+
+        .stats-bar {
+            display: flex;
+            gap: 20px;
+            padding: 16px;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .stat {
+            flex: 1;
+            text-align: center;
+        }
+
+        .stat-label {
+            opacity: 0.7;
+            font-size: 0.9em;
+            margin-bottom: 4px;
+        }
+
+        .stat-value {
+            font-size: 1.5em;
+            font-weight: 700;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎒 Player Inventory & Crafting</h1>
+        </div>
+
+        <!-- Player Selector -->
+        <div class="player-selector">
+            <label>Select Your Character:</label>
+            <select id="playerSelect" onchange="loadPlayerInventory()">
+                <option value="">Loading agents...</option>
+            </select>
+        </div>
+
+        <div class="main-grid">
+            <!-- Left Panel: Inventory -->
+            <div class="panel">
+                <div class="panel-title">
+                    📦 Inventory
+                </div>
+
+                <div class="stats-bar">
+                    <div class="stat">
+                        <div class="stat-label">Total Items</div>
+                        <div class="stat-value" id="totalItems">0</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-label">Capacity</div>
+                        <div class="stat-value" id="capacity">0</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-label">Categories</div>
+                        <div class="stat-value" id="categoryCount">0</div>
+                    </div>
+                </div>
+
+                <div id="inventoryCategories"></div>
+            </div>
+
+            <!-- Right Panel: Crafting -->
+            <div class="panel">
+                <div class="panel-title">
+                    🔨 Crafting Recipes
+                </div>
+
+                <div class="recipe-list" id="recipeList"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentPlayer = null;
+        let currentInventory = {};
+        let allRecipes = [];
+
+        // Load agents on page load
+        async function loadAgents() {
+            const response = await fetch('/agents');
+            const data = await response.json();
+
+            const select = document.getElementById('playerSelect');
+            select.innerHTML = data.agents.map(agent =>
+                `<option value="${agent.id}">${agent.name} (${agent.gender}, age ${agent.age})</option>`
+            ).join('');
+
+            // Auto-select first agent
+            if (data.agents.length > 0) {
+                select.value = data.agents[0].id;
+                loadPlayerInventory();
+            }
+        }
+
+        async function loadPlayerInventory() {
+            const playerId = document.getElementById('playerSelect').value;
+            if (!playerId) return;
+
+            currentPlayer = playerId;
+
+            // Load inventory
+            const invResponse = await fetch(`/agents/${playerId}/inventory`);
+            const invData = await invResponse.json();
+            currentInventory = invData;
+
+            renderInventory(invData);
+
+            // Load recipes
+            const recipeResponse = await fetch('/recipes');
+            const recipeData = await recipeResponse.json();
+            allRecipes = recipeData.recipes;
+
+            renderRecipes();
+        }
+
+        function renderInventory(data) {
+            // Update stats
+            document.getElementById('totalItems').textContent = data.total_items;
+            document.getElementById('capacity').textContent = data.capacity;
+            document.getElementById('categoryCount').textContent = Object.keys(data.inventory_by_category).length;
+
+            // Render categories
+            const container = document.getElementById('inventoryCategories');
+            container.innerHTML = '';
+
+            for (const [categoryId, categoryData] of Object.entries(data.inventory_by_category)) {
+                const section = document.createElement('div');
+                section.className = 'category-section';
+
+                const header = document.createElement('div');
+                header.className = 'category-header';
+                header.onclick = () => toggleCategory(categoryId);
+
+                header.innerHTML = `
+                    <div class="category-name">${categoryData.name}</div>
+                    <div class="category-count">${categoryData.items.length} items</div>
+                `;
+
+                const itemsContainer = document.createElement('div');
+                itemsContainer.className = 'category-items';
+                itemsContainer.id = `category-${categoryId}`;
+
+                categoryData.items.forEach(item => {
+                    const row = document.createElement('div');
+                    row.className = 'item-row';
+
+                    const tagsHTML = item.tags.map(tag => `<span class="item-tag">${tag}</span>`).join('');
+
+                    row.innerHTML = `
+                        <div class="item-info">
+                            <div class="item-name">${item.name}</div>
+                            <div class="item-description">${item.description}</div>
+                            <div class="item-tags">${tagsHTML}</div>
+                        </div>
+                        <div class="item-quantity">×${item.quantity}</div>
+                    `;
+
+                    itemsContainer.appendChild(row);
+                });
+
+                section.appendChild(header);
+                section.appendChild(itemsContainer);
+                container.appendChild(section);
+            }
+        }
+
+        function toggleCategory(categoryId) {
+            const element = document.getElementById(`category-${categoryId}`);
+            const header = element.previousElementSibling;
+
+            element.classList.toggle('active');
+            header.classList.toggle('active');
+        }
+
+        function renderRecipes() {
+            const container = document.getElementById('recipeList');
+            container.innerHTML = '';
+
+            allRecipes.forEach(recipe => {
+                const card = document.createElement('div');
+
+                // Check if craftable
+                const canCraft = checkCanCraft(recipe);
+                card.className = canCraft ? 'recipe-card craftable' : 'recipe-card';
+
+                // Build requirements HTML
+                const inputsHTML = Object.entries(recipe.inputs).map(([item, qty]) => {
+                    const hasEnough = hasItem(item, qty);
+                    const className = hasEnough ? 'requirement-item' : 'requirement-item missing';
+                    return `<div class="${className}">${item} ×${qty}</div>`;
+                }).join('');
+
+                const specialReqs = [];
+                if (recipe.requires_fire) specialReqs.push('🔥 Fire');
+                if (recipe.requires_water) specialReqs.push('💧 Water');
+                if (recipe.requires_tool) specialReqs.push(`🔧 ${recipe.requires_tool}`);
+
+                const specialHTML = specialReqs.length > 0
+                    ? `<div class="special-requirements">
+                        ${specialReqs.map(req => `<div class="special-req">${req}</div>`).join('')}
+                       </div>`
+                    : '';
+
+                card.innerHTML = `
+                    <div class="recipe-header">
+                        <div class="recipe-name">${recipe.name}</div>
+                        <div class="recipe-difficulty">⭐ ${(recipe.difficulty * 5).toFixed(1)}</div>
+                    </div>
+                    <div class="recipe-description">${recipe.description}</div>
+                    <div class="recipe-requirements">
+                        <div class="requirement-label">Required Materials:</div>
+                        <div class="requirement-items">${inputsHTML}</div>
+                        ${specialHTML}
+                    </div>
+                    <div class="recipe-requirements">
+                        <div class="requirement-label">Creates:</div>
+                        <div class="requirement-items">
+                            <div class="requirement-item">✨ ${recipe.output_item} ×${recipe.output_quantity}</div>
+                        </div>
+                    </div>
+                    <button class="craft-btn" ${!canCraft ? 'disabled' : ''} onclick="craftItem('${recipe.id}')">
+                        ${canCraft ? '🔨 Craft Now' : '❌ Missing Materials'}
+                    </button>
+                `;
+
+                container.appendChild(card);
+            });
+        }
+
+        function hasItem(itemId, quantity) {
+            for (const category of Object.values(currentInventory.inventory_by_category || {})) {
+                const item = category.items.find(i => i.id === itemId);
+                if (item && item.quantity >= quantity) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function checkCanCraft(recipe) {
+            // Check all input requirements
+            for (const [item, qty] of Object.entries(recipe.inputs)) {
+                if (!hasItem(item, qty)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        function craftItem(recipeId) {
+            alert(`Crafting ${recipeId}! (This will be connected to the backend crafting system)`);
+            // TODO: POST to /agents/{playerId}/craft endpoint
+        }
+
+        // Load on start
+        loadAgents();
+    </script>
+</body>
+</html>

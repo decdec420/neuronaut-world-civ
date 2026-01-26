@@ -1,0 +1,12 @@
+# Minimal dependencies to run Neuronaut World
+# Using latest versions for Python 3.14 compatibility
+
+# Web Framework & API
+fastapi
+uvicorn[standard]
+websockets
+python-multipart
+
+# Utilities
+pydantic
+python-dotenv
