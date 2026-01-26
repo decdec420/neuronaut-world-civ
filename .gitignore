@@ -12,6 +12,8 @@ eggs/
 .eggs/
 lib/
 lib64/
+# BUT allow web/lib directory for frontend code
+!web/lib/
 parts/
 sdist/
 var/
