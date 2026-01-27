@@ -1552,6 +1552,9 @@ while supplies last. This could drive competition and conflict.
     def _get_roles_context(self, agent) -> str:
         """Extract role emergence and community role information"""
 
+        if not hasattr(agent, 'last_perception') or not agent.last_perception:
+            return ""
+
         perceptions = agent.last_perception
         roles_info = perceptions.get('roles_info', {})
 
@@ -1668,6 +1671,9 @@ while supplies last. This could drive competition and conflict.
     def _get_innovations_context(self, agent) -> str:
         """Extract innovations and agent discoveries"""
 
+        if not hasattr(agent, 'last_perception') or not agent.last_perception:
+            return ""
+
         perceptions = agent.last_perception
         innovations_info = perceptions.get('innovations_info', {})
 
@@ -1780,6 +1786,9 @@ while supplies last. This could drive competition and conflict.
 
     def _get_fun_context(self, agent) -> str:
         """Extract fun and entertainment information"""
+
+        if not hasattr(agent, 'last_perception') or not agent.last_perception:
+            return ""
 
         perceptions = agent.last_perception
         fun_info = perceptions.get('fun_info', {})
@@ -1913,6 +1922,9 @@ while supplies last. This could drive competition and conflict.
 
     def _get_consequences_context(self, agent) -> str:
         """Extract consequence and risk information"""
+
+        if not hasattr(agent, 'last_perception') or not agent.last_perception:
+            return ""
 
         perceptions = agent.last_perception
         consequences_info = perceptions.get('consequences_info', {})

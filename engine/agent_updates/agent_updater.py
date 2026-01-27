@@ -84,7 +84,7 @@ class AgentUpdater:
             return  # Skip rest of update for this agent
 
         # ===== APPLY RESOURCE SINKS (prevent inflation) =====
-        self.sim._system_coordinator.apply_resource_sinks(agent)
+        self.sim.system_coordinator.apply_resource_sinks(agent)
 
         # ===== REPUTATION DECAY (people forget!) =====
         agent.decay_reputation(decay_rate=0.001)  # 0.1% per tick

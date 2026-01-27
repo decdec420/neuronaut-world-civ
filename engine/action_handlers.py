@@ -442,10 +442,16 @@ def validate_agent_alive(agent: 'Agent') -> tuple[bool, str]:
 
 
 def validate_agent_energy(agent: 'Agent', min_energy: float = 0.1) -> tuple[bool, str]:
-    """Check if agent has minimum energy"""
-    from agents.agent import NeedType
+    """Check if agent has minimum energy (derived from HUNGER and SLEEP needs)"""
+    from engine.psychology import NeedType
 
-    energy = agent.needs.needs[NeedType.ENERGY].level
+    # Energy is derived from physiological needs - if they're too high (unsatisfied), energy is low
+    hunger_level = agent.needs.needs.get(NeedType.HUNGER, type('obj', (), {'level': 0.5})()).level
+    sleep_level = agent.needs.needs.get(NeedType.SLEEP, type('obj', (), {'level': 0.5})()).level
+
+    # Energy = 1 - average of need levels (inverted: high needs = low energy)
+    energy = 1.0 - ((hunger_level + sleep_level) / 2.0)
+
     if energy < min_energy:
         return False, f"Not enough energy (has {energy:.1%}, needs {min_energy:.0%})"
     return True, ""

@@ -22,6 +22,15 @@ from datetime import datetime
 from agents.agent import Position, Agent
 
 
+class ConstructionStage(Enum):
+    """Construction stages for buildings - visualized in frontend"""
+    PLANNING = "planning"  # Just a marker/blueprint
+    FOUNDATION = "foundation"  # Ground work started (0-25% progress)
+    FRAMING = "framing"  # Structure being built (25-60% progress)
+    FINISHING = "finishing"  # Almost done (60-90% progress)
+    COMPLETED = "completed"  # Fully functional (100% progress)
+
+
 class BuildingType(Enum):
     """Types of buildings agents can construct"""
     # BASIC STRUCTURES
@@ -311,6 +320,7 @@ class Building:
 
     # Construction
     construction_progress: float = 0.0  # 0-1, 1 = complete
+    construction_stage: ConstructionStage = ConstructionStage.PLANNING  # Visual stage
     is_complete: bool = False
     constructed_at: Optional[datetime] = None
 
@@ -339,13 +349,32 @@ class Building:
         progress_delta = (labor_amount / self.cost.labor_time) * (0.5 + 0.5 * builder_skill)
         self.construction_progress = min(1.0, self.construction_progress + progress_delta)
 
+        # Update construction stage based on progress
+        self.construction_stage = self.get_construction_stage()
+
         if self.construction_progress >= 1.0:
             self.complete_construction()
+
+    def get_construction_stage(self) -> ConstructionStage:
+        """Get construction stage based on progress percentage"""
+        progress_pct = self.construction_progress * 100
+
+        if progress_pct >= 100:
+            return ConstructionStage.COMPLETED
+        elif progress_pct >= 60:
+            return ConstructionStage.FINISHING
+        elif progress_pct >= 25:
+            return ConstructionStage.FRAMING
+        elif progress_pct > 0:
+            return ConstructionStage.FOUNDATION
+        else:
+            return ConstructionStage.PLANNING
 
     def complete_construction(self):
         """Mark building as complete"""
         self.is_complete = True
         self.construction_progress = 1.0
+        self.construction_stage = ConstructionStage.COMPLETED
         self.constructed_at = datetime.now()
 
     def add_worker(self, agent_id: str) -> bool:
@@ -409,6 +438,7 @@ class Building:
             'location': {'x': self.location.x, 'y': self.location.y},
             'owner_id': self.owner_id,
             'construction_progress': self.construction_progress,
+            'construction_stage': self.construction_stage.value,  # Add stage for frontend
             'is_complete': self.is_complete,
             'health': self.health,
             'active': self.active,

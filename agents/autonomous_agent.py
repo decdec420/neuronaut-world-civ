@@ -283,8 +283,9 @@ class AutonomousAgentMixin:
         # LLM brain for AI thinking
         self.llm_brain = llm_brain
 
-        # Memory system
-        self.memory = MemorySystem(self.id)
+        # Memory system - KEEP existing SmartMemorySystem from Agent.__init__
+        # (Don't replace it with old MemorySystem - SmartMemorySystem is superior)
+        # self.memory is already initialized as SmartMemorySystem in Agent.__init__
 
         # Goal planning
         self.goals = GoalSystem(self.id)
