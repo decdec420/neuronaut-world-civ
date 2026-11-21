@@ -360,15 +360,23 @@ class AgentUpdater:
 
         # ===== AI-POWERED DECISION MAKING =====
         # Use autonomous AI decisions if enabled, otherwise fall back to rule-based
-        if self.sim.config.use_llm_decisions and hasattr(agent, 'autonomous_decide'):
+        llm_action = None
+        if self.sim.config.use_llm_decisions and hasattr(agent, 'autonomous_decide') \
+                and self._survival_override(agent) is None:
             # Make AI-powered decision (handles planning and reflection internally)
             try:
-                action = agent.autonomous_decide(perceptions, current_tick, self.sim.config)
+                llm_action = agent.autonomous_decide(perceptions, current_tick, self.sim.config)
             except Exception as e:
                 logger.error(f"AI decision failed for {agent.name}: {e}")
-                logger.exception(e)
-                # Fall back to rule-based
-                action = agent.decide(perceptions)
+            # No model reachable / unusable answer: use the rule-based brain below
+            if llm_action is not None and llm_action.action_type in (ActionType.IDLE, ActionType.WAIT):
+                llm_action = None
+            if llm_action is not None and not self._can_run(agent, llm_action):
+                llm_action = None
+
+        if llm_action is not None:
+            action = llm_action
+            current_goal = self.sim.strategy_manager.get_current_goal(agent.id)
         else:
             # Original rule-based decision making
             # Check if agent should pursue strategic goal
@@ -405,6 +413,22 @@ class AgentUpdater:
 
         agent.current_action = action
         return action, current_goal
+
+    def _can_run(self, agent, action) -> bool:
+        """True if the handler that will actually run this action accepts it now."""
+        from engine.simulation import UNHANDLED_ACTION_FALLBACKS
+        try:
+            resolved = ActionType(UNHANDLED_ACTION_FALLBACKS.get(action.action_type.value, action.action_type.value))
+            handler = self.sim._handler_registry.get_handler(resolved)
+            if handler is None:
+                return False
+            probe = Action(resolved, target_agent=action.target_agent,
+                           target_position=action.target_position, parameters=action.parameters)
+            if probe.target_agent is None and resolved.value in ('socialize', 'seek_romance', 'trade', 'teach', 'heal', 'fight', 'tell_story'):
+                return True  # partner gets auto-picked at execution
+            return handler.validate(agent, probe)[0]
+        except Exception:
+            return True
 
     def _survival_override(self, agent):
         """Return an urgent survival action, or None if the agent is fine."""

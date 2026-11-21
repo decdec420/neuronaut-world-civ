@@ -133,6 +133,27 @@ class ConstructionHandler(ActionHandler):
             if building_materials < self.MIN_MATERIALS_TO_START:
                 return False, f"Need more materials to build ({building_materials}/{self.MIN_MATERIALS_TO_START})"
 
+            # Check up front that there's something worth building and that the
+            # agent has the right mix of materials for it. Before, these were only
+            # discovered after the action ran, so agents retried failing builds.
+            purpose = self._determine_building_purpose(agent)
+            if purpose in getattr(agent, 'built_purposes', set()):
+                purpose = None
+            if not purpose:
+                return False, "No building need"
+            dbs = self.context.get_system('dynamic_building_system') if getattr(self, 'context', None) else None
+            if dbs is not None and hasattr(dbs, '_estimate_materials'):
+                try:
+                    needed = dbs._estimate_materials([purpose], available_materials,
+                                                     agent.skills.get_skill('construction'),
+                                                     agent_inventory=available_materials)
+                    short = {m: q - available_materials.get(m, 0) for m, q in needed.items()
+                             if available_materials.get(m, 0) < q}
+                    if short:
+                        return False, "Missing materials: " + ", ".join(f"{q} {m}" for m, q in short.items())
+                except Exception:
+                    pass
+
         return True, ""
 
     def execute(self, agent: 'Agent', action: 'Action') -> ActionResult:
