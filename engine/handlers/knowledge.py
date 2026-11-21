@@ -242,10 +242,10 @@ class KnowledgeActionHandler(ActionHandler):
 
     def _handle_experiment(self, agent: 'Agent', current_tick: int) -> ActionResult:
         """Handle EXPERIMENT action - discover new materials through experimentation."""
-        from world.civilization import Era
+        from world.civilization_progression import Era
         from world.experimentation import ExperimentMethod
         from engine.events import EventCategory, EventImportance
-        from world.fun import CelebrationType
+        from world.fun_system import CelebrationType
         from engine.psychology import EmotionType
 
         # Get required systems

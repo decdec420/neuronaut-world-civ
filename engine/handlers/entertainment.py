@@ -58,7 +58,7 @@ class EntertainmentHandler(ActionHandler):
         return True, ""
 
     def execute(self, agent: 'Agent', action: 'Action') -> ActionResult:
-        from world.fun import CelebrationType
+        from world.fun_system import CelebrationType
         from engine.events import EventCategory, EventImportance
         from engine.psychology import EmotionType
 
@@ -220,7 +220,7 @@ class EntertainmentHandler(ActionHandler):
         )
 
     def _handle_celebrate(self, agent, fun_system, current_tick):
-        from world.fun import CelebrationType
+        from world.fun_system import CelebrationType
         from engine.psychology import EmotionType
 
         if not fun_system:

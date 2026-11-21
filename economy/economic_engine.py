@@ -18,7 +18,7 @@ from economy.banking import BankingManager, LoanType, CreditRating
 from economy.taxation import TaxationManager, TaxType, ResistanceLevel
 from economy.trade_routes import TradeRoutesManager
 from economy.crises import EconomicCrisesManager, CrisisType, EconomicPhase
-from economy.market import Economy as BaseEconomy
+from economy.market import Economy as BaseEconomy, CurrencyType
 
 
 class EconomicEngine:
@@ -135,7 +135,7 @@ class EconomicEngine:
             # Coins exist - check if economy should adopt them
             if self.base_economy.market.current_currency_type.value == 'barter':
                 # Upgrade from barter to coins!
-                self.base_economy.market.current_currency_type = self.base_economy.market.CurrencyType.COINS
+                self.base_economy.market.current_currency_type = CurrencyType.COINS
                 self.base_economy.market.currency_adoption_tick = current_tick
                 return "🪙 Economic revolution! COINS have been adopted as standard currency!"
 

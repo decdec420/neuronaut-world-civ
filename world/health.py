@@ -307,7 +307,7 @@ class HealthManager:
     def spread_diseases(self, agents: List, current_tick: int):
         """Spread contagious diseases between nearby agents"""
 
-        for disease in self.active_diseases.values():
+        for disease in list(self.active_diseases.values()):
             if not disease.contagious:
                 continue
 

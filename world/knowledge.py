@@ -19,6 +19,8 @@ from typing import Dict, List, Optional, Set, Tuple, Union, Any
 from datetime import datetime, timedelta
 import random
 import uuid
+import logging
+logger = logging.getLogger(__name__)
 
 
 # ==============================================================================
@@ -259,6 +261,10 @@ class KnowledgeSystem:
 
     def _mutate_content(self, original: str) -> str:
         """Introduce small mutations to oral tradition"""
+
+        # Structured knowledge (dicts) can't be garbled by text substitution
+        if not isinstance(original, str):
+            return original
 
         mutations = [
             lambda s: s.replace("mix", "combine"),

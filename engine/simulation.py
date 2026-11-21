@@ -68,6 +68,68 @@ from engine.handlers import (
 from engine.utils.agent_helpers import AgentCacheHelper
 
 
+# Unimplemented action -> closest implemented action (see execute_action).
+UNHANDLED_ACTION_FALLBACKS = {
+    # Movement / exploration
+    'scout': 'explore', 'map_area': 'explore', 'search': 'explore', 'wander': 'explore',
+    'explore_unknown': 'explore', 'chart_map': 'explore', 'survey_land': 'explore',
+    'find_resources': 'explore', 'follow': 'move', 'chase': 'move', 'hide': 'rest',
+    'flee': 'move',
+    # Food
+    'fish': 'hunt', 'forage': 'gather_food', 'cook': 'eat', 'brew': 'drink',
+    'preserve_food': 'gather_food', 'feast': 'eat',
+    # Building / crafting
+    'build_house': 'build', 'build_workshop': 'build', 'build_market': 'build',
+    'build_wall': 'build', 'repair': 'build', 'demolish': 'gather_materials',
+    'craft': 'experiment', 'craft_tool': 'experiment', 'craft_weapon': 'experiment',
+    'craft_armor': 'experiment', 'craft_clothing': 'experiment',
+    'craft_furniture': 'experiment', 'craft_jewelry': 'experiment',
+    'smelt': 'smelt_ore', 'weave': 'experiment', 'pottery': 'experiment',
+    'synthesize_compound': 'perform_chemistry',
+    # Rest
+    'sleep': 'rest', 'relax': 'rest', 'meditate': 'pray', 'bathe': 'drink',
+    'idle': 'rest', 'wait': 'rest', 'contemplate': 'pray', 'smoke': 'rest',
+    # Social
+    'communicate': 'socialize', 'converse': 'socialize', 'gossip': 'socialize',
+    'joke': 'socialize', 'compliment': 'socialize', 'insult': 'socialize',
+    'apologize': 'socialize', 'comfort': 'socialize', 'listen': 'socialize',
+    'watch': 'socialize', 'observe': 'explore', 'scheme': 'socialize', 'plan': 'rest',
+    # Romance / family
+    'flirt': 'seek_romance', 'court': 'seek_romance', 'propose': 'seek_romance',
+    'marry': 'seek_romance', 'have_sex': 'seek_romance', 'give_birth': 'rest',
+    'care_for_child': 'socialize', 'parent': 'socialize',
+    # Economy
+    'sell': 'trade', 'buy': 'trade', 'barter': 'trade', 'work': 'gather_materials',
+    'employ': 'trade', 'invest': 'trade', 'steal': 'trade', 'beg': 'socialize',
+    'counterfeit_coins': 'mint_coins', 'debase_currency': 'mint_coins',
+    'open_savings_account': 'open_bank', 'withdraw_savings': 'trade',
+    'make_loan_payment': 'trade', 'default_on_loan': 'trade', 'collect_tax': 'govern',
+    'pay_tax': 'govern', 'evade_tax': 'join_tax_revolt',
+    'start_tax_revolt': 'join_tax_revolt', 'establish_trade_route': 'send_caravan',
+    'form_merchant_guild': 'trade', 'attack_caravan': 'fight',
+    'invest_in_bubble': 'gamble', 'sell_investment': 'trade', 'speculate': 'gamble',
+    # Conflict
+    'attack': 'fight', 'defend': 'guard', 'duel': 'fight', 'ambush': 'fight',
+    'threaten': 'fight', 'intimidate': 'fight', 'declare_war': 'fight',
+    # Culture
+    'paint': 'create_art', 'sculpt': 'create_art', 'compose_music': 'create_art',
+    'sing': 'play_game', 'dance': 'celebrate', 'perform': 'tell_story',
+    'entertain': 'tell_story', 'organize_event': 'celebrate', 'attend_event': 'celebrate',
+    # Learning
+    'learn_skill': 'experiment', 'study': 'write', 'practice': 'experiment',
+    'mentor': 'teach', 'apprentice': 'teach', 'research': 'experiment',
+    'invent': 'experiment', 'discover': 'experiment',
+    # Politics / groups
+    'lead': 'govern', 'judge': 'govern', 'negotiate': 'trade', 'form_alliance': 'socialize',
+    'make_peace': 'socialize', 'campaign': 'vote', 'join_group': 'socialize',
+    'leave_group': 'socialize', 'form_group': 'socialize', 'recruit': 'socialize',
+    'exile': 'govern',
+    # Religion / health
+    'bless': 'perform_ritual', 'curse': 'perform_ritual', 'prophesy': 'worship',
+    'convert': 'worship', 'treat': 'heal', 'midwife': 'heal', 'comfort_sick': 'heal',
+}
+
+
 class SimulationEngine:
     """
     Main simulation engine - Clean orchestrator pattern.
@@ -103,6 +165,10 @@ class SimulationEngine:
         # ===== ACTION HANDLERS (Phase 4 Refactoring) =====
         # Old action handlers from agent_updates module (kept for compatibility)
         self.action_handlers = ActionHandlers(self)
+        # The modular handlers (engine/handlers/*) look this up by the name
+        # 'interaction_handler'. Without the alias, gathering, rest, social and
+        # trade actions all silently failed and agents starved.
+        self.interaction_handler = self.action_handlers
         print("🎯 Action Handlers enabled - Modular interaction handling (Phase 4)!")
 
         # New action handler system (modular, testable)
@@ -569,6 +635,20 @@ class SimulationEngine:
 
         # Get handler from registry
         handler = self._handler_registry.get_handler(action.action_type)
+        if not handler:
+            # Many ActionTypes have no dedicated handler yet. Route them to the
+            # closest implemented action so the agent's choice still does
+            # something, instead of silently failing every tick.
+            fallback = UNHANDLED_ACTION_FALLBACKS.get(action.action_type.value)
+            if fallback:
+                action = Action(
+                    ActionType(fallback),
+                    target_agent=action.target_agent,
+                    target_position=action.target_position,
+                    parameters=action.parameters,
+                    priority=action.priority,
+                )
+                handler = self._handler_registry.get_handler(action.action_type)
         if not handler:
             logger.error(f"❌ No handler found for action type: {action.action_type}")
             return {

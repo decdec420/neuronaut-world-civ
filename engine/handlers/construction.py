@@ -164,7 +164,7 @@ class ConstructionHandler(ActionHandler):
             >>> if result.metadata.get('building_complete'):
             ...     print("Building finished!")
         """
-        from world.fun import CelebrationType
+        from world.fun_system import CelebrationType
         from engine.events import EventCategory, EventImportance
         from engine.psychology import EmotionType
 
@@ -376,7 +376,7 @@ class ConstructionHandler(ActionHandler):
         story_generator, story_feed
     ) -> ActionResult:
         """Handle completion of building - knowledge, needs, celebration, achievements."""
-        from world.fun import CelebrationType
+        from world.fun_system import CelebrationType
         from engine.events import EventCategory, EventImportance
 
         logger.info(f"🏛️ {agent.name} COMPLETED BUILDING: {building.name}")
