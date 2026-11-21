@@ -68,6 +68,9 @@ from engine.handlers import (
 from engine.utils.agent_helpers import AgentCacheHelper
 
 
+# Actions that need a partner agent; filled in automatically when missing.
+TARGETED_ACTIONS = {'socialize', 'seek_romance', 'trade', 'teach', 'heal', 'fight', 'tell_story'}
+
 # Unimplemented action -> closest implemented action (see execute_action).
 UNHANDLED_ACTION_FALLBACKS = {
     # Movement / exploration
@@ -656,6 +659,13 @@ class SimulationEngine:
                 'emotional_impact': 0.0,
                 'message': f'Action type {action.action_type} not implemented'
             }
+
+        # Social actions chosen without a partner: pick the nearest living agent
+        if action.target_agent is None and action.action_type.value in TARGETED_ACTIONS:
+            others = [a for a in self.world.agents if a.alive and a.id != agent.id]
+            if others:
+                nearest = min(others, key=lambda o: agent.location.distance_to(o.location))
+                action.target_agent = nearest.id
 
         # Validate action can be performed
         can_execute, reason = handler.validate(agent, action)

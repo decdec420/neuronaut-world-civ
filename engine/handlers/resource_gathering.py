@@ -160,7 +160,11 @@ class ResourceGatheringHandler(ActionHandler):
         alive_valid = validate_agent_alive(agent)
 
         # Check if agent has sufficient energy
-        energy_valid = validate_agent_energy(agent, self.MIN_ENERGY_FOR_GATHERING)
+        # Food and water must always be reachable, even when exhausted
+        if action.action_type.value in ('gather_food', 'gather_water', 'hunt'):
+            energy_valid = (True, "")
+        else:
+            energy_valid = validate_agent_energy(agent, self.MIN_ENERGY_FOR_GATHERING)
 
         # Combine validations - returns first failure or (True, "") if all pass
         return combine_validations(alive_valid, energy_valid)

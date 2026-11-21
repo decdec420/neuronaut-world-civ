@@ -356,7 +356,7 @@ class SkillSet:
 class Inventory:
     """Agent's possessions"""
     items: Dict[str, int] = field(default_factory=dict)  # item_name -> quantity
-    capacity: int = 20
+    capacity: int = 150  # was 20: a basic shelter needs ~55 materials
 
     def add_item(self, item_name: str, quantity: int = 1) -> bool:
         """Add item to inventory"""
@@ -691,6 +691,15 @@ class Agent:
             self.health -= damage
             if random.random() < 0.01:
                 logger.warning(f"💀 {self.name} is DYING of thirst! Health: {self.health:.1f}")
+
+        # NATURAL RECOVERY - health slowly returns when basic needs are met.
+        # Without this, every storm, illness or hungry spell did permanent
+        # damage and every agent eventually died of "unknown causes".
+        if (self.health < 100.0
+                and (not hunger_need or hunger_need.level < 0.6)
+                and (not thirst_need or thirst_need.level < 0.6)
+                and self.energy > 20):
+            self.health = min(100.0, self.health + 0.05 * delta_time)
 
         # DISEASE - Random illness (rare but deadly)
         if random.random() < 0.0001 * delta_time:  # ~0.01% chance per tick

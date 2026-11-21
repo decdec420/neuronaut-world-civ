@@ -72,6 +72,7 @@ class ConstructionHandler(ActionHandler):
     """
 
     # Minimum energy required for construction (as fraction 0-1)
+    MIN_MATERIALS_TO_START = 40
     MIN_ENERGY_FOR_CONSTRUCTION = 0.1
 
     def can_handle(self, action_type: ActionType) -> bool:
@@ -123,8 +124,14 @@ class ConstructionHandler(ActionHandler):
         # If starting new construction (no active project), need materials
         if not agent.active_construction_id:
             available_materials = agent.inventory.items
-            if len(available_materials) < 2:
-                return False, "Need at least 2 materials to build"
+            building_materials = sum(
+                qty for name, qty in available_materials.items()
+                if name in ('wood', 'stone', 'plant_fiber', 'clay', 'metal_ore')
+            )
+            # A basic shelter needs ~55 materials; don't attempt (and fail)
+            # every tick before the agent has gathered enough.
+            if building_materials < self.MIN_MATERIALS_TO_START:
+                return False, f"Need more materials to build ({building_materials}/{self.MIN_MATERIALS_TO_START})"
 
         return True, ""
 
@@ -283,6 +290,14 @@ class ConstructionHandler(ActionHandler):
         # NEED-BASED BUILDING - Choose purpose based on agent's urgent needs!
         purpose = self._determine_building_purpose(agent)
 
+        # Each agent builds one of each kind (one home, one workshop...).
+        # Without this, wandering agents built hut after hut (~10 each).
+        built = getattr(agent, 'built_purposes', None)
+        if built is None:
+            built = agent.built_purposes = set()
+        if purpose in built:
+            purpose = None
+
         if not purpose:
             return ActionResult(
                 success=False,
@@ -332,6 +347,7 @@ class ConstructionHandler(ActionHandler):
 
         # Set as active construction
         agent.active_construction_id = building.id
+        agent.built_purposes.add(purpose)
 
         # Apply first tick of labor
         labor_per_tick = max(5.0, skill * 10.0)
@@ -522,23 +538,41 @@ class ConstructionHandler(ActionHandler):
         # Check needs and determine purpose
         needs = agent.needs.needs
 
+        # Need levels run 0 (satisfied) -> 1 (desperate). The old code treated
+        # LOW levels as urgent, so agents only built when they didn't need to.
+        def level(n):
+            need = needs.get(n)
+            return need.level if need else 0.0
+
         # Priority order: survival > security > comfort > creativity
-        if needs.get(NeedType.SHELTER) and needs[NeedType.SHELTER].level < 0.3:
+        if level(NeedType.SHELTER) > 0.7:
             return 'shelter'
-        elif needs.get(NeedType.SECURITY) and needs[NeedType.SECURITY].level < 0.3:
+        elif level(NeedType.SECURITY) > 0.7:
             return 'defense'
-        elif needs.get(NeedType.RESOURCES) and needs[NeedType.RESOURCES].level < 0.4:
+        elif level(NeedType.RESOURCES) > 0.6:
             return 'storage'
-        elif needs.get(NeedType.CREATIVITY) and needs[NeedType.CREATIVITY].level < 0.4:
+        elif level(NeedType.CREATIVITY) > 0.6:
             return 'workshop'
-        elif needs.get(NeedType.BELONGING) and needs[NeedType.BELONGING].level < 0.4:
+        elif level(NeedType.BELONGING) > 0.6:
             return 'gathering_space'
 
-        # Default to shelter if no urgent needs
-        if needs.get(NeedType.SHELTER) and needs[NeedType.SHELTER].level < 0.7:
+        # Default to shelter only if there's no finished building nearby already
+        # (otherwise agents kept building hut after hut on the same spot)
+        if level(NeedType.SHELTER) > 0.3 and not self._has_shelter_nearby(agent):
             return 'shelter'
 
         return None
+
+    def _has_shelter_nearby(self, agent, radius: float = 8.0) -> bool:
+        dbs = self.context.get_system('dynamic_building_system') if getattr(self, 'context', None) else None
+        if dbs is None:
+            return False
+        for b in dbs.buildings.values():
+            if b.is_complete and not b.collapsed:
+                bx, by = b.location
+                if ((agent.location.x - bx) ** 2 + (agent.location.y - by) ** 2) ** 0.5 < radius:
+                    return True
+        return False
 
     def get_required_systems(self) -> list[str]:
         """
