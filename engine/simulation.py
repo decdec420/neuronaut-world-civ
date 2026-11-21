@@ -172,6 +172,10 @@ class SimulationEngine:
         # 'interaction_handler'. Without the alias, gathering, rest, social and
         # trade actions all silently failed and agents starved.
         self.interaction_handler = self.action_handlers
+
+        # Used by the /agents/{id} and /agents/{id}/profile API endpoints
+        from agents.profiles import ProfileBuilder
+        self.profile_builder = ProfileBuilder(self)
         print("🎯 Action Handlers enabled - Modular interaction handling (Phase 4)!")
 
         # New action handler system (modular, testable)
