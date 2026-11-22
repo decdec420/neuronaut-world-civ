@@ -418,12 +418,12 @@ class World:
         for tile in self.map.tiles.values():
             for resource in tile.resources:
                 if resource.id == resource_id:
-                    # Check global pool availability
+                    # Harvest from the tile first, then take only that much from
+                    # the global pool. Debiting the pool by the requested amount
+                    # lost food whenever the tile held less (about a third of it).
                     resource_type_name = resource.resource_type.value
-                    available_in_pool = self.harvest_from_pool(resource_type_name, amount)
-
-                    # Also harvest from tile resource (for tile tracking)
                     tile_harvested = resource.harvest(amount)
+                    available_in_pool = self.harvest_from_pool(resource_type_name, tile_harvested)
 
                     # Return the LESSER of the two (global pool constrains)
                     actual_harvested = min(available_in_pool, tile_harvested)

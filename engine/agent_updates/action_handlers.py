@@ -21,6 +21,17 @@ from engine.events import EventGenerator, EventCategory, EventImportance
 from engine.psychology import NeedType, EmotionType
 from engine.storytelling import StoryGenerator, StoryType
 
+# A gathered harvest is eaten on the spot: hunger drops by amount / FOOD_PER_HUNGER.
+FOOD_PER_HUNGER = 8.0
+FOOD_PER_HARVEST = 12.0
+
+
+def usable_food(agent) -> float:
+    """Food an agent can use from one harvest: what it eats now plus what it can carry."""
+    hunger = agent.needs.needs.get(NeedType.HUNGER)
+    space = agent.inventory.capacity - agent.inventory.get_total_items()
+    return (hunger.level if hunger else 0.0) * FOOD_PER_HUNGER + max(0, space)
+
 
 class ActionHandlers:
     """
@@ -423,15 +434,20 @@ class ActionHandlers:
                 }
 
         # Close enough to harvest!
-        # Harvest food - INCREASED YIELD for survival!
-        amount = self.sim.world.harvest_resource(resource.id, 12.0)  # Was 5.0, now 12.0
+        # Take only what the agent will eat now or can carry. Taking a full 12
+        # every time destroyed food: most harvests were by sated agents with full
+        # inventories (69% of all food taken from the pool in a 1200-tick run).
+        amount = self.sim.world.harvest_resource(
+            resource.id, min(FOOD_PER_HARVEST, usable_food(agent)))
 
         if amount > 0:
-            # Add to inventory
-            agent.inventory.add_item('food', int(amount))
+            # Add what fits to inventory (add_item is all-or-nothing)
+            space = agent.inventory.capacity - agent.inventory.get_total_items()
+            if min(int(amount), space) > 0:
+                agent.inventory.add_item('food', min(int(amount), space))
 
             # Immediately eat to survive - satisfy hunger MORE
-            agent.needs.satisfy_need(NeedType.HUNGER, amount / 8.0)  # Was /10, now /8 - more satisfying
+            agent.needs.satisfy_need(NeedType.HUNGER, amount / FOOD_PER_HUNGER)
             # Restore energy from eating
             agent.energy = min(100.0, agent.energy + 8.0)  # Was +5, now +8
 
