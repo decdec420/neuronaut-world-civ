@@ -115,6 +115,23 @@ class LifecycleManager:
         # Track birth for population history
         self.sim.births_this_day += 1
 
+    def _widow(self, dead: Agent) -> None:
+        """A partnership ends when one partner dies; the other grieves."""
+        from engine.psychology import EmotionType
+        partner = self.sim._get_agent_by_id(dead.partner_id)
+        dead.partner_id = None
+        if partner is None or partner.partner_id != dead.id:
+            return
+        partner.partner_id = None
+        profile = self.sim.life_system.life_profiles.get(partner.id)
+        if profile is not None:
+            profile.spouse = None
+        partner.emotions.trigger_emotion(EmotionType.SADNESS, 0.8)
+        self.sim.event_logger.log_event(
+            EventCategory.LIFE, EventImportance.MODERATE,
+            f"{partner.name} lost their partner {dead.name}",
+            f"{partner.name} mourns {dead.name}.", self.sim.world.time.current_tick, [partner.id, dead.id])
+
     def handle_deaths(self):
         """
         Process agent deaths and cleanup.
@@ -128,6 +145,8 @@ class LifecycleManager:
         current_tick = self.sim.world.time.current_tick
 
         for agent in self.sim.world.agents[:]:  # Copy list
+            if not agent.alive and agent.partner_id:
+                self._widow(agent)
             if not agent.alive and agent.ticks_lived > 100:
                 # Determine death cause from agent
                 death_cause = getattr(agent, 'death_cause', None) or ("old age" if agent.age > 100 else "health")

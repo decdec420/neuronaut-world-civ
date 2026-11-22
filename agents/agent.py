@@ -121,6 +121,7 @@ class ActionType(Enum):
     GIVE_BIRTH = "give_birth"
     CARE_FOR_CHILD = "care_for_child"
     PARENT = "parent"
+    SEPARATE = "separate"
 
     # ===== ECONOMIC & TRADE =====
     TRADE = "trade"
@@ -485,6 +486,10 @@ class Agent:
         self.mother_id: Optional[str] = None  # ID of mother (if born in-game)
         self.father_id: Optional[str] = None  # ID of father (if born in-game)
         self.children_ids: List[str] = []  # IDs of children
+
+        # Partnership (life/family.py): formed only when both chose each other
+        self.partner_id: Optional[str] = None
+        self.admirers: Dict[str, int] = {}  # who courted this agent -> tick they last did
 
         # Pregnancy (for females only)
         self.is_pregnant: bool = False
@@ -1336,6 +1341,7 @@ class Agent:
             'mother_id': self.mother_id,
             'father_id': self.father_id,
             'children_ids': self.children_ids,
+            'partner_id': self.partner_id,
             'is_pregnant': self.is_pregnant,
             'pregnancy_partner_id': self.pregnancy_partner_id,
             'death_cause': self.death_cause,

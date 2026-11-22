@@ -698,6 +698,17 @@ Be bold! Think of something interesting to try.
             lines.append("Nobody is near you.")
         lines.append(f"Resources in sight: {resources_str}")
 
+        life = perceptions.get("life_info", {})
+        if life:
+            heart = [f"Partner: {life['partner']}." if life.get("partner") else "You have no partner."]
+            if life.get("admirers"):
+                heart.append(f"Courting you: {', '.join(life['admirers'][:4])} (court them back to become partners).")
+            if life.get("courting"):
+                heart.append(f"You courted {', '.join(life['courting'][:4])}; no answer yet.")
+            if life.get("is_pregnant"):
+                heart.append("You are expecting a child.")
+            lines.append(" ".join(heart))
+
         known = perceptions.get("relationships", [])
         if known:
             lines.append("People you know: " + "; ".join(

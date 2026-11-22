@@ -3,7 +3,6 @@ Social Interaction Handler - Handles agent social and economic interactions.
 
 This handler manages all social and economic interaction actions including:
 - SOCIALIZE: Social interactions and friendship building
-- SEEK_ROMANCE: Romantic interactions and relationship development
 - TRADE: Economic trading between agents
 
 The handler validates that agents are alive and have valid targets before
@@ -30,8 +29,9 @@ class SocialInteractionHandler(ActionHandler):
     """
     Handles social and economic interaction actions.
 
-    This handler processes ActionType.SOCIALIZE, ActionType.SEEK_ROMANCE,
-    and ActionType.TRADE by delegating to the interaction_handler system.
+    This handler processes ActionType.SOCIALIZE and ActionType.TRADE by
+    delegating to the interaction_handler system. (Romance is consent-based
+    and lives in engine/handlers/family.py.)
 
     Action Details:
 
@@ -42,17 +42,6 @@ class SocialInteractionHandler(ActionHandler):
     - Satisfies social needs (friendship, belonging)
     - Triggers positive/negative emotions based on compatibility
     - May trigger story creation for creative agents
-    - Requires valid target_agent
-
-    SEEK_ROMANCE:
-    - Delegates to interaction_handler.handle_romance()
-    - Checks attraction based on personality and needs
-    - Updates romantic relationships
-    - Satisfies romance and intimacy needs
-    - Triggers love, lust, and joy emotions on success
-    - Triggers sadness and shame on rejection
-    - May trigger pregnancy for compatible pairs
-    - May trigger reproduction in execute_action() if successful
     - Requires valid target_agent
 
     TRADE:
@@ -89,11 +78,11 @@ class SocialInteractionHandler(ActionHandler):
             action_type: The type of action to check
 
         Returns:
-            True if action_type is SOCIALIZE, SEEK_ROMANCE, or TRADE, False otherwise
+            True if action_type is SOCIALIZE or TRADE, False otherwise
         """
+        # SEEK_ROMANCE is handled by engine/handlers/family.py (consent-based)
         return action_type in [
             ActionType.SOCIALIZE,
-            ActionType.SEEK_ROMANCE,
             ActionType.TRADE
         ]
 
@@ -150,7 +139,7 @@ class SocialInteractionHandler(ActionHandler):
         """
         Execute the social interaction action.
 
-        Processes SOCIALIZE, SEEK_ROMANCE, or TRADE actions by delegating
+        Processes SOCIALIZE or TRADE actions by delegating
         to the appropriate interaction_handler method.
 
         SOCIALIZE Algorithm:
@@ -158,14 +147,6 @@ class SocialInteractionHandler(ActionHandler):
         2. Delegate to interaction_handler.handle_socialize()
         3. This checks compatibility, updates relationships, satisfies needs
         4. Returns result with emotional impact based on compatibility
-
-        SEEK_ROMANCE Algorithm:
-        1. Retrieve target agent from simulation
-        2. Delegate to interaction_handler.handle_romance()
-        3. This checks attraction, updates relationships, satisfies needs
-        4. May trigger pregnancy for compatible pairs
-        5. Returns result with reproduction_attempted flag if successful
-        6. Note: execute_action() in simulation.py handles child creation
 
         TRADE Algorithm:
         1. Retrieve target agent from simulation
@@ -237,23 +218,6 @@ class SocialInteractionHandler(ActionHandler):
                 f"emotional_impact={result_dict.get('emotional_impact', 0.0):.2f}"
             )
 
-            return ActionResult.from_dict(result_dict)
-
-        elif action.action_type == ActionType.SEEK_ROMANCE:
-            result_dict = interaction_handler.handle_romance(
-                agent, target, current_tick
-            )
-
-            logger.info(
-                f"[{agent.name}] EXECUTED SEEK_ROMANCE with {target.name}: "
-                f"success={result_dict.get('success')}, "
-                f"emotional_impact={result_dict.get('emotional_impact', 0.0):.2f}, "
-                f"reproduction_attempted={result_dict.get('reproduction_attempted', False)}"
-            )
-
-            # Note: The reproduction_attempted flag is preserved in metadata
-            # execute_action() in simulation.py will check this and handle
-            # child creation through life_system.attempt_reproduction()
             return ActionResult.from_dict(result_dict)
 
         elif action.action_type == ActionType.TRADE:

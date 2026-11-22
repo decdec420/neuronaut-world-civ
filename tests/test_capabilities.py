@@ -214,3 +214,41 @@ def test_steel_from_refined_iron():
     assert first.success and first.metadata["product"] == "steel"
     act(sim, a, "refine_material")
     assert act(sim, a, "create_alloy").success  # a known alloy can be made again
+
+
+def test_partnership_needs_both_to_choose_and_either_can_end_it():
+    from life import family
+    sim, roles = make_world()
+    a, c, d = roles["actor"], roles["sick"], roles["neighbour"]
+    from agents.agent import Action, ActionType
+    romance = sim._handler_registry.get_handler(ActionType.SEEK_ROMANCE)
+
+    # D courts C: interest on one side makes nobody a partner
+    assert act(sim, d, "seek_romance", target=c).success
+    assert d.partner_id is None and c.partner_id is None
+    assert not act(sim, d, "seek_romance", target=c).success  # still no answer
+
+    # C, on its own turn, courts D back: both chose it, so they're partners
+    assert act(sim, c, "seek_romance", target=d).metadata.get("partnership_formed")
+    assert c.partner_id == d.id and d.partner_id == c.id
+
+    # A has a partner (from make_world) and C is taken: neither can court
+    ok, why = romance.validate(a, Action(ActionType.SEEK_ROMANCE, target_agent=c.id))
+    assert not ok and "partner" in why
+
+    # Either partner can end it alone
+    assert act(sim, c, "separate").success
+    assert c.partner_id is None and d.partner_id is None
+
+    # Interest fades: courting someone isn't remembered forever
+    assert act(sim, d, "seek_romance", target=c).success
+    sim.world.time.current_tick += family.INTEREST_MEMORY_TICKS + 1
+    assert not act(sim, c, "seek_romance", target=d).metadata.get("partnership_formed")
+
+
+def test_a_partner_dying_frees_the_other():
+    sim, roles = make_world()
+    a, b = roles["actor"], roles["partner"]
+    b.alive = False
+    sim.lifecycle_manager.handle_deaths()
+    assert a.partner_id is None

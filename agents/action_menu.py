@@ -69,7 +69,9 @@ ACTION_INFO = {
     "teach": ("knowledge", "teach someone what you know (TARGET)"),
     "write": ("knowledge", "write down what you know"),
     "socialize": ("social", "spend time with someone (TARGET)"),
-    "seek_romance": ("romance and family", "court someone you're drawn to (TARGET)"),
+    "seek_romance": ("romance and family", "court someone (TARGET), or spend time with your partner; "
+                                           "you become partners only if they court you too"),
+    "separate": ("romance and family", "end your partnership"),
     "celebrate": ("culture", "throw or join a celebration"),
     "tell_story": ("culture", "tell someone a story (TARGET)"),
     "play_game": ("culture", "play a game with someone (TARGET)"),

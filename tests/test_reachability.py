@@ -16,8 +16,8 @@ Names in UNHANDLED_ACTION_FALLBACKS are aliases ("gossip" runs `socialize`).
 An alias inherits (b) and (d) from the action it runs; it still has to be on
 the menu and parse correctly, so the LLM can use the word.
 
-A test may set up the world so an action can work ("A and B are in love",
-"C is sick"). The sim itself never forces anything.
+A test may set up the world so an action can work ("A and B courted each
+other", "C is sick"). The sim itself never forces anything.
 
     python3 -m pytest tests/test_reachability.py -s   # assert + failure table
     python3 tests/test_reachability.py                 # full table
@@ -135,6 +135,14 @@ def make_world(seed: int = 0, use_llm: bool = False):
         rel_mgr.create_relationship(a.id, d.id, RelationshipType.FRIENDSHIP, 0.8)
         rel_mgr.create_relationship(a.id, c.id, RelationshipType.FRIENDSHIP, 0.8)
 
+    # A and B court each other, so they are partners: both chose it
+    from agents.agent import Action, ActionType
+    romance = sim._handler_registry.get_handler(ActionType.SEEK_ROMANCE)
+    with quiet():
+        for who, other in ((a, b), (b, a)):
+            romance.execute(who, Action(ActionType.SEEK_ROMANCE, target_agent=other.id))
+    assert a.partner_id == b.id
+
     # C is ill, so there's someone to heal
     with quiet():
         from world.health import DiseaseType, Severity
@@ -148,7 +156,7 @@ def make_world(seed: int = 0, use_llm: bool = False):
 # fills that in itself).
 TARGETS = {
     "heal": "sick", "cure": "sick", "diagnose": "sick",
-    "seek_romance": "partner",
+    "seek_romance": "partner", "separate": "partner",
     "trade": "neighbour", "teach": "neighbour", "socialize": "neighbour",
     "tell_story": "neighbour", "play_game": "neighbour", "gamble": "neighbour",
     "fight": "neighbour",

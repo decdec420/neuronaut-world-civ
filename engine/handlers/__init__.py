@@ -22,6 +22,7 @@ from engine.handlers.chemistry import ChemistryHandler
 from engine.handlers.energy import EnergyHandler
 from engine.handlers.materials import MaterialsHandler
 from engine.handlers.economy import AdvancedEconomyHandler
+from engine.handlers.family import FamilyHandler
 
 __all__ = [
     'MovementActionHandler',
@@ -41,4 +42,5 @@ __all__ = [
     'EnergyHandler',
     'MaterialsHandler',
     'AdvancedEconomyHandler',
+    'FamilyHandler',
 ]

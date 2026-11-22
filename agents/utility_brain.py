@@ -11,7 +11,8 @@ from) is a candidate. Each gets a utility from the agent's own state:
 - needs: how urgently the needs this action tends to meet are felt
 - personality: the traits that draw someone to it (or away from it)
 - memory: how often it has worked for this agent before
-- people: for actions with a partner, how much the agent likes them
+- people: for actions with a partner, how much the agent likes them; for
+  romance, how drawn it is to them, and whether they courted it first
 - danger: actions that can get it killed weigh less for careful or hurt agents
 - law: what its government has banned weighs less, the more conscientious
   and agreeable it is
@@ -65,6 +66,9 @@ ACTION_NEEDS: Dict[str, Dict[N, float]] = {
     "write": {N.MEANING: 0.4, N.GROWTH: 0.3, N.RECOGNITION: 0.3},
     "socialize": {N.FRIENDSHIP: 0.5, N.BELONGING: 0.5},
     "seek_romance": {N.ROMANCE: 0.5, N.SEX: 0.5},
+    # Unmet longing inside a partnership; weighed by how little the agent
+    # still likes its partner (see utility)
+    "separate": {N.ROMANCE: 1.0},
     "celebrate": {N.BELONGING: 0.6, N.MEANING: 0.4},
     "tell_story": {N.BELONGING: 0.4, N.RECOGNITION: 0.3, N.CREATIVITY: 0.3},
     "play_game": {N.BELONGING: 0.5, N.FRIENDSHIP: 0.3, N.ACHIEVEMENT: 0.2},
@@ -123,6 +127,7 @@ ACTION_TRAITS: Dict[str, Dict[str, float]] = {
     "write": {"rationality": 0.5, "openness": 0.3, "extraversion": -0.2},
     "socialize": {"extraversion": 0.7, "agreeableness": 0.3},
     "seek_romance": {"sexuality": 0.7, "extraversion": 0.3},
+    "separate": {"agreeableness": -0.5, "neuroticism": 0.3, "openness": 0.2},
     "celebrate": {"extraversion": 0.6, "openness": 0.2},
     "tell_story": {"extraversion": 0.5, "creativity": 0.5},
     "play_game": {"extraversion": 0.5, "risk_taking": 0.2},
@@ -148,9 +153,12 @@ ACTION_TRAITS: Dict[str, Dict[str, float]] = {
 }
 
 SOCIAL_ACTIONS = {"socialize", "seek_romance", "celebrate", "tell_story", "play_game", "create_art"}
-NEEDS_TARGET = {"socialize", "seek_romance", "trade", "teach", "tell_story", "play_game", "gamble",
+NEEDS_TARGET = {"socialize", "seek_romance", "separate", "trade", "teach", "tell_story", "play_game", "gamble",
                 "fight", "heal", "cure", "diagnose"}
 NEEDS_SICK_TARGET = {"heal", "cure", "diagnose"}
+ROMANCE_ACTIONS = {"seek_romance", "separate"}
+# Skipped when there's nobody suitable (no sick person, nobody free to court...)
+NEEDS_SUITABLE_TARGET = NEEDS_SICK_TARGET | ROMANCE_ACTIONS
 NEEDS_PLACE = {"move", "explore"}
 
 # How much each part of the utility counts, and how sharply the agent picks
@@ -158,6 +166,9 @@ NEED_WEIGHT = 1.5
 TRAIT_WEIGHT = 0.6
 MEMORY_WEIGHT = 0.8
 FRIEND_WEIGHT = 0.3
+ROMANCE_WEIGHT = 0.8     # how much being drawn to someone counts for romance
+ADMIRER_PULL = 1.0       # someone who courted you: answering them draws you more
+UNANSWERED_PENALTY = 0.5 # someone you courted who never answered: less
 NIGHT_REST_PULL = 2.5
 WORK_PULL = 0.3
 OWN_JOB_PULL = 0.6
@@ -232,8 +243,12 @@ class UtilityBrain:
             caution = 1.0 - agent.personality.get_trait("risk_taking")
             hurt = 1.0 - max(0.0, min(100.0, agent.health)) / 100.0
             danger_term = danger * (caution + hurt)
-        # Liking someone draws you to do things with them, and away from hurting them
-        liking_term = -friendship if action == "fight" else friendship
+        # Liking someone draws you to do things with them, and away from hurting
+        # them or leaving them
+        liking_term = -friendship if action in ("fight", "separate") else friendship
+        if action == "separate":
+            need_term *= max(0.0, 1.0 - friendship)
+        person_weight = ROMANCE_WEIGHT if action == "seek_romance" else FRIEND_WEIGHT
 
         law_term = 0.0
         if action in banned:
@@ -241,7 +256,7 @@ class UtilityBrain:
             law_term = (p.get_trait("conscientiousness") + p.get_trait("agreeableness")) / 2.0
 
         return (NEED_WEIGHT * need_term + TRAIT_WEIGHT * trait_term + MEMORY_WEIGHT * memory_term
-                + FRIEND_WEIGHT * liking_term + plan_term - DANGER_WEIGHT * danger_term
+                + person_weight * liking_term + plan_term - DANGER_WEIGHT * danger_term
                 - LAW_WEIGHT * law_term)
 
     # -- targets -------------------------------------------------------------
@@ -250,6 +265,8 @@ class UtilityBrain:
         """A partner for actions done with someone: sick people for healing,
         otherwise people nearby or known, favouring those the agent likes
         (or, for a fight, likes least). Returns (agent id, how much they're liked)."""
+        if action in ROMANCE_ACTIONS:
+            return self._romance_target(agent, action)
         alive = {a.id: a for a in self.sim.world.agents if a.alive and a.id != agent.id}
         if action in NEEDS_SICK_TARGET:
             sick = [a for a in alive.values() if self.sim.health.is_agent_sick(a.id)]
@@ -273,6 +290,35 @@ class UtilityBrain:
         chosen = random.choices(people, weights=weights)[0]
         return chosen, liking.get(chosen, 0.0)
 
+    def _romance_target(self, agent, action: str) -> Tuple[Optional[str], float]:
+        """The partner (for time together, or to leave); for someone single, a
+        person free to court, picked by how drawn the agent is to them. Someone
+        who courted the agent pulls more; someone it courted who never answered
+        pulls less. Returns (agent id, pull)."""
+        from life import family
+        rm = self.sim.relationship_manager
+        partner = family.partner_of(agent, self.sim._get_agent_by_id)
+        if action == "separate" or partner is not None:
+            if partner is None:
+                return None, 0.0
+            return partner.id, family.liking(rm, agent, partner)
+        now = self.sim.world.time.current_tick
+        people, pulls = [], []
+        for other in self.sim.world.agents:
+            if not other.alive or other.id == agent.id or not family.free_to_court(agent, other)[0]:
+                continue
+            pull = family.attraction(rm, agent, other)
+            if family.recently(agent.admirers, other.id, now):
+                pull += ADMIRER_PULL * pull
+            elif family.recently(other.admirers, agent.id, now):
+                pull -= UNANSWERED_PENALTY
+            people.append(other.id)
+            pulls.append(pull)
+        if not people:
+            return None, 0.0
+        i = random.choices(range(len(people)), weights=[math.exp(2.0 * p) for p in pulls])[0]
+        return people[i], pulls[i]
+
     # -- choosing ------------------------------------------------------------
 
     def options(self, agent, perceptions: Dict, can_run, part_of_day=None, goal_action=None):
@@ -285,7 +331,7 @@ class UtilityBrain:
             target, liked = (None, 0.0)
             if name in NEEDS_TARGET:
                 target, liked = self._pick_target(agent, name, perceptions)
-                if target is None and name in NEEDS_SICK_TARGET:
+                if target is None and name in NEEDS_SUITABLE_TARGET:
                     continue
             position = None
             if name in NEEDS_PLACE:

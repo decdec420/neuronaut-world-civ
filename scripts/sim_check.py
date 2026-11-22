@@ -47,13 +47,12 @@ def max_rss_mb() -> float:
 def emergence_metrics(sim, initial_ids, actions, successes) -> dict:
     """What the society created. Reported only; never part of PASS/FAIL."""
     from engine.simulation import UNHANDLED_ACTION_FALLBACKS
-    from social.relationships import RelationshipType
 
     agents = list(sim.world.agents)
     alive = [a for a in agents if a.alive]
     religion_stats = sim.religion.get_statistics()
-    couples = sum(1 for r in sim.relationship_manager.relationships.values()
-                  if r.relationship_type == RelationshipType.ROMANCE)
+    # Partnerships both agents chose (life/family.py), living ones now
+    couples = sum(1 for a in alive if a.partner_id and any(b.id == a.partner_id for b in alive)) // 2
     trades_ok = sum(n for action, n in successes.items()
                     if UNHANDLED_ACTION_FALLBACKS.get(action, action) == "trade")
     return {
@@ -65,6 +64,8 @@ def emergence_metrics(sim, initial_ids, actions, successes) -> dict:
         "innovations": len(sim.innovation_manager.innovations),
         "discoveries": len(sim.experimentation_engine.discoveries),
         "couples": couples,
+        "partnerships_formed": sim.life_events["partnered"],
+        "separations": sim.life_events["separated"],
         "births": sum(1 for a in agents if a.id not in initial_ids),
         "deaths_by_cause": dict(collections.Counter(a.death_cause for a in agents if not a.alive)),
         "money": round(sum(a.wealth for a in alive), 1),

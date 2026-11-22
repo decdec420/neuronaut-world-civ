@@ -326,63 +326,34 @@ class PerceptionBuilder:
         return perceptions
 
     def _add_life_info(self, agent, perceptions: Dict) -> Dict:
+        """Partner, courtships and family, as names the agent would know.
+
+        'partner': the partner's name or None; 'admirers': people who courted
+        this agent recently and are free (it can court them back); 'courting':
+        people it courted who haven't answered yet; plus age, life stage and
+        pregnancy. (This used to list opposite-sex strangers as "potential
+        partners" and read a spouse field nothing ever set.)
         """
-        Add life/romance/family information to perceptions.
-
-        Includes:
-        - Marital status
-        - Pregnancy status
-        - Children information
-        - Romantic opportunities
-        """
-        life_info = {}
-
-        # Agent's life profile (access dict directly)
-        life_profile = self.sim.life_system.life_profiles.get(agent.id)
-        if life_profile:
-            life_info['age'] = agent.age
-            life_info['life_stage'] = life_profile.life_stage.value
-            life_info['is_pregnant'] = agent.is_pregnant  # From Agent, not LifeProfile
-            life_info['children_count'] = len(life_profile.children)
-            life_info['partner_id'] = life_profile.spouse  # spouse, not partner_id
-            life_info['is_in_relationship'] = life_profile.spouse is not None
-
-            # Pregnancy info (from Agent attributes)
-            if agent.is_pregnant:
-                current_tick = self.sim.world.time.current_tick
-                ticks_pregnant = current_tick - agent.pregnancy_start_tick
-                life_info['pregnancy_duration'] = agent.pregnancy_duration_ticks
-                life_info['pregnancy_progress'] = ticks_pregnant
-                life_info['due_in_ticks'] = agent.pregnancy_duration_ticks - ticks_pregnant
-
-            # Fertility (use LifeProfile fertility attribute)
-            life_info['is_fertile'] = life_profile.fertility > 0.3
-        else:
-            life_info['age'] = agent.age
-            life_info['is_fertile'] = False
-
-        # Nearby potential partners
-        potential_partners = []
-        if not life_profile or not life_profile.spouse:
-            for other_agent in self.sim.world.agents:
-                if other_agent.id == agent.id or not other_agent.alive:
-                    continue
-                dist = agent.location.distance_to(other_agent.location)
-                if dist < 20:  # Within romance range
-                    other_profile = self.sim.life_system.life_profiles.get(other_agent.id)
-                    if other_profile and not other_profile.spouse:
-                        # Check basic reproduction compatibility (opposite sex, adult age)
-                        if agent.gender != other_agent.gender and other_agent.age >= 18:
-                            potential_partners.append({
-                                'agent_id': other_agent.id,
-                                'agent_name': other_agent.name,
-                                'distance': round(dist, 1),
-                                'age': other_agent.age
-                            })
-
-        life_info['potential_partners_nearby'] = len(potential_partners)
-        life_info['can_seek_romance'] = len(potential_partners) > 0
-
+        from life import family
+        now = self.sim.world.time.current_tick
+        partner = family.partner_of(agent, self.sim._get_agent_by_id)
+        life_info = {
+            'age': agent.age,
+            'life_stage': agent.life_stage,
+            'partner': partner.name if partner else None,
+            'is_pregnant': agent.is_pregnant,
+            'admirers': [],
+            'courting': [],
+        }
+        for other in self.sim.world.agents:
+            if not other.alive or other.id == agent.id:
+                continue
+            if family.recently(agent.admirers, other.id, now) and family.free_to_court(agent, other)[0]:
+                life_info['admirers'].append(other.name)
+            if family.recently(other.admirers, agent.id, now):
+                life_info['courting'].append(other.name)
+        if agent.is_pregnant:
+            life_info['due_in_ticks'] = max(0, agent.pregnancy_duration_ticks - (now - agent.pregnancy_start_tick))
         perceptions['life_info'] = life_info
         return perceptions
 

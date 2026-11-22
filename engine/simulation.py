@@ -12,6 +12,7 @@ REFACTORED: Now a clean orchestrator with single responsibility.
 All complex logic extracted to specialized modules.
 """
 
+import collections
 import time
 import asyncio
 import random
@@ -62,6 +63,7 @@ from engine.handlers import (
     EnergyHandler,
     MaterialsHandler,
     AdvancedEconomyHandler,
+    FamilyHandler,
 )
 
 # UTILITIES
@@ -73,7 +75,7 @@ from engine.utils.agent_helpers import AgentCacheHelper
 ERA_RESOURCE_AMOUNTS = {'metal_ore': 1000.0, 'iron_ore': 800.0}
 
 # Actions that need a partner agent; filled in automatically when missing.
-TARGETED_ACTIONS = {'socialize', 'seek_romance', 'trade', 'teach', 'heal', 'fight', 'tell_story'}
+TARGETED_ACTIONS = {'socialize', 'trade', 'teach', 'heal', 'fight', 'tell_story'}
 
 # Unimplemented action -> closest implemented action (see execute_action).
 UNHANDLED_ACTION_FALLBACKS = {
@@ -230,6 +232,8 @@ class SimulationEngine:
         self.births_this_day = 0
         self.deaths_this_day = 0
         self.death_causes = {}
+        # Partnerships formed, separations, births... (engine/handlers/family.py)
+        self.life_events = collections.Counter()
         self.last_tracked_day = 0
         print("📊 Population tracking enabled - track births/deaths over time!")
 
@@ -344,6 +348,9 @@ class SimulationEngine:
 
             # Advanced Economy
             AdvancedEconomyHandler(self._action_context),
+
+            # Romance and family
+            FamilyHandler(self._action_context),
         ]
 
         self._handler_registry.register_multiple(handlers)
@@ -704,22 +711,6 @@ class SimulationEngine:
 
         # Execute via handler
         result = handler.execute(agent, action)
-
-        # Special post-processing for reproduction (SEEK_ROMANCE)
-        if action.action_type == ActionType.SEEK_ROMANCE and result.success:
-            result_dict = result.to_dict()
-            if result_dict.get('reproduction_attempted'):
-                target = self._get_agent_by_id(action.target_agent)
-                if target:
-                    child_data = self.life_system.attempt_reproduction(
-                        agent.id, target.id, agent.age, target.age,
-                        agent.wealth, target.wealth
-                    )
-                    if child_data:
-                        self.lifecycle_manager.handle_birth(agent, target, child_data, current_tick)
-                        result_dict['child_born'] = True
-                        result_dict['child_id'] = child_data['id']
-            return result_dict
 
         return result.to_dict()
 
