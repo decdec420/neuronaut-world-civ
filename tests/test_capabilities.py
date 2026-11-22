@@ -177,6 +177,15 @@ def test_economy_barter_mint_bank_loan():
     assert act(sim, a, "open_bank").success
     assert act(sim, b, "apply_for_loan").success
 
+    # A loan left unpaid defaults, and the world carries on (logging a
+    # default used to raise inside tick())
+    import asyncio
+    loan = next(iter(sim.economy.banking.loans.values()))
+    loan.missed_payments = 3
+    with quiet():
+        asyncio.run(sim.tick())
+    assert loan.status.value == "defaulted"
+
 
 def test_taxes_collected_resisted_and_repealed():
     sim, roles = make_world()

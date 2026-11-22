@@ -547,7 +547,10 @@ class SimulationEngine:
 
         # Log major economic events
         if economic_events.get('defaulted_loans'):
-            for loan in economic_events['defaulted_loans']:
+            # check_for_defaults returns loan ids (this read attributes off the id
+            # string and raised once loans became possible)
+            for loan_id in economic_events['defaulted_loans']:
+                loan = self.economy.banking.loans[loan_id]
                 logger.warning(f"💸 Loan default: {loan.borrower_id} failed to repay {loan.amount_remaining:.0f}")
 
         if economic_events.get('crisis_events'):
