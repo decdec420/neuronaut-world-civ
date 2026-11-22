@@ -777,11 +777,14 @@ class Agent:
 
         return perceptions
 
-    def decide(self, perceptions: Dict) -> Action:
+    def decide(self, perceptions: Dict, can_run=None) -> Action:
         """
         Decide what action to take based on psychology and perceptions
 
         This is where the magic happens - psychology drives behavior
+
+        can_run: optional callable(action) -> bool. When given, options the
+        action's handler would reject right now are not considered.
         """
 
         # ===== EMERGENCY SURVIVAL OVERRIDE =====
@@ -810,7 +813,7 @@ class Agent:
         logger.debug(f"[{self.name}] Most urgent need: {urgent_need.value} (urgency: {urgency:.2f})")
 
         # Generate possible actions based on need
-        possible_actions = self._generate_possible_actions(urgent_need, perceptions)
+        possible_actions = self._generate_possible_actions(urgent_need, perceptions, can_run)
         logger.debug(f"[{self.name}] Generated {len(possible_actions)} possible actions: {[a.action_type.value for a in possible_actions]}")
 
         # Evaluate each action based on psychology
@@ -844,7 +847,8 @@ class Agent:
     def _generate_possible_actions(
         self,
         urgent_need: NeedType,
-        perceptions: Dict
+        perceptions: Dict,
+        can_run=None
     ) -> List[Action]:
         """Generate possible actions to satisfy needs"""
         actions = []
@@ -1143,6 +1147,13 @@ class Agent:
         if self.inventory.get_total_items() >= self.inventory.capacity:
             actions = [a for a in actions if a.action_type not in
                        (ActionType.GATHER_MATERIALS, ActionType.CHOP_WOOD, ActionType.MINE)]
+
+        # Drop options the handler would reject right now (e.g. BUILD with no
+        # unbuilt purpose or too few materials). The checks above use their own
+        # thresholds, which don't match the handlers', so agents picked these
+        # and failed the same action every tick.
+        if can_run is not None:
+            actions = [a for a in actions if a.action_type == ActionType.IDLE or can_run(a)]
 
         # Explore if nothing else to do
         if len(actions) <= 1:  # Only idle

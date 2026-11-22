@@ -406,10 +406,10 @@ class AgentUpdater:
                 if action is None:
                     # Goal step not possible right now (no seeds, no energy...):
                     # let the agent decide for itself instead of failing every tick
-                    action = agent.decide(perceptions)
+                    action = agent.decide(perceptions, can_run=lambda a: self._can_run(agent, a))
             else:
-                # Agent decides action normally
-                action = agent.decide(perceptions)
+                # Agent decides action normally, among actions that can run now
+                action = agent.decide(perceptions, can_run=lambda a: self._can_run(agent, a))
 
         agent.current_action = action
         return action, current_goal
