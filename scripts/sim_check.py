@@ -82,6 +82,8 @@ def emergence_metrics(sim, initial_ids, actions, successes) -> dict:
         "children_alive": sum(1 for a in alive if a.life_stage in ("baby", "child")),
         "came_of_age": sim.life_events["became_adult"],
         "deaths_by_cause": dict(collections.Counter(a.death_cause for a in agents if not a.alive)),
+        "glass_made": sim.products.get("glass", 0),
+        "kinds_of_things_made": len(sim.products),
         "money": round(sum(a.wealth for a in alive), 1),
         "trades_ok": trades_ok,
         "distinct_actions": len(actions),

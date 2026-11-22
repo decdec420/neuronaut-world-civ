@@ -25,9 +25,33 @@ class MaterialsHandler(ActionHandler):
             if not ((inv.has_item('iron') and has_carbon) or (inv.has_item('copper', 3) and inv.has_item('tin'))):
                 return False, "Need iron and something to burn (steel), or copper and tin (bronze)"
         if action.action_type == ActionType.REFINE_MATERIAL:
-            if not any(inv.has_item(i) for i in ('iron_ore', 'metal_ore', 'sand')):
-                return False, "No raw materials to refine"
+            if self._raw_to_refine(agent, action) is None:
+                return False, "No raw materials to refine (glass also needs wood or coal to burn)"
         return True, ""
+
+    # raw material -> (product, what the fire needs). Glass needs a hot fire,
+    # so it burns one unit of fuel.
+    REFINING = {'iron_ore': ('iron', None), 'metal_ore': ('copper', None), 'sand': ('glass', 'fuel')}
+    FUELS = ('coal', 'charcoal', 'wood')
+    WORDS = {'iron_ore': ('iron',), 'metal_ore': ('copper', 'metal'), 'sand': ('glass', 'sand')}
+
+    def _fuel(self, agent):
+        return next((f for f in self.FUELS if agent.inventory.has_item(f)), None)
+
+    def _raw_to_refine(self, agent, action):
+        """What to refine: what the agent asked for (DETAILS: "sand into glass"),
+        else the raw material it holds most of. (This used to take iron ore,
+        then metal ore, then sand, so glass came only from agents with no ore.)"""
+        inv = agent.inventory
+        usable = [raw for raw, (_, needs) in self.REFINING.items()
+                  if inv.has_item(raw) and (needs != 'fuel' or self._fuel(agent))]
+        if not usable:
+            return None
+        details = str((action.parameters or {}).get('details', '')).lower()
+        asked = [raw for raw in usable if any(w in details for w in self.WORDS[raw])]
+        if asked:
+            return asked[0]
+        return max(usable, key=lambda raw: inv.items.get(raw, 0))
 
     def execute(self, agent: 'Agent', action: 'Action') -> ActionResult:
         materials_science = self.context.get_system('materials_science')
@@ -72,32 +96,27 @@ class MaterialsHandler(ActionHandler):
             return ActionResult(success=False, emotional_impact=-0.1, message="Missing materials for alloy creation")
 
         elif action.action_type == ActionType.REFINE_MATERIAL:
-            if agent.inventory.has_item('iron_ore'):
-                result = materials_science.process_material('iron', {'iron_ore': agent.inventory.items.get('iron_ore', 0)}, has_heat=True, temperature=1538)
-                if result and result.get('success'):
-                    agent.inventory.remove_item('iron_ore', 1)
-                    agent.inventory.add_item('iron', 1)
-                    logger.info(f"🔬 {agent.name} refined iron ore → iron")
-                    agent.needs.satisfy_need(NeedType.ACHIEVEMENT, 0.3)
-                    return ActionResult(success=True, emotional_impact=0.4, message="Refined iron ore into iron", metadata={'material': 'iron', 'product': 'iron'})
-            elif agent.inventory.has_item('metal_ore'):
-                # The world's metal ore is copper-bearing
-                agent.inventory.remove_item('metal_ore', 1)
-                agent.inventory.add_item('copper', 1)
-                agent.needs.satisfy_need(NeedType.ACHIEVEMENT, 0.3)
-                return ActionResult(success=True, emotional_impact=0.4, message="Refined metal ore into copper",
-                                    metadata={'material': 'copper', 'product': 'copper'})
-            elif agent.inventory.has_item('sand'):
-                result = materials_science.process_material('glass', {'sand': agent.inventory.items.get('sand', 0)}, has_heat=True, temperature=1400)
-                if result and result.get('success'):
-                    agent.inventory.remove_item('sand', 1)
-                    agent.inventory.add_item('glass', 1)
-                    logger.info(f"🔬 {agent.name} made glass")
-                    agent.needs.satisfy_need(NeedType.ACHIEVEMENT, 0.3)
-                    return ActionResult(success=True, emotional_impact=0.4, message="Created glass from sand", metadata={'material': 'glass', 'product': 'glass'})
-            
-            return ActionResult(success=False, emotional_impact=0.0, message="No raw materials to refine")
-        
+            raw = self._raw_to_refine(agent, action)
+            if raw is None:
+                return ActionResult(success=False, emotional_impact=0.0, message="No raw materials to refine")
+            product, needs = self.REFINING[raw]
+            if product in ('iron', 'glass'):
+                melting = 1538 if product == 'iron' else 1400
+                result = materials_science.process_material(product, {raw: agent.inventory.items.get(raw, 0)},
+                                                            has_heat=True, temperature=melting)
+                if not (result and result.get('success')):
+                    return ActionResult(success=False, emotional_impact=-0.1,
+                                        message=f"Couldn't make {product}: {(result or {}).get('reason', 'unknown')}")
+            agent.inventory.remove_item(raw, 1)
+            if needs == 'fuel':
+                agent.inventory.remove_item(self._fuel(agent), 1)
+            agent.inventory.add_item(product, 1)
+            agent.needs.satisfy_need(NeedType.ACHIEVEMENT, 0.3)
+            logger.info(f"🔬 {agent.name} refined {raw} into {product}")
+            return ActionResult(success=True, emotional_impact=0.4,
+                                message=f"Refined {raw.replace('_', ' ')} into {product}",
+                                metadata={'material': product, 'product': product})
+
         return ActionResult(success=False, emotional_impact=0.0, message="Unknown materials action")
 
     def get_required_systems(self) -> list[str]:

@@ -231,10 +231,10 @@ def test_taxes_collected_resisted_and_repealed():
 def test_steel_from_refined_iron():
     sim, roles = make_world()
     a = roles["actor"]
-    assert act(sim, a, "refine_material").metadata["product"] == "iron"
+    assert act(sim, a, "refine_material", details="iron ore").metadata["product"] == "iron"
     first = act(sim, a, "create_alloy")
     assert first.success and first.metadata["product"] == "steel"
-    act(sim, a, "refine_material")
+    act(sim, a, "refine_material", details="iron ore")
     assert act(sim, a, "create_alloy").success  # a known alloy can be made again
 
 
@@ -274,3 +274,19 @@ def test_a_partner_dying_frees_the_other():
     b.alive = False
     sim.lifecycle_manager.handle_deaths()
     assert a.partner_id is None
+
+
+def test_glass_from_sand_burns_fuel():
+    sim, roles = make_world()
+    a = roles["actor"]
+    for item in ("iron_ore", "metal_ore", "coal", "wood"):
+        a.inventory.items.pop(item, None)
+    a.inventory.items["sand"] = 3
+    from agents.agent import Action, ActionType
+    handler = sim._handler_registry.get_handler(ActionType.REFINE_MATERIAL)
+    ok, why = handler.validate(a, Action(ActionType.REFINE_MATERIAL))
+    assert not ok and "wood or coal" in why  # no fire, no glass
+    a.inventory.items["wood"] = 2
+    result = act(sim, a, "refine_material", details="sand into glass")
+    assert result.metadata["product"] == "glass" and a.inventory.items["glass"] == 1
+    assert a.inventory.items["sand"] == 2 and a.inventory.items["wood"] == 1

@@ -708,6 +708,8 @@ class AgentUpdater:
         # 6b. The village's record: counts, and any first (engine/chronicle.py)
         if outcome.get('success', False):
             self.sim.action_successes[self._resolved_name(action)] += 1
+            if outcome.get('product'):
+                self.sim.products[str(outcome['product'])] += 1
             self.sim.chronicle.on_action(self.sim, agent, self._resolved_name(action), outcome, current_tick)
 
         # 7. TRACK ACTION FOR ROLE EMERGENCE - Pure behavioral observation!

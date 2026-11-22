@@ -456,7 +456,9 @@ class ActionHandlers:
         - Trade with others
         """
         # Determine what material to gather based on availability and need
-        material_priority = ['stone', 'wood', 'clay', 'plant_fiber', 'metal_ore', 'iron_ore']
+        # (sand is in the world's pools too; nothing gathered it, so glass,
+        # which is made from sand, could not be made)
+        material_priority = ['stone', 'wood', 'clay', 'plant_fiber', 'sand', 'metal_ore', 'iron_ore']
         # Gather what the agent holds least of first (ties keep the order above).
         # Buildings need a mix (a shelter is wood, stone, fiber and clay); always
         # taking stone first filled every inventory with stone, after which no

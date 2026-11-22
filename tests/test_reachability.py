@@ -172,6 +172,8 @@ def build_action(sim, roles, name: str):
     target = roles[target_role].id if target_role else None
     position = Position(actor.location.x + 3, actor.location.y + 3)
     params = {}
+    if name == "refine_material":
+        params = {"details": "iron ore"}  # what create_alloy's preparation needs
     if name == "vote":
         laws = list(sim.governance_manager.laws)
         if laws:

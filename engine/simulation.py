@@ -236,6 +236,7 @@ class SimulationEngine:
         self.life_events = collections.Counter()
         # Successful actions by kind, and the village's history (engine/chronicle.py)
         self.action_successes = collections.Counter()
+        self.products = collections.Counter()  # things made (glass, steel, coins...), by name
         from engine.chronicle import Chronicle
         self.chronicle = Chronicle()
         self.last_tracked_day = 0

@@ -58,7 +58,8 @@ ACTION_INFO = {
     "build": ("building", "build a home, workshop, store or hall"),
     "experiment": ("crafting and invention", "combine materials to discover things"),
     "smelt_ore": ("crafting and invention", "smelt ore into metal"),
-    "refine_material": ("crafting and invention", "refine a raw material"),
+    "refine_material": ("crafting and invention", "refine ore into metal or sand into glass "
+                                                   "(DETAILS: which; glass burns wood or coal)"),
     "create_alloy": ("crafting and invention", "make an alloy"),
     "perform_chemistry": ("crafting and invention", "try a chemical process"),
     "discover_element": ("crafting and invention", "research new elements"),
