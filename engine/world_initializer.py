@@ -175,21 +175,8 @@ class WorldInitializer:
         # ===== ADD AUTONOMOUS AI CAPABILITIES =====
         # Dynamically add autonomous methods to agent if LLM is enabled
         if self.sim.config.use_llm_decisions:
-            import types
-            from agents.autonomous_agent import AutonomousAgentMixin
-
-            # Bind all mixin methods from the class (not instance) to the agent
-            for method_name in dir(AutonomousAgentMixin):
-                # Skip magic methods (__ __) but include all others including _private methods
-                if not method_name.startswith('__'):
-                    method = getattr(AutonomousAgentMixin, method_name, None)
-                    if callable(method):
-                        # Bind method to agent instance
-                        setattr(agent, method_name, types.MethodType(method, agent))
-
-            # Initialize autonomous systems (overwrites agent.memory with enhanced version)
-            agent.init_autonomous_systems(llm_brain=self.sim.llm_brain)
-            # Now agent.memory is the autonomous MemorySystem with add_memory() compatibility
+            from agents.autonomous_agent import bind_autonomous_methods
+            bind_autonomous_methods(agent, llm_brain=self.sim.llm_brain)
 
             # Track last planning/reflection tick (used in simulation loop)
             agent.last_planning_tick = 0

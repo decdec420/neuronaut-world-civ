@@ -50,7 +50,7 @@ class AgentUpdater:
         if config.use_llm_decisions and brain is not None:
             from agents.thinking import ThinkingScheduler
             self.thinking = ThinkingScheduler(
-                lambda prompt, schema: brain.complete(prompt, label="thought", json_schema=schema),
+                brain.think,
                 workers=config.llm_workers, think_every=config.llm_think_every,
                 tick_budget=config.llm_tick_budget)
 

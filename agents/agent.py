@@ -581,6 +581,24 @@ class Agent:
         Agent._used_names.add(name)
         return name
 
+    def __getstate__(self) -> Dict:
+        """For saving (engine/persistence.py): the AI-brain methods bound to this
+        agent can't be pickled (they refer back to it); they are re-bound on load."""
+        import types
+        state = self.__dict__.copy()
+        bound = [k for k, v in state.items() if isinstance(v, types.MethodType) and v.__self__ is self]
+        for k in bound:
+            del state[k]
+        state['_had_ai_methods'] = bool(bound)
+        return state
+
+    def __setstate__(self, state: Dict) -> None:
+        had_ai = state.pop('_had_ai_methods', False)
+        self.__dict__.update(state)
+        if had_ai:
+            from agents.autonomous_agent import bind_autonomous_methods
+            bind_autonomous_methods(self, init=False)
+
     def _determine_life_stage(self) -> str:
         """baby, child, adult or elder, by age (life/aging.py)"""
         from life.aging import life_stage

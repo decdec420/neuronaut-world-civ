@@ -539,29 +539,34 @@ async def create_save(request: dict):
     # Get current world state
     world_data = simulation.persistence.create_snapshot()
 
-    success = save_manager.create_save(save_name, world_data)
+    success = save_manager.create_save(save_name, world_data, simulation=simulation)
     return {"success": success, "message": f"Saved as '{save_name}'"}
 
 
 @app.post("/saves/{save_id}/load")
 async def load_save(save_id: str):
     """Load a save"""
-    global simulation
+    global simulation, simulation_task
 
     world_data = save_manager.load_save(save_id)
     if not world_data:
         raise HTTPException(status_code=404, detail="Save not found")
+    state_path = save_manager.state_path(save_id)
+    if state_path is None:
+        # Saves made before full saves existed hold only a summary. (Loading
+        # used to "succeed" here and start a fresh, empty world instead.)
+        raise HTTPException(status_code=409, detail="This save holds only a summary and can't be loaded")
 
     # Stop current simulation
     if simulation and simulation.running:
         simulation.stop()
 
-    # Load world from save
-    simulation = SimulationEngine()
-    simulation.persistence.restore_snapshot(world_data)
-
-    # Restart simulation
-    asyncio.create_task(simulation.run())
+    # Load the world exactly as it was saved, and carry on
+    from engine.persistence import load_full_state
+    simulation = load_full_state(str(state_path))
+    if simulation_task:
+        simulation_task.cancel()
+    simulation_task = asyncio.create_task(simulation.run())
 
     return {"success": True, "message": "World loaded successfully"}
 

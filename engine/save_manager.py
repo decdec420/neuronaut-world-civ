@@ -39,13 +39,15 @@ class SaveManager:
         with open(self.metadata_file, 'w') as f:
             json.dump(self.metadata, f, indent=2)
 
-    def create_save(self, save_name: str, world_data: Dict) -> bool:
+    def create_save(self, save_name: str, world_data: Dict, simulation=None) -> bool:
         """
         Create a new named save
 
         Args:
             save_name: User-friendly name (e.g., "My First World")
-            world_data: Complete world state to save
+            world_data: Summary of the world (for the list of saves)
+            simulation: the running SimulationEngine; if given, its full state
+                is saved too, so the save can be loaded and played on
 
         Returns:
             True if save successful
@@ -63,11 +65,18 @@ class SaveManager:
         with gzip.open(filepath, 'wt', encoding='utf-8') as f:
             json.dump(world_data, f, indent=2)
 
+        state_filename = None
+        if simulation is not None:
+            from engine.persistence import save_full_state
+            state_filename = f"{safe_name}_{timestamp}.state.gz"
+            save_full_state(simulation, str(self.saves_dir / state_filename))
+
         # Add to metadata
         save_entry = {
             "id": timestamp,
             "name": save_name,
             "filename": filename,
+            "state_filename": state_filename,
             "created_at": timestamp,
             "last_played": timestamp,
             "stats": {
@@ -121,6 +130,14 @@ class SaveManager:
 
         return world_data
 
+    def state_path(self, save_id: str) -> Optional[Path]:
+        """The save's full-state file, if it has one (older saves don't)."""
+        save_entry = next((s for s in self.metadata["saves"] if s["id"] == save_id), None)
+        if not save_entry or not save_entry.get("state_filename"):
+            return None
+        path = self.saves_dir / save_entry["state_filename"]
+        return path if path.exists() else None
+
     def delete_save(self, save_id: str) -> bool:
         """
         Delete a save
@@ -136,10 +153,14 @@ class SaveManager:
         if not save_entry:
             return False
 
-        # Delete file
+        # Delete files
         filepath = self.saves_dir / save_entry["filename"]
         if filepath.exists():
             filepath.unlink()
+        if save_entry.get("state_filename"):
+            state_file = self.saves_dir / save_entry["state_filename"]
+            if state_file.exists():
+                state_file.unlink()
 
         # Remove from metadata
         self.metadata["saves"] = [s for s in self.metadata["saves"] if s["id"] != save_id]

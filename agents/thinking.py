@@ -47,6 +47,18 @@ class ThinkingScheduler:
         self.stats = collections.Counter()
         self.wait_seconds = 0.0
 
+    def __getstate__(self):
+        """For saving: worker threads and calls in flight aren't saved (those
+        agents simply think again after loading); answers already in are."""
+        state = self.__dict__.copy()
+        del state['executor']
+        state['pending'] = {}
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self.executor = ThreadPoolExecutor(max_workers=self.workers, thread_name_prefix="agent-mind")
+
     # -- each tick ---------------------------------------------------------------
 
     def is_due(self, agent_id: str, tick: int) -> bool:

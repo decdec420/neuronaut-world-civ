@@ -385,3 +385,16 @@ class AutonomousAgentMixin:
         # Use the original Agent.decide() method
         # This method should exist in the Agent class
         return self.decide(perceptions)
+
+
+def bind_autonomous_methods(agent, llm_brain=None, init: bool = True) -> None:
+    """Give an agent the AI-brain methods (bound to it). init: also set up its
+    autonomous systems (a new agent); a loaded agent keeps the ones it had."""
+    import types
+    for method_name in dir(AutonomousAgentMixin):
+        if not method_name.startswith('__'):
+            method = getattr(AutonomousAgentMixin, method_name, None)
+            if callable(method):
+                setattr(agent, method_name, types.MethodType(method, agent))
+    if init:
+        agent.init_autonomous_systems(llm_brain=llm_brain)

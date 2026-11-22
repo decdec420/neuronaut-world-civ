@@ -42,6 +42,42 @@ class Snapshot:
     compressed: bool = True
 
 
+FULL_STATE_VERSION = 1
+
+
+def save_full_state(simulation, path: str) -> None:
+    """Save everything needed to carry on exactly where the world is: the
+    whole simulation (agents, relationships, buildings, governments,
+    religions, economy, memories...), the random number generator and the
+    names in use. Gzipped pickle; only load files this program wrote."""
+    import random
+    from agents.agent import Agent
+    state = {"version": FULL_STATE_VERSION, "random": random.getstate(),
+             "used_names": set(Agent._used_names), "simulation": simulation}
+    tmp = f"{path}.tmp"
+    with gzip.open(tmp, "wb") as f:
+        pickle.dump(state, f, protocol=pickle.HIGHEST_PROTOCOL)
+    os.replace(tmp, path)  # never leave a half-written save
+
+
+def load_full_state(path: str):
+    """Load a world saved with save_full_state and return its SimulationEngine,
+    ready to run (call .run() or .tick()). Only load files this program wrote:
+    unpickling runs code."""
+    import random
+    from agents.agent import Agent
+    with gzip.open(path, "rb") as f:
+        state = pickle.load(f)
+    if state.get("version") != FULL_STATE_VERSION:
+        raise ValueError(f"Unsupported save version {state.get('version')}")
+    random.setstate(state["random"])
+    Agent.reset_names(state["used_names"])
+    simulation = state["simulation"]
+    simulation.running = False
+    simulation.persistence.simulation = simulation
+    return simulation
+
+
 class PersistenceEngine:
     """
     Manages persistent state for continuous runs.
@@ -351,13 +387,10 @@ class PersistenceEngine:
         if not self.simulation:
             raise ValueError("Simulation reference not set")
 
-        # TODO: Implement full state restoration
-        # For now, this is a placeholder - full restoration requires
-        # reconstructing all objects from the saved state
-        print(f"⚠️ Loading saves not fully implemented yet")
-        print(f"   Snapshot from Day {state.get('world_day', 0)}")
-        print(f"   Agents: {len(state.get('agents', []))}")
-        print(f"   Buildings: {len(state.get('buildings', {}))}")
+        # A snapshot dict is a summary for listing and history; it can't
+        # rebuild a world. Full saves are save_full_state/load_full_state.
+        raise NotImplementedError(
+            "A summary snapshot can't be loaded; use load_full_state with a full save")
 
     def load_simulation_state(self, snapshot_id: str):
         """

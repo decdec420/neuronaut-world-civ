@@ -200,6 +200,15 @@ class MultiLLMBrain:
         self.parse_failures = 0
         self.last_parse_failures: List[str] = []  # a few recent unreadable answers, for debugging
 
+    def __getstate__(self) -> Dict:
+        state = self.__dict__.copy()
+        state.pop('_stats_lock', None)  # a lock can't be saved; a new one is made on load
+        return state
+
+    def __setstate__(self, state: Dict) -> None:
+        self.__dict__.update(state)
+        self._stats_lock = threading.Lock()
+
     def set_action_menu(self, menu) -> None:
         """Use this menu (agents.action_menu.ActionMenu) in decision prompts."""
         self.action_menu = menu
@@ -493,6 +502,10 @@ class MultiLLMBrain:
         prompt = self._build_thinking_prompt(agent, perceptions, thinking_mode)
         schema = self.decision_schema() if thinking_mode == "decide_action" else None
         return self.complete(prompt, complexity, label=f"{agent.name}: {thinking_mode}", json_schema=schema)
+
+    def think(self, prompt: str, schema: Optional[Dict] = None) -> Optional[str]:
+        """One agent thought (agents/thinking.py calls this from worker threads)."""
+        return self.complete(prompt, label="thought", json_schema=schema)
 
     def complete(self, prompt: str, complexity: str = "simple", label: str = "",
                  temperature: float = 0.8, max_tokens: int = 300,
