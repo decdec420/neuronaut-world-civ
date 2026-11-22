@@ -162,10 +162,12 @@ class KnowledgeActionHandler(ActionHandler):
                 return False, f"Target agent is dead: {target.name}"
 
         elif action.action_type == ActionType.WRITE:
-            # Need literacy skill
-            literacy_skill = agent.skills.get_skill('literacy')
-            if literacy_skill < 0.3:
-                return False, f"Literacy skill too low ({literacy_skill:.1%}, need 30%)"
+            # Writing needs something to write about. Low literacy is fine: that
+            # writing is practice (literacy could only be gained by writing,
+            # which needed 30% literacy, so nobody could ever learn to write).
+            knowledge_system = self.context.get_system('knowledge_system')
+            if not knowledge_system or not knowledge_system.knowledge_records:
+                return False, "No knowledge to write"
 
         return True, ""
 
@@ -527,10 +529,14 @@ class KnowledgeActionHandler(ActionHandler):
 
         literacy_skill = agent.skills.get_skill('literacy')
         if literacy_skill < 0.3:
+            # Not yet able to write a document: practise letters instead
+            agent.skills.learn_skill('literacy', 0.05)
+            agent.needs.satisfy_need(NeedType.GROWTH, 0.1)
             return ActionResult(
-                success=False,
-                emotional_impact=0.0,
-                message=f"Literacy skill too low ({literacy_skill:.1%})"
+                success=True,
+                emotional_impact=0.1,
+                message=f"Practised writing (literacy {agent.skills.get_skill('literacy'):.0%})",
+                metadata={'action_type': 'write', 'practice': True}
             )
 
         # Select 1-3 knowledge records to write

@@ -153,3 +153,64 @@ def test_inventions_are_recorded_once_and_spread_by_teaching():
         if act(sim, a, "teach", target=c).success:
             break
     assert innovations.agent_knows(c.id, invention.id)
+
+
+def test_economy_barter_mint_bank_loan():
+    sim, roles = make_world()
+    a, b = roles["actor"], roles["neighbour"]
+
+    # A has no money: buying from B becomes a swap of goods
+    a.wealth = 0.0
+    b.inventory.items["herbs"] = 5
+    a.inventory.items.pop("herbs", None)
+    result = None
+    for _ in range(20):
+        result = act(sim, a, "trade", target=b)
+        if result.success:
+            break
+    assert result.success and result.metadata.get("barter"), result.message
+
+    # A mints coins from metal ore until it can open a bank; B borrows from it
+    while a.wealth < 100 and a.inventory.has_item("metal_ore", 4):
+        assert act(sim, a, "mint_coins").success
+    assert a.wealth >= 100
+    assert act(sim, a, "open_bank").success
+    assert act(sim, b, "apply_for_loan").success
+
+
+def test_taxes_collected_resisted_and_repealed():
+    sim, roles = make_world()
+    leader, a, c = roles["neighbour"], roles["actor"], roles["sick"]
+    leader.personality.aggression = 0.1
+    act(sim, leader, "govern")
+    befriend(sim, a, leader)
+    befriend(sim, c, leader)
+    act(sim, a, "govern")
+    act(sim, c, "govern")
+    tax = act(sim, leader, "make_law", details="a tax to build the granary")
+    assert tax.metadata.get("tax_policy_id")
+
+    # The leader collects; A starts a revolt against the tax and C joins it
+    before = a.wealth
+    assert act(sim, leader, "govern").metadata.get("taxes", 0) > 0 and a.wealth < before
+    assert act(sim, a, "join_tax_revolt").metadata["started"]
+    assert act(sim, c, "join_tax_revolt").metadata["revolt_size"] == 2
+
+    # Citizens vote the tax down: the law is repealed and the tax ends
+    gm, law = sim.governance_manager, sim.governance_manager.laws[tax.metadata["law_id"]]
+    gm.vote_on_law(a.id, law.id, False)
+    gm.vote_on_law(c.id, law.id, False)
+    gm.update_governments(current_tick=10)
+    for policy_id in gm.repealed_tax_policies:
+        sim.economy.taxation.repeal_tax_policy(policy_id, 10)
+    assert not law.active and not sim.economy.taxation.tax_policies[tax.metadata["tax_policy_id"]].active
+
+
+def test_steel_from_refined_iron():
+    sim, roles = make_world()
+    a = roles["actor"]
+    assert act(sim, a, "refine_material").metadata["product"] == "iron"
+    first = act(sim, a, "create_alloy")
+    assert first.success and first.metadata["product"] == "steel"
+    act(sim, a, "refine_material")
+    assert act(sim, a, "create_alloy").success  # a known alloy can be made again

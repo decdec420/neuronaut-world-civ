@@ -398,6 +398,9 @@ class GovernanceManager:
                 if (law and law.active and len(law.opposers) > len(law.supporters)
                         and len(law.supporters) + len(law.opposers) >= max(2, len(government.citizens) // 2)):
                     law.active = False
+                    self.repealed_tax_policies = getattr(self, 'repealed_tax_policies', [])
+                    if getattr(law, 'tax_policy_id', None):
+                        self.repealed_tax_policies.append(law.tax_policy_id)
 
             # Update approval rating based on:
             # - Law support

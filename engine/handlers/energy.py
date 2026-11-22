@@ -12,6 +12,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+PLANT_STONE = 10
+PLANT_WOOD = 10
+
 class EnergyHandler(ActionHandler):
     def can_handle(self, action_type: ActionType) -> bool:
         return action_type in [ActionType.BUILD_POWER_PLANT, ActionType.DISCOVER_ENERGY, ActionType.OPERATE_POWER_PLANT]
@@ -20,8 +23,11 @@ class EnergyHandler(ActionHandler):
         if not validate_agent_alive(agent)[0]:
             return validate_agent_alive(agent)
         
-        if action.action_type == ActionType.BUILD_POWER_PLANT and not agent.inventory.has_item('materials'):
-            return False, "Need materials to build"
+        # A fire pit or furnace is built from stone and wood (it used to need an
+        # item called 'materials' that exists nowhere)
+        if action.action_type == ActionType.BUILD_POWER_PLANT and not (
+                agent.inventory.has_item('stone', PLANT_STONE) and agent.inventory.has_item('wood', PLANT_WOOD)):
+            return False, f"Need {PLANT_STONE} stone and {PLANT_WOOD} wood to build"
         
         return True, ""
 
@@ -45,7 +51,8 @@ class EnergyHandler(ActionHandler):
             plant = energy.build_power_plant(plant_type, fuel_type, (agent.location.x, agent.location.y), agent.id, agent.id, current_tick)
             
             if plant:
-                agent.inventory.remove_item('materials', 5)
+                agent.inventory.remove_item('stone', PLANT_STONE)
+                agent.inventory.remove_item('wood', PLANT_WOOD)
                 logger.info(f"⚡ {agent.name} built {plant.name}!")
                 agent.needs.satisfy_need(NeedType.ACHIEVEMENT, 0.5)
                 return ActionResult(success=True, emotional_impact=0.6, message=f"Built {plant.name}!", metadata={'plant_id': plant.id, 'product': 'power plant'})

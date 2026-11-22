@@ -12,148 +12,197 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Ore taken per minting run (10 g of copper per unit of ore; 10 pennies use 35 g)
+MINT_ORE_PER_BATCH = 4
+BANK_REACH = 30.0
+
+
 class AdvancedEconomyHandler(ActionHandler):
+    """Minting, banks and loans, tax revolts, caravans.
+
+    Each validate() rejects what can only fail (no ore, no money, no bank
+    with money to lend, nothing to revolt against), so agents choose
+    something else instead of failing every tick.
+    """
+
     def can_handle(self, action_type: ActionType) -> bool:
         return action_type in [
             ActionType.MINT_COINS, ActionType.OPEN_BANK, ActionType.APPLY_FOR_LOAN,
             ActionType.JOIN_TAX_REVOLT, ActionType.SEND_CARAVAN
         ]
 
+    # -- helpers -----------------------------------------------------------------
+
+    @staticmethod
+    def _lendable_bank(agent, economy):
+        """The nearest bank within reach that has money to lend, or None."""
+        best, best_dist = None, BANK_REACH
+        for bank in (economy.banking.banks.values() if economy else []):
+            dist = ((agent.location.x - bank.location[0]) ** 2 + (agent.location.y - bank.location[1]) ** 2) ** 0.5
+            if dist <= best_dist and bank.reserves - bank.deposits * bank.required_reserve_ratio >= 1.0:
+                best, best_dist = bank, dist
+        return best
+
+    def _taxing_policy(self, agent, economy):
+        """An active tax that the agent's own government levies on it."""
+        gm = self.context.get_system('governance_manager')
+        gov = gm.get_agent_government(agent.id) if gm else None
+        if gov is None or economy is None:
+            return None
+        for policy in economy.taxation.tax_policies.values():
+            if policy.active and getattr(policy, 'government_id', None) == gov.id and policy.collector_id != agent.id:
+                return policy
+        return None
+
+    def _revolt_to_join(self, agent, economy):
+        policy = self._taxing_policy(agent, economy)
+        for revolt in (economy.taxation.revolts.values() if economy else []):
+            if revolt.active and agent.id not in revolt.participants and \
+                    (policy is None or revolt.triggering_policy_id == policy.id):
+                return revolt
+        return None
+
+    def _tax_to_revolt_against(self, agent, economy):
+        policy = self._taxing_policy(agent, economy)
+        if policy is None:
+            return None
+        if any(r.active and r.triggering_policy_id == policy.id for r in economy.taxation.revolts.values()):
+            return None  # there's already one: join it instead
+        return policy
+
+    @staticmethod
+    def _mint_ore(agent):
+        for ore in ('metal_ore', 'copper_ore'):
+            if agent.inventory.has_item(ore, MINT_ORE_PER_BATCH):
+                return ore
+        return None
+
+    # -- validation ----------------------------------------------------------------
+
     def validate(self, agent: 'Agent', action: 'Action') -> tuple[bool, str]:
         if not validate_agent_alive(agent)[0]:
             return validate_agent_alive(agent)
-        
+        economy = self.context.get_system('economy')
+        if economy is None:
+            return False, "Economy system unavailable"
+
         if action.action_type == ActionType.MINT_COINS:
-            if not (agent.inventory.has_item('copper_ore') or agent.inventory.has_item('silver_ore') or agent.inventory.has_item('gold_ore')):
-                return False, "No metal ore to mint coins"
-        
+            # The world's ore is 'metal_ore' (copper-bearing). Minting used to need
+            # copper/silver/gold ore items that exist nowhere, so it was impossible.
+            if self._mint_ore(agent) is None:
+                return False, f"Need {MINT_ORE_PER_BATCH} metal ore to mint coins"
         if action.action_type == ActionType.OPEN_BANK:
-            initial_capital = max(100, agent.wealth * 0.5)
-            if agent.wealth < initial_capital:
-                return False, "Not enough wealth to open bank"
-        
+            if agent.wealth < 100:
+                return False, "Need 100 coins to open a bank"
         if action.action_type == ActionType.SEND_CARAVAN:
             if agent.wealth < 50:
                 return False, "Not enough wealth to send caravan"
-
-        # Reject what can only fail, so the agent picks something else
-        economy = self.context.get_system('economy')
+            if not any(q > 0 for q in agent.inventory.items.values()):
+                return False, "No goods to send"
         if action.action_type == ActionType.APPLY_FOR_LOAN:
-            banks = economy.banking.banks.values() if economy else []
-            if not any(((agent.location.x - b.location[0]) ** 2 + (agent.location.y - b.location[1]) ** 2) ** 0.5 <= 30.0
-                       for b in banks):
-                return False, "No bank nearby"
+            if self._lendable_bank(agent, economy) is None:
+                return False, "No bank nearby with money to lend"
         if action.action_type == ActionType.JOIN_TAX_REVOLT:
-            revolts = economy.taxation.revolts.values() if economy else []
-            if not any(r.active and agent.id not in r.participants for r in revolts):
-                return False, "No tax revolts to join"
-
+            if self._revolt_to_join(agent, economy) is None and self._tax_to_revolt_against(agent, economy) is None:
+                return False, "Not taxed, and no tax revolt to join"
         return True, ""
+
+    # -- actions -----------------------------------------------------------------
 
     def execute(self, agent: 'Agent', action: 'Action') -> ActionResult:
         from economy.minting import CoinType, MintQuality
         from economy.banking import LoanType
         from engine.psychology import EmotionType
-        
+
         economy = self.context.get_system('economy')
-        if not economy:
-            return ActionResult(success=False, emotional_impact=0.0, message="Economy system unavailable")
-        
         current_tick = self.context.current_tick
-        
+
         if action.action_type == ActionType.MINT_COINS:
-            if agent.inventory.has_item('copper_ore'):
-                coin_type, ore_type = CoinType.COPPER_PENNY, 'copper_ore'
-            elif agent.inventory.has_item('silver_ore'):
-                coin_type, ore_type = CoinType.SILVER_SHILLING, 'silver_ore'
-            elif agent.inventory.has_item('gold_ore'):
-                coin_type, ore_type = CoinType.GOLD_CROWN, 'gold_ore'
+            ore = self._mint_ore(agent)
+            mints = economy.minting.get_mints_by_owner(agent.id)
+            if mints:
+                mint = mints[0]
             else:
-                return ActionResult(success=False, emotional_impact=-0.1, message="No metal ore to mint coins")
-            
-            agent_mints = economy.minting.get_mints_by_owner(agent.id)
-            if not agent_mints:
-                mint = economy.minting.build_mint(agent.id, (agent.location.x, agent.location.y), MintQuality.BASIC, current_tick)
+                mint = economy.minting.build_mint(agent.id, (agent.location.x, agent.location.y),
+                                                  MintQuality.BASIC, current_tick)
                 logger.info(f"🏦 {agent.name} established a mint!")
-            else:
-                mint = agent_mints[0]
-            
-            metal_available = {ore_type.replace('_ore', ''): agent.inventory.items.get(ore_type, 0) * 10}
-            result = economy.minting.mint_coins(mint.id, coin_type, quantity=10, metal_available=metal_available)
-            
-            if result['success']:
-                agent.inventory.remove_item(ore_type, 1)
-                agent.wealth += result['coins_minted']
-                logger.info(f"🪙 {agent.name} minted {result['coins_minted']} coins!")
-                agent.needs.satisfy_need(NeedType.ACHIEVEMENT, 0.3)
-                return ActionResult(success=True, emotional_impact=0.5, message=f"Minted {result['coins_minted']} coins!", metadata={'coins': result['coins_minted']})
-            return ActionResult(success=False, emotional_impact=-0.2, message=result.get('reason', 'Minting failed'))
-        
-        elif action.action_type == ActionType.OPEN_BANK:
-            initial_capital = max(100, agent.wealth * 0.5)
-            bank = economy.banking.found_bank(agent.id, (agent.location.x, agent.location.y), initial_capital, current_tick)
-            agent.wealth -= initial_capital
-            logger.info(f"🏦 {agent.name} opened a bank!")
-            agent.needs.satisfy_need(NeedType.ACHIEVEMENT, 0.5)
-            return ActionResult(success=True, emotional_impact=0.7, message="Opened a bank!", metadata={'bank_id': bank.id})
-        
-        elif action.action_type == ActionType.APPLY_FOR_LOAN:
-            nearest_bank_id = None
-            min_distance = float('inf')
-            for bank_id, bank in economy.banking.banks.items():
-                dist = ((agent.location.x - bank.location[0])**2 + (agent.location.y - bank.location[1])**2)**0.5
-                if dist < min_distance:
-                    min_distance, nearest_bank_id = dist, bank_id
-            
-            if not nearest_bank_id or min_distance > 30.0:
-                return ActionResult(success=False, emotional_impact=-0.2, message="No bank nearby")
-            
-            loan_amount = min(agent.wealth * 2, 1000)
-            result = economy.banking.apply_for_loan(
-                nearest_bank_id, agent.id, loan_amount, LoanType.PERSONAL,
-                term_ticks=100, collateral={'wealth': agent.wealth * 0.5}, current_tick=current_tick
-            )
-            
-            if result['approved']:
-                agent.wealth += loan_amount
-                logger.info(f"💰 {agent.name} got a loan of {loan_amount:.0f}")
-                agent.needs.satisfy_need(NeedType.SECURITY, 0.3)
-                return ActionResult(success=True, emotional_impact=0.4, message=f"Loan approved: {loan_amount:.0f} coins!", metadata={'loan_amount': loan_amount})
-            return ActionResult(success=False, emotional_impact=-0.3, message=result.get('reason', 'Loan denied'))
-        
-        elif action.action_type == ActionType.JOIN_TAX_REVOLT:
-            active_revolts = [r for r in economy.taxation.revolts.values() if r.active and agent.id not in r.participants]
-            if not active_revolts:
-                return ActionResult(success=False, emotional_impact=0.0, message="No tax revolts to join")
-            
-            revolt = active_revolts[0]
-            revolt.participants.add(agent.id)
-            logger.info(f"✊ {agent.name} joined tax revolt!")
-            agent.needs.satisfy_need(NeedType.STATUS, 0.4)
-            agent.emotions.trigger_emotion(EmotionType.ANGER, 0.3)
-            return ActionResult(success=True, emotional_impact=0.3, message=f"Joined tax revolt with {len(revolt.participants)} others!", metadata={'revolt_size': len(revolt.participants)})
-        
-        elif action.action_type == ActionType.SEND_CARAVAN:
-            dest_x, dest_y = random.uniform(0, self.context.world.map.width), random.uniform(0, self.context.world.map.height)
-            
-            cargo = {}
-            for item, quantity in list(agent.inventory.items.items())[:3]:
-                if quantity > 0:
-                    take_qty = min(quantity, 10)
-                    cargo[item] = take_qty
-                    agent.inventory.remove_item(item, take_qty)
-            
-            if not cargo:
-                return ActionResult(success=False, emotional_impact=-0.1, message="No goods to trade")
-            
-            caravan_id = economy.trade_routes.send_caravan(
-                agent.id, (agent.location.x, agent.location.y), (dest_x, dest_y), cargo, current_tick=current_tick
-            )
-            
-            logger.info(f"🐪 {agent.name} sent trading caravan!")
+            grams = MINT_ORE_PER_BATCH * 10.0
+            result = economy.minting.mint_coins(mint.id, CoinType.COPPER_PENNY, quantity=10,
+                                                metal_available={'copper': grams})
+            if not result['success']:
+                return ActionResult(success=False, emotional_impact=-0.2, message=result.get('reason', 'Minting failed'))
+            agent.inventory.remove_item(ore, MINT_ORE_PER_BATCH)
+            agent.wealth += result['coins_minted']
             agent.needs.satisfy_need(NeedType.ACHIEVEMENT, 0.3)
-            return ActionResult(success=True, emotional_impact=0.4, message="Sent trading caravan!", metadata={'caravan_id': caravan_id})
-        
+            agent.needs.satisfy_need(NeedType.RESOURCES, 0.2)
+            return ActionResult(success=True, emotional_impact=0.5, message=f"Minted {result['coins_minted']} coins",
+                                metadata={'coins': result['coins_minted']})
+
+        if action.action_type == ActionType.OPEN_BANK:
+            capital = max(100.0, agent.wealth * 0.5)
+            bank = economy.banking.found_bank(agent.id, (agent.location.x, agent.location.y), capital, current_tick)
+            agent.wealth -= capital
+            agent.needs.satisfy_need(NeedType.ACHIEVEMENT, 0.5)
+            agent.needs.satisfy_need(NeedType.STATUS, 0.3)
+            return ActionResult(success=True, emotional_impact=0.7, message="Opened a bank", metadata={'bank_id': bank.id})
+
+        if action.action_type == ActionType.APPLY_FOR_LOAN:
+            bank = self._lendable_bank(agent, economy)
+            available = bank.reserves - bank.deposits * bank.required_reserve_ratio
+            # Ask for what the bank could lend (the old request ignored reserves)
+            amount = round(min(max(20.0, agent.wealth * 2), available, getattr(bank, 'max_loan_amount', available)), 1)
+            result = economy.banking.apply_for_loan(
+                bank.id, agent.id, amount, LoanType.PERSONAL,
+                term_ticks=100, collateral={'wealth': agent.wealth * 0.5}, current_tick=current_tick)
+            if result['approved']:
+                agent.wealth += amount
+                agent.needs.satisfy_need(NeedType.SECURITY, 0.3)
+                return ActionResult(success=True, emotional_impact=0.4, message=f"Loan approved: {amount:.0f} coins",
+                                    metadata={'loan_amount': amount})
+            return ActionResult(success=False, emotional_impact=-0.3, message=result.get('reason', 'Loan denied'))
+
+        if action.action_type == ActionType.JOIN_TAX_REVOLT:
+            revolt = self._revolt_to_join(agent, economy)
+            if revolt is not None:
+                economy.taxation.join_revolt(revolt.id, agent.id)
+                verb = "Joined"
+            else:
+                policy = self._tax_to_revolt_against(agent, economy)
+                revolt = economy.taxation.start_tax_revolt(agent.id, policy.id, "taxes we never agreed to",
+                                                           current_tick)
+                verb = "Started"
+            agent.needs.satisfy_need(NeedType.STATUS, 0.3)
+            agent.emotions.trigger_emotion(EmotionType.ANGER, 0.3)
+            if self.context.event_logger:
+                from engine.events import EventCategory, EventImportance
+                self.context.event_logger.log_event(
+                    EventCategory.POLITICAL, EventImportance.MODERATE, f"✊ {agent.name}: {verb.lower()} a tax revolt",
+                    f"{len(revolt.participants)} now refuse the tax.", current_tick, [agent.id])
+            return ActionResult(success=True, emotional_impact=0.3, message=f"{verb} a tax revolt",
+                                metadata={'revolt_size': len(revolt.participants), 'started': verb == "Started"})
+
+        if action.action_type == ActionType.SEND_CARAVAN:
+            world_map = self.context.world.map
+            destination = (random.uniform(0, world_map.width), random.uniform(0, world_map.height))
+            cargo = {}
+            for item, quantity in sorted(agent.inventory.items.items(), key=lambda kv: -kv[1])[:3]:
+                if quantity > 0:
+                    cargo[item] = min(quantity, 10)
+            value = sum(economy.market.get_market_price(i) * q for i, q in cargo.items())
+            # A caravan travels a trade route (the old call skipped the route and
+            # the guards argument, and raised TypeError)
+            route = economy.trade_routes.establish_trade_route(
+                agent.id, (agent.location.x, agent.location.y), destination, current_tick)
+            caravan = economy.trade_routes.send_caravan(agent.id, route.id, cargo, value, guards=0,
+                                                        current_tick=current_tick)
+            if caravan is None:
+                return ActionResult(success=False, emotional_impact=-0.1, message="The caravan couldn't set out")
+            for item, quantity in cargo.items():
+                agent.inventory.remove_item(item, quantity)
+            agent.needs.satisfy_need(NeedType.ACHIEVEMENT, 0.3)
+            return ActionResult(success=True, emotional_impact=0.4, message="Sent a trading caravan",
+                                metadata={'caravan_id': getattr(caravan, 'id', None)})
+
         return ActionResult(success=False, emotional_impact=0.0, message="Unknown economy action")
 
     def get_required_systems(self) -> list[str]:

@@ -140,6 +140,10 @@ class SocialInteractionHandler(ActionHandler):
         if not target_alive_valid[0]:
             return False, f"Target agent is dead: {target.name}"
 
+        # A buyer with no room can't take anything home
+        if action.action_type == ActionType.TRADE and agent.inventory.get_total_items() >= agent.inventory.capacity:
+            return False, "Inventory full"
+
         return True, ""
 
     def execute(self, agent: 'Agent', action: 'Action') -> ActionResult:

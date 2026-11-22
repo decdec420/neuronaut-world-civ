@@ -73,14 +73,14 @@ class ActionHandlers:
         if not agent.is_willing_to_trade_with(target_agent):
             return {
                 'success': False,
-                'reason': f"{agent.name} doesn't trust {target_agent.name} (poor reputation)",
+                'message': f"{agent.name} doesn't trust {target_agent.name} (poor reputation)",
                 'emotional_impact': -0.05
             }
 
         if not target_agent.is_willing_to_trade_with(agent):
             return {
                 'success': False,
-                'reason': f"{target_agent.name} doesn't trust {agent.name} (poor reputation)",
+                'message': f"{target_agent.name} doesn't trust {agent.name} (poor reputation)",
                 'emotional_impact': -0.05
             }
 
@@ -88,10 +88,11 @@ class ActionHandlers:
         target_items = list(target_agent.inventory.items.keys())
 
         if not target_items:
-            return {'success': False, 'reason': 'No items to trade'}
+            return {'success': False, 'message': 'No items to trade'}
 
-        # Pick random item
-        item = random.choice(target_items)
+        # Ask for what the buyer is shortest of (it used to be a random item)
+        random.shuffle(target_items)
+        item = min(target_items, key=lambda name: agent.inventory.items.get(name, 0))
         quantity = 1
         market_price = self.sim.economy.market.get_market_price(item)
 
@@ -114,9 +115,14 @@ class ActionHandlers:
             # No deal - price expectations don't overlap
             return {
                 'success': False,
-                'reason': f'Price disagreement: buyer offers {buyer_max_price:.1f}, seller wants {seller_min_price:.1f}',
+                'message': f'Price disagreement: buyer offers {buyer_max_price:.1f}, seller wants {seller_min_price:.1f}',
                 'emotional_impact': -0.05
             }
+
+        # No money (nobody starts with any)? Offer goods instead: barter
+        if agent.wealth < negotiated_price:
+            return self._barter(agent, target_agent, item, buyer_max_price, seller_min_price,
+                                market_price, current_tick)
 
         # Attempt trade at negotiated price
         success, message = self.sim.economy.execute_trade(
@@ -175,6 +181,47 @@ class ActionHandlers:
                 'emotional_impact': -0.1,
                 'message': message
             }
+
+    def _barter(self, agent: Agent, target_agent: Agent, item: str, buyer_max: float,
+                seller_min: float, market_price: float, current_tick: int) -> Dict:
+        """Swap goods for goods. The buyer offers as little as it can of what it
+        has most of, for as many units of `item` as the seller thinks that's
+        worth. The seller accepts only if, by its own estimate, it gets at least
+        its asking price; the buyer only if it isn't paying over its limit."""
+        price_of = self.sim.economy.market.get_market_price
+        seller_wants = max(1e-6, seller_min)               # seller's minimum per unit of item
+        buyer_limit = buyer_max                             # buyer's maximum per unit of item
+        stock = target_agent.inventory.items.get(item, 0)
+        offers = sorted(((name, qty) for name, qty in agent.inventory.items.items()
+                         if qty > 0 and name != item), key=lambda kv: -kv[1])
+        for offered, have in offers[:3]:
+            seller_unit = target_agent.get_estimated_value(offered, price_of(offered))
+            buyer_unit = agent.get_estimated_value(offered, price_of(offered))
+            if seller_unit <= 0:
+                continue
+            for give in range(1, min(have, 10) + 1):
+                take = min(stock, int(give * seller_unit // seller_wants))
+                if take < 1:
+                    continue  # not enough yet for the seller to part with one
+                if give * buyer_unit > take * buyer_limit:
+                    break     # the buyer would be overpaying; more of it won't help
+                if target_agent.inventory.get_total_items() - take + give > target_agent.inventory.capacity:
+                    break
+                agent.inventory.remove_item(offered, give)
+                target_agent.inventory.remove_item(item, take)
+                target_agent.inventory.add_item(offered, give)
+                agent.inventory.add_item(item, take)
+                self.sim.relationship_manager.update_relationship(agent.id, target_agent.id, 'trade', positive=True)
+                agent.needs.satisfy_need(NeedType.RESOURCES, 0.2)
+                self.sim.event_logger.log_event(
+                    EventCategory.ECONOMIC, EventImportance.MINOR,
+                    f"{agent.name} bartered with {target_agent.name}",
+                    f"{agent.name} gave {give} {offered} for {take} {item}.",
+                    current_tick, [agent.id, target_agent.id])
+                return {'success': True, 'emotional_impact': 0.25, 'barter': True,
+                        'message': f'Bartered {give} {offered} for {take} {item}'}
+        return {'success': False, 'emotional_impact': -0.05,
+                'message': f'Insufficient funds, and nothing {target_agent.name} would take for {item}'}
 
     def handle_socialize(
         self,

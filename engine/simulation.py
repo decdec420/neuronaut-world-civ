@@ -68,6 +68,10 @@ from engine.handlers import (
 from engine.utils.agent_helpers import AgentCacheHelper
 
 
+# How much of a resource enters the world when an era makes it available (same
+# scale as the other non-renewable pools: sand 1000, clay 1200)
+ERA_RESOURCE_AMOUNTS = {'metal_ore': 1000.0, 'iron_ore': 800.0}
+
 # Actions that need a partner agent; filled in automatically when missing.
 TARGETED_ACTIONS = {'socialize', 'seek_romance', 'trade', 'teach', 'heal', 'fight', 'tell_story'}
 
@@ -436,6 +440,16 @@ class SimulationEngine:
         # Update all managers
         self.building_manager.update_buildings()
         self.governance_manager.update_governments(current_tick)
+        # A repealed tax law ends its tax
+        for policy_id in getattr(self.governance_manager, 'repealed_tax_policies', []):
+            self.economy.taxation.repeal_tax_policy(policy_id, current_tick)
+        self.governance_manager.repealed_tax_policies = []
+        # Resources a new era makes available enter the world (AUDIT.md #11:
+        # metal and iron ore pools stayed at 0 forever)
+        for resource in self.civilization.available_resources:
+            if self.world.resource_pools.get(resource, None) == 0.0 and resource not in self.world.unlocked_resources:
+                self.world.unlock_resource(resource, ERA_RESOURCE_AMOUNTS.get(resource, 500.0))
+                self.world.unlocked_resources.add(resource)
 
         # Update fun system (celebrations, games, etc.)
         completed_celebrations = self.fun_system.update_celebrations(delta_time=1.0)

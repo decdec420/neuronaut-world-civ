@@ -8,6 +8,7 @@ The world where agents live, containing:
 - Environmental dynamics
 """
 
+import logging
 import random
 import math
 from dataclasses import dataclass, field
@@ -20,6 +21,8 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from agents.agent import Position
+
+logger = logging.getLogger(__name__)
 
 
 class TerrainType(Enum):
@@ -277,6 +280,8 @@ class World:
             'iron_ore': 0.0,
         }
 
+        self.unlocked_resources = set()  # pools an era has opened up
+
         # Statistics
         self.total_ticks = 0
         self.started_at = datetime.now()
@@ -350,7 +355,7 @@ class World:
         # Add initial amount if not already present
         if self.resource_pools[resource_name] == 0.0:
             self.resource_pools[resource_name] = initial_amount
-            print(f"🔓 New resource unlocked: {resource_name} ({initial_amount} available)")
+            logger.info(f"🔓 New resource unlocked: {resource_name} ({initial_amount} available)")
 
     def get_resource_pool_status(self) -> Dict:
         """Get status of all resource pools"""

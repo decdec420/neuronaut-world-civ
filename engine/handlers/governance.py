@@ -155,6 +155,14 @@ class GovernanceHandler(ActionHandler):
                                     message=f"Running for {election.position} of {gov.name}",
                                     metadata={'government_id': gov.id, 'candidate': True})
 
+            # A leader collects the taxes the government's laws levy
+            collected = self._collect_taxes(agent, gov, tick) if agent.id == gov.leader_id else 0.0
+            if collected:
+                agent.needs.satisfy_need(NeedType.STATUS, 0.2)
+                return ActionResult(success=True, emotional_impact=0.2,
+                                    message=f"Collected {collected:.0f} coins in taxes for {gov.name}",
+                                    metadata={'government_id': gov.id, 'taxes': collected})
+
             # Taking part in running things builds standing
             gm.political_power[agent.id] = min(1.0, gm.political_power.get(agent.id, 0.0) + 0.05)
             agent.needs.satisfy_need(NeedType.STATUS, 0.2 if agent.id == gov.leader_id else 0.1)
@@ -164,6 +172,8 @@ class GovernanceHandler(ActionHandler):
 
         if action.action_type == ActionType.MAKE_LAW:
             gov = gm.get_agent_government(agent.id)
+            if self._wants_tax(agent, gov, params):
+                return self._propose_tax(agent, gov, tick)
             banned = params.get('prohibition') or self._ban_from_details(params.get('details', '')) \
                 or self._grievance(agent)
             name = params.get('law_name') or f"No {banned.replace('_', ' ')}"
@@ -210,6 +220,60 @@ class GovernanceHandler(ActionHandler):
                                 metadata={'vote_type': 'election', 'candidate': candidate})
 
         return ActionResult(success=False, emotional_impact=0.0, message="Unknown governance action")
+
+    # A tax law takes this share of each citizen's wealth when the leader collects
+    TAX_RATE = 0.05
+
+    def _tax_policy(self, gov):
+        economy = self.context.get_system('economy')
+        for policy in (economy.taxation.tax_policies.values() if economy else []):
+            if policy.active and getattr(policy, 'government_id', None) == gov.id:
+                return policy
+        return None
+
+    def _wants_tax(self, agent, gov, params) -> bool:
+        """A tax if the proposal says so; otherwise an ambitious lawmaker whose
+        government has no tax yet may propose one."""
+        details = (params.get('details') or params.get('description') or '').lower()
+        if 'tax' in details:
+            return self._tax_policy(gov) is None
+        if params:
+            return False
+        return self._tax_policy(gov) is None and agent.personality.ambition > 0.6
+
+    def _propose_tax(self, agent, gov, tick):
+        from economy.taxation import TaxType
+        from world.governance import GovernmentType
+        economy = self.context.get_system('economy')
+        gm = self.context.get_system('governance_manager')
+        say = gov.government_type in (GovernmentType.DEMOCRACY, GovernmentType.COUNCIL)
+        policy = economy.taxation.enact_tax_policy(TaxType.WEALTH_TAX, self.TAX_RATE, gov.leader_id, say, tick)
+        policy.government_id = gov.id
+        law = gm.agent_creates_law(creator_id=agent.id, government_id=gov.id, name="Tax",
+                                   description=f"Citizens pay {self.TAX_RATE:.0%} of their wealth to {gov.name}.",
+                                   requirement='pay_tax')
+        if law is None:
+            economy.taxation.repeal_tax_policy(policy.id, tick)
+            return ActionResult(success=False, emotional_impact=-0.2, message="No authority to make laws here")
+        law.tax_policy_id = policy.id
+        self._log(f"📜 {agent.name} proposed a tax", law.description, tick, [agent.id])
+        return ActionResult(success=True, emotional_impact=0.3, message="Proposed a tax",
+                            metadata={'law_id': law.id, 'law_name': law.name, 'tax_policy_id': policy.id})
+
+    def _collect_taxes(self, leader, gov, tick) -> float:
+        policy = self._tax_policy(gov)
+        if policy is None:
+            return 0.0
+        economy = self.context.get_system('economy')
+        total = 0.0
+        for citizen in self.context.world.agents:
+            if citizen.alive and citizen.id in gov.citizens and citizen.id != leader.id and citizen.wealth > 0:
+                result = economy.taxation.collect_tax(policy.id, citizen.id, citizen.wealth, 0.0, tick)
+                paid = min(citizen.wealth, result.get('amount_collected', 0.0)) if result.get('success') else 0.0
+                citizen.wealth -= paid
+                total += paid
+        gov.treasury += total
+        return total
 
     def _supports(self, agent, law) -> bool:
         """Support a law if you like who proposed it and it doesn't ban what you do."""

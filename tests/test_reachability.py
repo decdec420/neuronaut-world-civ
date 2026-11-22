@@ -56,6 +56,9 @@ PREPARE = {
     "apply_for_loan": ["open_bank"],
     "operate_power_plant": ["build_power_plant"],
     "teach": ["experiment"],
+    "write": ["experiment"],
+    "create_alloy": ["refine_material"],
+    "join_tax_revolt": ["<taxed by own government>"],
 }
 PREP_TRIES = 60
 
@@ -184,6 +187,19 @@ def attempt(sim, roles, name: str):
     return result.success, "" if result.success else f"execute: {result.message}"
 
 
+def attempt_as(sim, agent, name: str, params: dict):
+    """Validate and execute an action as any agent, with parameters."""
+    from agents.agent import Action, ActionType
+    handler = sim._handler_registry.get_handler(ActionType(name))
+    action = Action(ActionType(name), parameters=params)
+    with quiet():
+        ok, reason = handler.validate(agent, action)
+        if not ok:
+            return False, f"validate: {reason}"
+        result = handler.execute(agent, action)
+    return result.success, "" if result.success else f"execute: {result.message}"
+
+
 def prepare(sim, roles, name: str):
     """Run the actions an agent would do first. Returns None, or why it failed."""
     for step in PREPARE.get(name, []):
@@ -192,6 +208,17 @@ def prepare(sim, roles, name: str):
                 sim.world.time.current_tick = tick
                 with quiet():
                     sim.agriculture.update_crops(tick)
+            continue
+        if step == "<taxed by own government>":
+            # The neighbour founds a government, the actor (who likes them)
+            # joins, and the neighbour proposes a tax: all agent actions
+            neighbour, actor = roles["neighbour"], roles["actor"]
+            neighbour.personality.aggression = 0.1
+            for who, name, params in ((neighbour, "govern", {}), (actor, "govern", {}),
+                                      (neighbour, "make_law", {"details": "a tax for the common good"})):
+                ok, why = attempt_as(sim, who, name, params)
+                if not ok:
+                    return f"first needs {who.name} to {name}, which failed ({why})"
             continue
         why = "never tried"
         for _ in range(PREP_TRIES):
