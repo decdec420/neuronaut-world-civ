@@ -122,6 +122,7 @@ class ActionType(Enum):
     CARE_FOR_CHILD = "care_for_child"
     PARENT = "parent"
     SEPARATE = "separate"
+    TRY_FOR_CHILD = "try_for_child"
 
     # ===== ECONOMIC & TRADE =====
     TRADE = "trade"
@@ -418,6 +419,17 @@ class Action:
     priority: float = 0.5
 
 
+def _roman(n: int) -> str:
+    """2 -> II, 14 -> XIV (for repeated names)."""
+    out = ""
+    for value, numeral in ((1000, "M"), (900, "CM"), (500, "D"), (400, "CD"), (100, "C"), (90, "XC"),
+                           (50, "L"), (40, "XL"), (10, "X"), (9, "IX"), (5, "V"), (4, "IV"), (1, "I")):
+        while n >= value:
+            out += numeral
+            n -= value
+    return out
+
+
 class Agent:
     """Autonomous agent with psychology and agency"""
 
@@ -434,6 +446,7 @@ class Agent:
         self.id = agent_id or str(uuid.uuid4())
         self.gender = gender or random.choice(list(Gender))  # Set gender FIRST
         self.name = name or self._generate_name()  # THEN generate name based on gender
+        Agent._used_names.add(self.name)
         self.age = age
 
         # Psychology
@@ -490,6 +503,7 @@ class Agent:
         # Partnership (life/family.py): formed only when both chose each other
         self.partner_id: Optional[str] = None
         self.admirers: Dict[str, int] = {}  # who courted this agent -> tick they last did
+        self.child_wish_tick: Optional[int] = None  # when it last said it wants a child
 
         # Pregnancy (for females only)
         self.is_pregnant: bool = False
@@ -525,32 +539,43 @@ class Agent:
         self.life_satisfaction_history: List[float] = []  # Track life trajectory
         self.decision_quality_scores: List[float] = []  # How good their choices are
 
-    # Class-level name tracking to avoid duplicates
+    # Names in use in the current world (reset by WorldInitializer.initialize_world)
     _used_names = set()
 
+    MALE_NAMES = ["James", "John", "Robert", "Michael", "William", "David", "Richard", "Joseph",
+                  "Thomas", "Charles", "Daniel", "Matthew", "Andrew", "Benjamin", "Samuel", "Henry",
+                  "Christopher", "Joshua", "George", "Kenneth", "Steven", "Edward", "Brian", "Ronald",
+                  "Arthur", "Walter", "Peter", "Hugo", "Oscar", "Felix", "Leo", "Theo",
+                  "Isaac", "Elias", "Jonah", "Silas", "Owen", "Rafael", "Mateo", "Kofi"]
+    FEMALE_NAMES = ["Mary", "Patricia", "Jennifer", "Linda", "Elizabeth", "Barbara", "Susan",
+                    "Jessica", "Sarah", "Karen", "Nancy", "Margaret", "Lisa", "Betty", "Dorothy", "Emily",
+                    "Ashley", "Michelle", "Kimberly", "Amanda", "Stephanie", "Rebecca", "Laura", "Helen",
+                    "Alice", "Clara", "Rose", "Iris", "Hazel", "Ruth", "Esther", "Nora",
+                    "Lucia", "Maya", "Ada", "Ivy", "Freya", "Amara", "Sofia", "Yara"]
+
+    @classmethod
+    def reset_names(cls, in_use=()) -> None:
+        """Start a new world's name registry (optionally with names already taken)."""
+        cls._used_names = set(in_use)
+
     def _generate_name(self) -> str:
-        """Generate random American traditional name (no duplicates)"""
-        male_names = ["James", "John", "Robert", "Michael", "William", "David", "Richard", "Joseph",
-                      "Thomas", "Charles", "Daniel", "Matthew", "Andrew", "Benjamin", "Samuel", "Henry",
-                      "Christopher", "Joshua", "George", "Kenneth", "Steven", "Edward", "Brian", "Ronald"]
-        female_names = ["Mary", "Patricia", "Jennifer", "Linda", "Elizabeth", "Barbara", "Susan",
-                        "Jessica", "Sarah", "Karen", "Nancy", "Margaret", "Lisa", "Betty", "Dorothy", "Emily",
-                        "Ashley", "Michelle", "Kimberly", "Amanda", "Stephanie", "Rebecca", "Laura", "Helen"]
-
+        """A name nobody in this world has had. When a list runs out, names
+        come back with a numeral: "James II", "James III"... (This used to
+        fall back to random numbers, which could repeat.)"""
         if self.gender == Gender.MALE:
-            available = [n for n in male_names if n not in Agent._used_names]
+            pool = Agent.MALE_NAMES
         elif self.gender == Gender.FEMALE:
-            available = [n for n in female_names if n not in Agent._used_names]
+            pool = Agent.FEMALE_NAMES
         else:
-            available = [n for n in male_names + female_names if n not in Agent._used_names]
-
-        if not available:  # All names used, start reusing with numbers
-            if self.gender == Gender.MALE:
-                return random.choice(male_names) + str(random.randint(1, 99))
-            else:
-                return random.choice(female_names) + str(random.randint(1, 99))
-
-        name = random.choice(available)
+            pool = Agent.MALE_NAMES + Agent.FEMALE_NAMES
+        available = [n for n in pool if n not in Agent._used_names]
+        if available:
+            name = random.choice(available)
+        else:
+            base, n = random.choice(pool), 2
+            while f"{base} {_roman(n)}" in Agent._used_names:
+                n += 1
+            name = f"{base} {_roman(n)}"
         Agent._used_names.add(name)
         return name
 
@@ -558,62 +583,6 @@ class Agent:
         """baby, child, adult or elder, by age (life/aging.py)"""
         from life.aging import life_stage
         return life_stage(self.age)
-
-    def check_pregnancy(self, current_tick: int) -> Optional['Agent']:
-        """
-        Check pregnancy status and give birth if due
-        Returns: Baby agent if birth occurred, None otherwise
-        """
-        if not self.is_pregnant:
-            return None
-
-        # Check if pregnancy is complete
-        ticks_pregnant = current_tick - self.pregnancy_start_tick
-        if ticks_pregnant >= self.pregnancy_duration_ticks:
-            # BIRTH!
-            baby = self.give_birth(current_tick)
-            logger.info(f"👶 BIRTH! {self.name} gave birth to {baby.name}!")
-            return baby
-
-        return None
-
-    def give_birth(self, current_tick: int) -> 'Agent':
-        """
-        Give birth to a baby agent
-        Returns: New baby agent
-        """
-        # Create baby with genetic inheritance
-        baby_gender = random.choice(list(Gender))
-
-        # Get father's personality if available (for inheritance)
-        # This will be filled in by simulation engine
-        father_personality = None  # Simulation will provide this
-
-        # Inherit traits from mother (and father if available)
-        baby_personality = self._create_inherited_personality(father_personality)
-
-        # Create baby agent
-        baby = Agent(
-            age=0,
-            gender=baby_gender,
-            personality=baby_personality
-        )
-
-        # Set family relationships
-        baby.mother_id = self.id
-        baby.father_id = self.pregnancy_partner_id
-        baby.life_stage = "baby"
-
-        # Update mother
-        self.children_ids.append(baby.id)
-        self.is_pregnant = False
-        self.pregnancy_partner_id = None
-        self.pregnancy_start_tick = 0
-
-        # Baby starts at mother's location
-        baby.location = Position(self.location.x, self.location.y)
-
-        return baby
 
     def _create_inherited_personality(self, father_personality: Optional[PersonalityProfile]) -> PersonalityProfile:
         """Create baby personality by inheriting from parents"""

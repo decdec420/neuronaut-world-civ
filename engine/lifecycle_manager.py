@@ -40,80 +40,72 @@ class LifecycleManager:
         """
         self.sim = simulation
 
-    def handle_birth(
-        self,
-        parent_a: Agent,
-        parent_b: Agent,
-        child_data: Dict,
-        current_tick: int
-    ):
+    def deliver_baby(self, mother: Agent, current_tick: int) -> Agent:
+        """A pregnancy comes to term: the one way a child enters the world.
+
+        The child blends both parents' personalities (plus a little variation;
+        only the mother's if the father is gone), starts as a baby beside its
+        mother, and has family ties to both parents. (There used to be two
+        birth paths: an instant one on a successful romance, and one that
+        made the baby twice and threw the father's traits away.)
         """
-        Handle birth of new child agent.
-
-        Creates the child, adds to world, inherits traits from parents.
-
-        Args:
-            parent_a: First parent agent
-            parent_b: Second parent agent
-            child_data: Dictionary containing child information from life_system
-            current_tick: Current simulation tick
-        """
-        # Create child agent (starts at age 0)
-        child = self.sim.create_agent(
-            name=None,  # Will get random name
-            age=0,  # Newborn!
-            is_player=False
-        )
-
-        # Place child near parents
-        child.location = Position(
-            (parent_a.location.x + parent_b.location.x) / 2,
-            (parent_a.location.y + parent_b.location.y) / 2
-        )
-
-        # Give child inherited wealth
-        child.wealth = child_data.get('inherited_wealth', 0.0)
-
-        # Add minimal starting items (babies don't have much!)
-        child.inventory.add_item('food', 2)
-        child.inventory.add_item('water', 2)
-
-        # Add to world
+        import random
+        from agents.agent import Gender
+        from social.relationships import RelationshipType
+        father = self.sim._get_agent_by_id(mother.pregnancy_partner_id) if mother.pregnancy_partner_id else None
+        personality = mother._create_inherited_personality(father.personality if father else None)
+        child = self.sim.create_agent(name=None, age=0, gender=random.choice([Gender.MALE, Gender.FEMALE]),
+                                      personality=personality)
+        child.location = Position(mother.location.x, mother.location.y)
+        child.mother_id = mother.id
+        child.father_id = father.id if father else None
+        child.life_stage = "baby"
         self.sim.world.agents.append(child)
 
-        # Create life profile with parents
-        personality_dict = {
-            'openness': child.personality.openness,
-            'conscientiousness': child.personality.conscientiousness,
-            'extraversion': child.personality.extraversion,
-            'agreeableness': child.personality.agreeableness,
-            'neuroticism': child.personality.neuroticism,
-        }
+        mother.is_pregnant = False
+        mother.pregnancy_partner_id = None
+        mother.pregnancy_start_tick = 0
+        parents = [p for p in (mother, father) if p is not None]
+        rm = self.sim.relationship_manager
+        for parent in parents:
+            parent.children_ids.append(child.id)
+            rel = rm.create_relationship(parent.id, child.id, RelationshipType.FAMILY, 0.8)
+            rel.relationship_type = RelationshipType.FAMILY
+            profile = self.sim.life_system.life_profiles.get(parent.id)
+            if profile is not None:
+                profile.children.append(child.id)
+                profile.children_born += 1
         self.sim.life_system.create_life_profile(
             child.id,
-            personality_dict,
-            parents=child_data.get('parents', []),
-            inherited_wealth=child_data.get('inherited_wealth', 0.0)
-        )
+            {t: getattr(personality, t) for t in ('openness', 'conscientiousness', 'extraversion',
+                                                  'agreeableness', 'neuroticism')},
+            parents=[p.id for p in parents])
 
-        # Log birth event!
-        title = f"👶 {child.name} is born!"
-        desc = f"{parent_a.name} and {parent_b.name} have a child! Welcome to the world, {child.name}. Generation {child_data.get('generation', 2)}."
-
-        self.sim.event_logger.log_event(
-            EventCategory.LIFE,
-            EventImportance.MAJOR,
-            title, desc,
-            current_tick,
-            [parent_a.id, parent_b.id, child.id]
-        )
-
-        print(f"\n👶 BIRTH! {parent_a.name} & {parent_b.name} → {child.name} (Gen {child_data.get('generation', 2)})")
-
-        self.sim.total_agents_created += 1
-
-        # Track birth for population history
         self.sim.births_this_day += 1
+        self.sim.life_events['born'] += 1
+        father_name = father.name if father else "a father who is gone"
+        self.sim.event_logger.log_event(
+            EventCategory.LIFE, EventImportance.MAJOR, f"👶 {child.name} is born",
+            f"{mother.name} and {father_name} have a child, {child.name}.",
+            current_tick, [p.id for p in parents] + [child.id])
+
+        current_day = current_tick // 144
+        birth_story = self.sim.story_generator.generate_birth_story(
+            child.name, mother.name, father_name, current_day,
+            {'mother_id': mother.id, 'father_id': child.father_id,
+             'population': sum(1 for a in self.sim.world.agents if a.alive), 'generation': 2})
+        self.sim.story_feed.add_story(birth_story)
+
+        from engine.achievements import AchievementType
+        tracker = self.sim.achievement_tracker
+        tracker.track_agent(child.id, child.name)
+        for parent in parents:
+            tracker.track_agent(parent.id, parent.name)
+            tracker.update_agent_stat(parent.id, 'children_count', len(parent.children_ids))
+            tracker.check_agent_achievements(parent.id, current_day)
+        tracker.unlock_civilization_achievement(AchievementType.FIRST_BIRTH, current_day)
+        logger.info(f"👶 {mother.name} and {father_name} → {child.name}")
+        return child
 
     def update_aging(self, current_tick: int) -> None:
         """Birthdays, life stages and death of old age (life/aging.py)."""

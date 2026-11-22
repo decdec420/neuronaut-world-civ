@@ -7,6 +7,12 @@ SEEK_ROMANCE (flirt, court, propose and marry run it too):
     If they court you back on their own turn while you're still remembered
     (life/family.py, INTEREST_MEMORY_TICKS), you become partners.
 SEPARATE: either partner can end the partnership on their own.
+TRY_FOR_CHILD: say you want a child with your partner. Only once both have
+  said so (each on its own turn, within INTEREST_MEMORY_TICKS) is there a
+  chance of conceiving, by age; a female and a male partner are needed.
+CARE_FOR_CHILD (parent runs it too): look after a baby or child: feed it
+  from what you carry, give it water, keep it company. Your own children
+  first, otherwise a child nearby.
 
 The handler never decides for the other person: the one who acts is always
 the one whose choice is recorded.
@@ -25,7 +31,8 @@ if TYPE_CHECKING:
 class FamilyHandler(ActionHandler):
 
     def can_handle(self, action_type: ActionType) -> bool:
-        return action_type in (ActionType.SEEK_ROMANCE, ActionType.SEPARATE)
+        return action_type in (ActionType.SEEK_ROMANCE, ActionType.SEPARATE,
+                               ActionType.TRY_FOR_CHILD, ActionType.CARE_FOR_CHILD)
 
     def get_required_systems(self) -> list[str]:
         return ['world', 'relationship_manager']
@@ -55,11 +62,28 @@ class FamilyHandler(ActionHandler):
         return max(free, key=lambda o: family.attraction(self.relationships, agent, o)
                    + (1.0 if family.recently(agent.admirers, o.id, now) else 0.0))
 
-    def _log(self, importance, title, description, ids):
+    def _child_to_care_for(self, agent, action) -> Optional['Agent']:
+        """The named child; else the agent's own child who needs it most;
+        else the neediest child within reach."""
+        if action.target_agent:
+            child = self.context.get_agent_by_id(action.target_agent)
+            return child if child is not None and family.is_young(child) else None
+        own = [self.context.get_agent_by_id(cid) for cid in agent.children_ids]
+        own = [c for c in own if c is not None and family.is_young(c)]
+        if own:
+            return max(own, key=family.neediness)
+        near = [o for o in self.context.world.agents if o.id != agent.id and family.is_young(o)
+                and agent.location.distance_to(o.location) <= family.CARE_REACH]
+        return max(near, key=family.neediness) if near else None
+
+    def _recent(self, tick) -> bool:
+        return tick is not None and self.context.current_tick - tick <= family.INTEREST_MEMORY_TICKS
+
+    def _log(self, importance, title, description, ids, category=None):
         if self.context.event_logger:
             from engine.events import EventCategory
             self.context.event_logger.log_event(
-                EventCategory.SOCIAL, importance, title, description, self.context.current_tick, ids)
+                category or EventCategory.SOCIAL, importance, title, description, self.context.current_tick, ids)
 
     def _count(self, what: str) -> None:
         events = self.context.get_system('life_events')
@@ -82,16 +106,46 @@ class FamilyHandler(ActionHandler):
             if self._partner(agent) is None:
                 return False, "You have no partner"
             return True, ""
+        if action.action_type == ActionType.TRY_FOR_CHILD:
+            return self._can_try_for_child(agent)
+        if action.action_type == ActionType.CARE_FOR_CHILD:
+            if not family.is_adult(agent):
+                return False, "Too young to look after a child"
+            if self._child_to_care_for(agent, action) is None:
+                return False, "No child of yours, and none nearby, to look after"
+            return True, ""
         target = self._romance_target(agent, action)
         if target is None:
             return False, "Nobody free to court" if family.is_adult(agent) else "Too young for romance"
         return family.free_to_court(agent, target)
+
+    def _can_try_for_child(self, agent) -> tuple[bool, str]:
+        if not family.is_adult(agent):
+            return False, "Too young to have a child"
+        partner = self._partner(agent)
+        if partner is None:
+            return False, "You have no partner"
+        pair = family.mother_and_father(agent, partner)
+        if pair is None:
+            return False, f"You and {partner.name} can't conceive together (you could look after a child)"
+        mother, father = pair
+        if mother.is_pregnant:
+            return False, f"{'You are' if mother is agent else mother.name + ' is'} already expecting"
+        if family.fertility(mother.age) == 0 or family.fertility(father.age) == 0:
+            return False, "Not at an age to have children"
+        return True, ""
 
     # -- actions -----------------------------------------------------------------
 
     def execute(self, agent: 'Agent', action: 'Action') -> ActionResult:
         if action.action_type == ActionType.SEPARATE:
             return self._separate(agent)
+        if action.action_type == ActionType.TRY_FOR_CHILD:
+            return self._try_for_child(agent)
+        if action.action_type == ActionType.CARE_FOR_CHILD:
+            child = self._child_to_care_for(agent, action)
+            action.target_agent = child.id
+            return self._care_for(agent, child)
         target = self._romance_target(agent, action)
         action.target_agent = target.id
         if agent.partner_id == target.id:
@@ -168,6 +222,7 @@ class FamilyHandler(ActionHandler):
         from social.relationships import RelationshipType
         partner = self._partner(agent)
         agent.partner_id = partner.partner_id = None
+        agent.child_wish_tick = partner.child_wish_tick = None
         self._set_spouse(agent.id, None)
         self._set_spouse(partner.id, None)
         rel = self.relationships.get_relationship(agent.id, partner.id)
@@ -182,3 +237,72 @@ class FamilyHandler(ActionHandler):
         return ActionResult(success=True, emotional_impact=-0.1,
                             message=f"Ended your partnership with {partner.name}",
                             metadata={'former_partner_id': partner.id})
+
+    def _try_for_child(self, agent) -> ActionResult:
+        import random
+        from engine.psychology import EmotionType
+        from engine.events import EventImportance, EventCategory
+        partner = self._partner(agent)
+        mother, father = family.mother_and_father(agent, partner)
+        said_before = self._recent(agent.child_wish_tick)
+        agent.child_wish_tick = self.context.current_tick
+
+        if not self._recent(partner.child_wish_tick):
+            if said_before:
+                return ActionResult(success=False, emotional_impact=-0.1,
+                                    message=f"{partner.name} hasn't said they want a child")
+            return ActionResult(success=True, emotional_impact=0.2,
+                                message=f"Told {partner.name} you'd like a child")
+
+        # Both want one: they try
+        for who in (agent, partner):
+            who.needs.satisfy_need(NeedType.ROMANCE, 0.3)
+            who.needs.satisfy_need(NeedType.SEX, 0.3)
+            who.emotions.trigger_emotion(EmotionType.LOVE, 0.3)
+        chance = family.CONCEPTION_CHANCE * family.fertility(mother.age) * family.fertility(father.age)
+        if random.random() >= chance:
+            return ActionResult(success=True, emotional_impact=0.4,
+                                message=f"You and {partner.name} tried for a child", metadata={'tried': True})
+        config = self.context.get_system('config')
+        mother.is_pregnant = True
+        mother.pregnancy_partner_id = father.id
+        mother.pregnancy_start_tick = self.context.current_tick
+        mother.pregnancy_duration_ticks = max(1, round(family.PREGNANCY_YEARS * config.ticks_per_life_year))
+        agent.child_wish_tick = partner.child_wish_tick = None
+        self._count('conceived')
+        self._log(EventImportance.MAJOR, f"🤰 {mother.name} and {father.name} are expecting a child",
+                  "They both wanted one.", [mother.id, father.id], EventCategory.LIFE)
+        return ActionResult(success=True, emotional_impact=0.8,
+                            message=f"You and {partner.name} are expecting a child", metadata={'conceived': True})
+
+    def _care_for(self, agent, child) -> ActionResult:
+        from engine.psychology import EmotionType
+        distance = agent.location.distance_to(child.location)
+        if distance > family.CARE_REACH:
+            # Go to them first (a long walk takes a few turns)
+            from agents.agent import Position
+            step = min(10.0, distance - 1.0) / distance
+            agent.location = Position(agent.location.x + (child.location.x - agent.location.x) * step,
+                                      agent.location.y + (child.location.y - agent.location.y) * step)
+            return ActionResult(success=True, emotional_impact=0.05,
+                                message=f"On your way to look after {child.name}")
+        given = []
+        needs = child.needs.needs
+        if needs[NeedType.HUNGER].level > 0.3 and agent.inventory.has_item('food', 1):
+            agent.inventory.remove_item('food', 1)
+            child.needs.satisfy_need(NeedType.HUNGER, 0.6)
+            given.append("fed")
+        if needs[NeedType.THIRST].level > 0.3 and agent.inventory.has_item('water', 1):
+            agent.inventory.remove_item('water', 1)
+            child.needs.satisfy_need(NeedType.THIRST, 0.6)
+            given.append("gave water to")
+        child.needs.satisfy_need(NeedType.BELONGING, 0.3)
+        child.needs.satisfy_need(NeedType.SECURITY, 0.3)
+        child.emotions.trigger_emotion(EmotionType.JOY, 0.2)
+        agent.needs.satisfy_need(NeedType.MEANING, 0.3)
+        agent.needs.satisfy_need(NeedType.BELONGING, 0.2)
+        agent.emotions.trigger_emotion(EmotionType.LOVE, 0.2)
+        self.relationships.update_relationship(agent.id, child.id, 'care', True)
+        what = " and ".join(given) + f" {child.name}" if given else f"kept {child.name} company"
+        return ActionResult(success=True, emotional_impact=0.4, message=f"Looked after {child.name}: {what}",
+                            metadata={'child_id': child.id, 'fed': 'fed' in given})

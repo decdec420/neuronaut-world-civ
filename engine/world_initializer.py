@@ -56,6 +56,7 @@ class WorldInitializer:
             num_agents: Number of starting agents to create
         """
         print(f"Initializing Neuronaut World with {num_agents} agents...")
+        Agent.reset_names()  # a new world: every name is free again
 
         # Create initial agents with balanced genders
         num_male = num_agents // 2
@@ -138,7 +139,8 @@ class WorldInitializer:
         name: Optional[str] = None,
         age: int = 20,
         is_player: bool = False,
-        gender: Optional[Gender] = None
+        gender: Optional[Gender] = None,
+        personality=None
     ) -> Agent:
         """
         Create a new agent with proper setup.
@@ -162,7 +164,8 @@ class WorldInitializer:
             name=name,
             age=age,
             is_player=is_player,
-            gender=gender
+            gender=gender,
+            personality=personality
         )
 
         # Initialize value learning system with current market prices

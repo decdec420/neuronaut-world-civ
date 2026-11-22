@@ -59,6 +59,8 @@ PREPARE = {
     "write": ["experiment"],
     "create_alloy": ["refine_material"],
     "join_tax_revolt": ["<taxed by own government>"],
+    "try_for_child": ["<partner wants a child>"],
+    "care_for_child": ["<a baby is born>"],
 }
 PREP_TRIES = 60
 
@@ -156,7 +158,7 @@ def make_world(seed: int = 0, use_llm: bool = False):
 # fills that in itself).
 TARGETS = {
     "heal": "sick", "cure": "sick", "diagnose": "sick",
-    "seek_romance": "partner", "separate": "partner",
+    "seek_romance": "partner", "separate": "partner", "try_for_child": "partner",
     "trade": "neighbour", "teach": "neighbour", "socialize": "neighbour",
     "tell_story": "neighbour", "play_game": "neighbour", "gamble": "neighbour",
     "fight": "neighbour",
@@ -227,6 +229,26 @@ def prepare(sim, roles, name: str):
                 ok, why = attempt_as(sim, who, name, params)
                 if not ok:
                     return f"first needs {who.name} to {name}, which failed ({why})"
+            continue
+        if step == "<partner wants a child>":
+            ok, why = attempt_as(sim, roles["partner"], "try_for_child", {})
+            if not ok:
+                return f"first needs the partner to want a child, which failed ({why})"
+            continue
+        if step == "<a baby is born>":
+            # The partners both choose to try for a child until one is on the
+            # way, then the pregnancy runs its course
+            actor, partner = roles["actor"], roles["partner"]
+            for _ in range(PREP_TRIES):
+                for who in (partner, actor):
+                    attempt_as(sim, who, "try_for_child", {})
+                if actor.is_pregnant or partner.is_pregnant:
+                    break
+            mother = actor if actor.is_pregnant else partner
+            if not mother.is_pregnant:
+                return "first needs a child, but no pregnancy came"
+            with quiet():
+                sim.lifecycle_manager.deliver_baby(mother, mother.pregnancy_start_tick + mother.pregnancy_duration_ticks)
             continue
         why = "never tried"
         for _ in range(PREP_TRIES):

@@ -12,7 +12,10 @@ from) is a candidate. Each gets a utility from the agent's own state:
 - personality: the traits that draw someone to it (or away from it)
 - memory: how often it has worked for this agent before
 - people: for actions with a partner, how much the agent likes them; for
-  romance, how drawn it is to them, and whether they courted it first
+  romance, how drawn it is to them, and whether they courted it first; for
+  a child, whether the agent wants one (its life profile) and whether its
+  partner has said it does; for looking after a child, how much the child
+  needs it and whether it's the agent's own
 - danger: actions that can get it killed weigh less for careful or hurt agents
 - law: what its government has banned weighs less, the more conscientious
   and agreeable it is
@@ -69,6 +72,8 @@ ACTION_NEEDS: Dict[str, Dict[N, float]] = {
     # Unmet longing inside a partnership; weighed by how little the agent
     # still likes its partner (see utility)
     "separate": {N.ROMANCE: 1.0},
+    "try_for_child": {N.MEANING: 0.4, N.ROMANCE: 0.3, N.BELONGING: 0.3},
+    "care_for_child": {N.MEANING: 0.5, N.BELONGING: 0.5},
     "celebrate": {N.BELONGING: 0.6, N.MEANING: 0.4},
     "tell_story": {N.BELONGING: 0.4, N.RECOGNITION: 0.3, N.CREATIVITY: 0.3},
     "play_game": {N.BELONGING: 0.5, N.FRIENDSHIP: 0.3, N.ACHIEVEMENT: 0.2},
@@ -128,6 +133,8 @@ ACTION_TRAITS: Dict[str, Dict[str, float]] = {
     "socialize": {"extraversion": 0.7, "agreeableness": 0.3},
     "seek_romance": {"sexuality": 0.7, "extraversion": 0.3},
     "separate": {"agreeableness": -0.5, "neuroticism": 0.3, "openness": 0.2},
+    "try_for_child": {"empathy": 0.3, "agreeableness": 0.2},
+    "care_for_child": {"empathy": 0.6, "agreeableness": 0.3, "conscientiousness": 0.2},
     "celebrate": {"extraversion": 0.6, "openness": 0.2},
     "tell_story": {"extraversion": 0.5, "creativity": 0.5},
     "play_game": {"extraversion": 0.5, "risk_taking": 0.2},
@@ -153,12 +160,13 @@ ACTION_TRAITS: Dict[str, Dict[str, float]] = {
 }
 
 SOCIAL_ACTIONS = {"socialize", "seek_romance", "celebrate", "tell_story", "play_game", "create_art"}
-NEEDS_TARGET = {"socialize", "seek_romance", "separate", "trade", "teach", "tell_story", "play_game", "gamble",
+NEEDS_TARGET = {"socialize", "seek_romance", "separate", "try_for_child", "care_for_child", "trade", "teach", "tell_story", "play_game", "gamble",
                 "fight", "heal", "cure", "diagnose"}
 NEEDS_SICK_TARGET = {"heal", "cure", "diagnose"}
 ROMANCE_ACTIONS = {"seek_romance", "separate"}
+FAMILY_ACTIONS = {"try_for_child", "care_for_child"}
 # Skipped when there's nobody suitable (no sick person, nobody free to court...)
-NEEDS_SUITABLE_TARGET = NEEDS_SICK_TARGET | ROMANCE_ACTIONS
+NEEDS_SUITABLE_TARGET = NEEDS_SICK_TARGET | ROMANCE_ACTIONS | FAMILY_ACTIONS
 NEEDS_PLACE = {"move", "explore"}
 
 # How much each part of the utility counts, and how sharply the agent picks
@@ -169,6 +177,9 @@ FRIEND_WEIGHT = 0.3
 ROMANCE_WEIGHT = 0.8     # how much being drawn to someone counts for romance
 ADMIRER_PULL = 1.0       # someone who courted you: answering them draws you more
 UNANSWERED_PENALTY = 0.5 # someone you courted who never answered: less
+FAMILY_WEIGHT = 1.0      # wanting a child (or not), and a partner who does
+CARE_WEIGHT = 1.5        # a child who needs looking after
+OTHERS_CHILD_BOND = 0.3  # someone else's child pulls less than your own
 NIGHT_REST_PULL = 2.5
 WORK_PULL = 0.3
 OWN_JOB_PULL = 0.6
@@ -248,7 +259,8 @@ class UtilityBrain:
         liking_term = -friendship if action in ("fight", "separate") else friendship
         if action == "separate":
             need_term *= max(0.0, 1.0 - friendship)
-        person_weight = ROMANCE_WEIGHT if action == "seek_romance" else FRIEND_WEIGHT
+        person_weight = {"seek_romance": ROMANCE_WEIGHT, "try_for_child": FAMILY_WEIGHT,
+                         "care_for_child": CARE_WEIGHT}.get(action, FRIEND_WEIGHT)
 
         law_term = 0.0
         if action in banned:
@@ -267,6 +279,10 @@ class UtilityBrain:
         (or, for a fight, likes least). Returns (agent id, how much they're liked)."""
         if action in ROMANCE_ACTIONS:
             return self._romance_target(agent, action)
+        if action == "try_for_child":
+            return self._child_wish(agent)
+        if action == "care_for_child":
+            return self._child_in_need(agent)
         alive = {a.id: a for a in self.sim.world.agents if a.alive and a.id != agent.id}
         if action in NEEDS_SICK_TARGET:
             sick = [a for a in alive.values() if self.sim.health.is_agent_sick(a.id)]
@@ -318,6 +334,41 @@ class UtilityBrain:
             return None, 0.0
         i = random.choices(range(len(people)), weights=[math.exp(2.0 * p) for p in pulls])[0]
         return people[i], pulls[i]
+
+    def _child_wish(self, agent) -> Tuple[Optional[str], float]:
+        """(partner id, pull): wanting a child pulls if the agent's life profile
+        says it wants (more) children, pushes if not; a partner who has said
+        they want one pulls by how much the agent likes them."""
+        from life import family
+        partner = family.partner_of(agent, self.sim._get_agent_by_id)
+        if partner is None:
+            return None, 0.0
+        profile = self.sim.life_system.life_profiles.get(agent.id)
+        if profile is not None and profile.wants_children and len(agent.children_ids) < profile.ideal_children_count:
+            pull = profile.family_priority
+        else:
+            pull = -0.5
+        if partner.child_wish_tick is not None and \
+                self.sim.world.time.current_tick - partner.child_wish_tick <= family.INTEREST_MEMORY_TICKS:
+            pull += max(0.0, family.liking(self.sim.relationship_manager, agent, partner))
+        return partner.id, pull
+
+    def _child_in_need(self, agent) -> Tuple[Optional[str], float]:
+        """(child id, pull): the child who needs looking after most, weighted
+        by bond (one's own children fully, others' less, closer ones first)."""
+        from life import family
+        best, best_pull = None, 0.0
+        own = set(agent.children_ids)
+        for child in self.sim.world.agents:
+            if child.id == agent.id or not family.is_young(child):
+                continue
+            mine = child.id in own
+            if not mine and agent.location.distance_to(child.location) > family.CARE_REACH:
+                continue
+            pull = (1.0 if mine else OTHERS_CHILD_BOND) * family.neediness(child)
+            if best is None or pull > best_pull:
+                best, best_pull = child.id, pull
+        return best, best_pull
 
     # -- choosing ------------------------------------------------------------
 

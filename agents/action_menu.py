@@ -72,6 +72,10 @@ ACTION_INFO = {
     "seek_romance": ("romance and family", "court someone (TARGET), or spend time with your partner; "
                                            "you become partners only if they court you too"),
     "separate": ("romance and family", "end your partnership"),
+    "try_for_child": ("romance and family", "tell your partner you want a child; "
+                                            "one may come only if they want one too"),
+    "care_for_child": ("romance and family", "look after a baby or child: feed them, give them water, "
+                                             "keep them company (TARGET optional)"),
     "celebrate": ("culture", "throw or join a celebration"),
     "tell_story": ("culture", "tell someone a story (TARGET)"),
     "play_game": ("culture", "play a game with someone (TARGET)"),

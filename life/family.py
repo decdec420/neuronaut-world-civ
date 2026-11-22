@@ -8,14 +8,74 @@ partner, how drawn one agent is to another, and how long an expressed wish is
 remembered.
 
 Consent: a partnership forms only when each of the two has chosen, on its own
-turn, to court the other. Either partner can end it alone.
+turn, to court the other. Either partner can end it alone. A child is
+conceived only after both partners have said, each on its own turn, that they
+want one (try_for_child), and even then not every time.
+
+Children: babies (0-1) can only rest, eat and drink what they're given, and
+reach out to people; children (2-15) can also fetch food and water, play,
+explore and make things. Anyone grown can look after a child
+(care_for_child): feed it, give it water, keep it company. Parents feel that
+pull most.
 """
 
 from typing import Dict, Optional, Tuple
 
 ADULT_AGE = 16
-# How long courting someone is remembered, so they can answer it (3 days)
+# How long courting someone, or saying you want a child, is remembered (3 days)
 INTEREST_MEMORY_TICKS = 432
+CONCEPTION_CHANCE = 0.3   # each time both partners try, at peak fertility
+PREGNANCY_YEARS = 0.75    # in life years (life/aging.py)
+CARE_REACH = 10.0         # how close you must be to look after a child
+
+BABY_ACTIONS = frozenset({"rest", "eat", "drink", "socialize"})
+CHILD_ACTIONS = BABY_ACTIONS | frozenset({
+    "gather_food", "gather_water", "explore", "move", "play_game", "tell_story",
+    "create_art", "celebrate", "pray", "worship", "experiment"})
+
+
+def allowed_at_stage(agent, action_name: str) -> bool:
+    """Whether someone this age can do this (action_name: the action that runs)."""
+    if agent.life_stage == "baby":
+        return action_name in BABY_ACTIONS
+    if agent.life_stage == "child":
+        return action_name in CHILD_ACTIONS
+    return True
+
+
+def is_young(agent) -> bool:
+    return agent.alive and agent.life_stage in ("baby", "child")
+
+
+def fertility(age: int) -> float:
+    """0-1, by age (the table LifeSystem has always used)."""
+    if age < 18:
+        return 0.0
+    if age < 25:
+        return 0.8
+    if age < 35:
+        return 1.0
+    if age < 45:
+        return 0.6
+    if age < 55:
+        return 0.2
+    return 0.0
+
+
+def mother_and_father(a, b) -> Optional[Tuple[object, object]]:
+    """(mother, father) if these two could conceive together, else None."""
+    genders = {a.gender.value: a, b.gender.value: b}
+    if set(genders) != {"female", "male"}:
+        return None
+    return genders["female"], genders["male"]
+
+
+def neediness(child) -> float:
+    """0-1: how much a child needs looking after right now."""
+    from engine.psychology import NeedType
+    needs = child.needs.needs
+    return max(needs[n].get_urgency() for n in (NeedType.HUNGER, NeedType.THIRST, NeedType.BELONGING,
+                                                 NeedType.SECURITY) if n in needs)
 
 
 def is_adult(agent) -> bool:

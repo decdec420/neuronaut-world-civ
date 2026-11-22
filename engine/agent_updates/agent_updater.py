@@ -246,94 +246,10 @@ class AgentUpdater:
                 self.sim.health.infect_agent(agent.id, DiseaseType.FLU, Severity.MILD, current_tick)
 
     async def _check_for_births(self, agent, current_tick: int) -> None:
-        """
-        Check if agent is ready to give birth and handle birth event.
-
-        This includes:
-        - Checking pregnancy status
-        - Creating baby with genetic inheritance
-        - Logging birth event
-        - Generating birth story
-        - Tracking achievements
-
-        Args:
-            agent: The agent to check for birth
-            current_tick: Current simulation tick
-        """
-        from engine.events import EventCategory, EventImportance
-        from engine.achievements import AchievementType
-
-        if not agent.is_pregnant:
-            return
-
-        baby = agent.check_pregnancy(current_tick)
-        if not baby:
-            return
-
-        # Get father for genetic inheritance
-        father = next((a for a in self.sim.world.agents if a.id == agent.pregnancy_partner_id), None)
-        if father:
-            # Re-create baby with father's traits included
-            baby = agent.give_birth(current_tick)
-            baby._create_inherited_personality(father.personality)
-            father.children_ids.append(baby.id)
-
-        # Add baby to world
-        self.sim.world.agents.append(baby)
-
-        # Log birth event
-        father_name = father.name if father else "unknown"
-        self.sim.event_logger.log_event(
-            EventCategory.LIFE,
-            EventImportance.MAJOR,
-            f"👶 Birth: {baby.name} was born!",
-            f"{agent.name} gave birth to {baby.name}! Father: {father_name}",
-            current_tick,
-            [agent.id, father.id] if father else [agent.id]
-        )
-
-        # ===== STORY GENERATION - Make this birth LEGENDARY! =====
-        current_day = current_tick // 144  # Convert ticks to days
-        population = sum(1 for a in self.sim.world.agents if a.alive)
-        family_context = {
-            'mother_id': agent.id,
-            'father_id': father.id if father else None,
-            'population': population,
-            'generation': 2  # TODO: Track generation properly
-        }
-        birth_story = self.sim.story_generator.generate_birth_story(
-            baby.name, agent.name, father_name, current_day, family_context
-        )
-        self.sim.story_feed.add_story(birth_story)
-        logger.info(f"📜 STORY: {birth_story.title}")
-
-        # ===== ACHIEVEMENT TRACKING =====
-        # Track all family members for achievements
-        self.sim.achievement_tracker.track_agent(baby.id, baby.name)
-        self.sim.achievement_tracker.track_agent(agent.id, agent.name)
-        if father:
-            self.sim.achievement_tracker.track_agent(father.id, father.name)
-            # Update father's children count
-            self.sim.achievement_tracker.update_agent_stat(father.id, 'children_count', len(father.children_ids))
-
-        # Update mother's children count
-        self.sim.achievement_tracker.update_agent_stat(agent.id, 'children_count', len(agent.children_ids))
-
-        # Check for PARENT achievement
-        mother_achievements = self.sim.achievement_tracker.check_agent_achievements(agent.id, current_day)
-        if father:
-            father_achievements = self.sim.achievement_tracker.check_agent_achievements(father.id, current_day)
-            for ach in father_achievements:
-                logger.info(f"🏆 {father.name} unlocked: {ach.name}")
-        for ach in mother_achievements:
-            logger.info(f"🏆 {agent.name} unlocked: {ach.name}")
-
-        # Civilization achievement - FIRST BIRTH
-        first_birth_ach = self.sim.achievement_tracker.unlock_civilization_achievement(
-            AchievementType.FIRST_BIRTH, current_day
-        )
-        if first_birth_ach:
-            logger.info(f"🎆 CIVILIZATION ACHIEVEMENT: {first_birth_ach.name}")
+        """A pregnancy that has come to term ends in a birth
+        (LifecycleManager.deliver_baby is the only way a child is born)."""
+        if agent.is_pregnant and current_tick - agent.pregnancy_start_tick >= agent.pregnancy_duration_ticks:
+            self.sim.lifecycle_manager.deliver_baby(agent, current_tick)
 
     def _update_strategic_goals(self, agent, current_tick: int) -> None:
         """
@@ -377,7 +293,7 @@ class AgentUpdater:
         # Use autonomous AI decisions if enabled, otherwise fall back to rule-based
         llm_action = None
         if self.sim.config.use_llm_decisions and hasattr(agent, 'autonomous_decide') \
-                and self._survival_override(agent) is None:
+                and agent.life_stage != "baby" and self._survival_override(agent) is None:
             # Make AI-powered decision (handles planning and reflection internally)
             try:
                 llm_action = agent.autonomous_decide(perceptions, current_tick, self.sim.config)
@@ -517,8 +433,11 @@ class AgentUpdater:
     def _can_run(self, agent, action) -> bool:
         """True if the handler that will actually run this action accepts it now."""
         from engine.simulation import UNHANDLED_ACTION_FALLBACKS
+        from life.family import allowed_at_stage
         try:
             resolved = ActionType(UNHANDLED_ACTION_FALLBACKS.get(action.action_type.value, action.action_type.value))
+            if not allowed_at_stage(agent, resolved.value):
+                return False
             handler = self.sim._handler_registry.get_handler(resolved)
             if handler is None:
                 return False
@@ -551,6 +470,14 @@ class AgentUpdater:
             return Action(ActionType.REST)  # exhausted: recover before anything else
         if worst < 0.7:
             return None
+        if agent.life_stage == "baby":
+            # A baby can only eat or drink what it's given; otherwise it rests
+            # (and is looked after, if anyone chooses to: care_for_child)
+            if worst == thirst and agent.inventory.has_item('water', 1):
+                return Action(ActionType.DRINK)
+            if worst == hunger and agent.inventory.has_item('food', 1):
+                return Action(ActionType.EAT)
+            return Action(ActionType.REST)
         if worst == thirst:
             return Action(ActionType.GATHER_WATER)
         if worst == hunger:

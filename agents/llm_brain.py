@@ -707,6 +707,16 @@ Be bold! Think of something interesting to try.
                 heart.append(f"You courted {', '.join(life['courting'][:4])}; no answer yet.")
             if life.get("is_pregnant"):
                 heart.append("You are expecting a child.")
+            if life.get("partner_wants_child"):
+                heart.append(f"{life['partner']} has said they want a child with you.")
+            if life.get("children"):
+                heart.append("Your children: " + "; ".join(
+                    f"{c['name']} ({c['age']}, {c['stage']}{', needs looking after' if c['needs_care'] else ''})"
+                    for c in life["children"][:6]) + ".")
+            if life.get("can_do"):
+                heart = [f"You are a {life['life_stage']}"
+                         + (f"; your parents are {' and '.join(life['parents'])}" if life.get("parents") else "")
+                         + f". You can only: {', '.join(life['can_do'])}."]
             lines.append(" ".join(heart))
 
         known = perceptions.get("relationships", [])

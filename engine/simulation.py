@@ -106,7 +106,7 @@ UNHANDLED_ACTION_FALLBACKS = {
     # Romance / family
     'flirt': 'seek_romance', 'court': 'seek_romance', 'propose': 'seek_romance',
     'marry': 'seek_romance', 'have_sex': 'seek_romance', 'give_birth': 'rest',
-    'care_for_child': 'socialize', 'parent': 'socialize',
+    'parent': 'care_for_child',
     # Economy
     'sell': 'trade', 'buy': 'trade', 'barter': 'trade', 'work': 'gather_materials',
     'employ': 'trade', 'invest': 'trade', 'steal': 'trade', 'beg': 'socialize',
@@ -382,10 +382,11 @@ class SimulationEngine:
         name: Optional[str] = None,
         age: int = 20,
         is_player: bool = False,
-        gender: Optional[Gender] = None
+        gender: Optional[Gender] = None,
+        personality=None
     ) -> Agent:
         """Create a new agent (delegated)."""
-        return self.world_initializer.create_agent(name, age, is_player, gender)
+        return self.world_initializer.create_agent(name, age, is_player, gender, personality)
 
     def get_population_statistics(self) -> Dict:
         """Get population statistics (delegated)."""
@@ -695,6 +696,15 @@ class SimulationEngine:
                 'success': False,
                 'emotional_impact': 0.0,
                 'message': f'Action type {action.action_type} not implemented'
+            }
+
+        # Babies and children can do only some things (life/family.py)
+        from life.family import allowed_at_stage
+        if not allowed_at_stage(agent, action.action_type.value):
+            return {
+                'success': False,
+                'emotional_impact': 0.0,
+                'message': f"Too young to {action.action_type.value.replace('_', ' ')}"
             }
 
         # Social actions chosen without a partner: pick the nearest living agent

@@ -354,6 +354,17 @@ class PerceptionBuilder:
                 life_info['courting'].append(other.name)
         if agent.is_pregnant:
             life_info['due_in_ticks'] = max(0, agent.pregnancy_duration_ticks - (now - agent.pregnancy_start_tick))
+        if partner is not None and partner.child_wish_tick is not None and \
+                now - partner.child_wish_tick <= family.INTEREST_MEMORY_TICKS:
+            life_info['partner_wants_child'] = True
+        children = [self.sim._get_agent_by_id(cid) for cid in agent.children_ids]
+        life_info['children'] = [{'name': c.name, 'age': c.age, 'stage': c.life_stage,
+                                  'needs_care': family.is_young(c) and family.neediness(c) > 0.5}
+                                 for c in children if c is not None and c.alive]
+        if family.is_young(agent):
+            parents = [self.sim._get_agent_by_id(pid) for pid in (agent.mother_id, agent.father_id) if pid]
+            life_info['parents'] = [p.name for p in parents if p is not None and p.alive]
+            life_info['can_do'] = sorted(family.BABY_ACTIONS if agent.life_stage == "baby" else family.CHILD_ACTIONS)
         perceptions['life_info'] = life_info
         return perceptions
 
