@@ -45,7 +45,7 @@ class ChemistryHandler(ActionHandler):
                         logger.info(f"⚗️ {agent.name} discovered {compound.name}!")
                 agent.needs.satisfy_need(NeedType.GROWTH, 0.3)
                 agent.needs.satisfy_need(NeedType.ACHIEVEMENT, 0.2)
-                return ActionResult(success=True, emotional_impact=0.4, message=f"Chemical reaction: {result.get('reaction_type')}")
+                return ActionResult(success=True, emotional_impact=0.4, message=f"Chemical reaction: {result.get('reaction_type')}", metadata={'product': str(result.get('reaction_type'))})
             return ActionResult(success=False, emotional_impact=-0.1, message=f"Reaction failed: {result.get('reason')}")
         
         elif action.action_type == ActionType.SMELT_ORE:
@@ -58,7 +58,7 @@ class ChemistryHandler(ActionHandler):
                 if iron_element and iron_element.discoverer_id == agent.id:
                     logger.info(f"⚗️ {agent.name} discovered iron!")
                 agent.needs.satisfy_need(NeedType.ACHIEVEMENT, 0.4)
-                return ActionResult(success=True, emotional_impact=0.5, message="Successfully smelted iron!")
+                return ActionResult(success=True, emotional_impact=0.5, message="Successfully smelted iron!", metadata={'product': 'smelted iron'})
             return ActionResult(success=False, emotional_impact=-0.2, message=f"Smelting failed: {result.get('reason')}")
         
         elif action.action_type == ActionType.DISCOVER_ELEMENT:
@@ -69,7 +69,7 @@ class ChemistryHandler(ActionHandler):
                 logger.info(f"⚗️ {agent.name} discovered {element.name}!")
                 agent.needs.satisfy_need(NeedType.GROWTH, 0.5)
                 agent.needs.satisfy_need(NeedType.ACHIEVEMENT, 0.4)
-                return ActionResult(success=True, emotional_impact=0.6, message=f"Discovered {element.name}!", metadata={'element': element.symbol})
+                return ActionResult(success=True, emotional_impact=0.6, message=f"Discovered {element.name}!", metadata={'element': element.symbol, 'product': element.name})
             return ActionResult(success=False, emotional_impact=0.05, message="Experimentation yielded no new elements")
         
         return ActionResult(success=False, emotional_impact=0.0, message="Unknown chemistry action")

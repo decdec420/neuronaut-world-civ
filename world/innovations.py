@@ -125,6 +125,29 @@ class InnovationManager:
         # Experimentation results (agents learn from trying things)
         self.experiment_log: List[Dict] = []
 
+    def record_creation(
+        self,
+        agent_id: str,
+        agent_name: str,
+        product: str,
+        discovery_type: DiscoveryType,
+        action: str,
+        items_used: Optional[List[str]] = None
+    ) -> Optional[Innovation]:
+        """Someone made `product`. The first maker in the world invents it (an
+        Innovation named after it); anyone after that has simply learned it.
+        Returns the new Innovation, or None if it already existed."""
+        by_product = self.__dict__.setdefault('innovation_by_product', {})
+        if product in by_product:
+            self.learn_innovation(agent_id, by_product[product])
+            return None
+        innovation = self.agent_discovers(agent_id, agent_name, discovery_type,
+                                          {'action': action, 'items_used': items_used or [], 'result': product})
+        innovation.name = product.replace('_', ' ')
+        innovation.description = f"First made by {agent_name} ({action.replace('_', ' ')})"
+        by_product[product] = innovation.id
+        return innovation
+
     def agent_discovers(
         self,
         agent_id: str,

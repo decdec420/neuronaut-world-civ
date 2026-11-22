@@ -421,6 +421,40 @@ class AgentUpdater:
         name = action.action_type.value
         return UNHANDLED_ACTION_FALLBACKS.get(name, name)
 
+    # Actions that can make something new, and what kind of discovery it is
+    INVENTIVE_ACTIONS = {
+        'experiment': 'item', 'discover_material': 'item', 'create_alloy': 'item',
+        'refine_material': 'item', 'perform_chemistry': 'recipe', 'smelt_ore': 'technique',
+        'discover_element': 'concept', 'discover_energy': 'concept',
+        'build_power_plant': 'method', 'build': 'method',
+    }
+
+    def _record_invention(self, agent, action_name: str, outcome: Dict, current_tick: int) -> None:
+        """Record experiments, and inventions in InnovationManager (it used to
+        be written to by nothing, so no innovation was ever recorded)."""
+        from world.innovations import DiscoveryType
+        from engine.events import EventCategory, EventImportance
+        innovations = self.sim.innovation_manager
+        if action_name == 'experiment':
+            innovations.record_experiment(agent.id, action_name, [], str(outcome.get('message', '')),
+                                          bool(outcome.get('success')))
+        kind = self.INVENTIVE_ACTIONS.get(action_name)
+        if not kind or not outcome.get('success'):
+            return
+        product = outcome.get('product') or outcome.get('discovered_material')
+        if not product and outcome.get('building_complete') and outcome.get('purpose'):
+            product = f"{outcome['purpose']} building"
+            if not any(c.intended_purpose == outcome['purpose'] for c in innovations.building_concepts.values()):
+                innovations.agent_invents_building(agent.id, agent.name, outcome['purpose'], dict(agent.inventory.items))
+        if not product:
+            return
+        invention = innovations.record_creation(agent.id, agent.name, str(product), DiscoveryType(kind), action_name)
+        if invention is not None:
+            self.sim.event_logger.log_event(
+                EventCategory.CULTURAL, EventImportance.MODERATE,
+                f"💡 {agent.name} invented {invention.name}",
+                f"{agent.name} was the first to make {invention.name}.", current_tick, [agent.id])
+
     def _observe_laws(self, agent, action_name: str, current_tick: int) -> None:
         """Record a broken law; witnesses who are citizens think less of the offender."""
         from engine.psychology import EmotionType
@@ -633,6 +667,9 @@ class AgentUpdater:
         # 7a. Remember whether it worked (shapes the rule-based brain's next choices)
         if hasattr(agent, 'action_memory'):
             agent.action_memory.record(self._resolved_name(action), bool(outcome.get('success', False)))
+
+        # 7b'. What was made: the first maker of anything invents it
+        self._record_invention(agent, self._resolved_name(action), outcome, current_tick)
 
         # 7c. Doing something your government has banned is noticed by citizens
         # nearby and costs you their regard (the law's own consequence)

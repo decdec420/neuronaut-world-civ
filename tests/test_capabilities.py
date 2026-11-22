@@ -122,3 +122,34 @@ def test_religion_found_join_ritual_temple_convert_lapse():
     rel.record_practice(a.id, 0)
     lapsed = rel.lapse_inactive_followers(rel.LAPSE_TICKS)
     assert a.id in lapsed and rel.get_agent_religion(a.id) is None
+
+
+def test_inventions_are_recorded_once_and_spread_by_teaching():
+    sim, roles = make_world()
+    a, b = roles["actor"], roles["neighbour"]
+    innovations = sim.innovation_manager
+    updater = sim._agent_updater
+
+    # A succeeds at an experiment; whatever it made is A's invention
+    for _ in range(200):
+        result = act(sim, a, "experiment")
+        updater._record_invention(a, "experiment", result.to_dict(), current_tick=1)
+        if result.success:
+            break
+    assert result.success and len(innovations.innovations) == 1
+    invention = next(iter(innovations.innovations.values()))
+    assert invention.discoverer_id == a.id
+    assert invention.name == result.metadata["discovered_material"].replace("_", " ")
+    assert innovations.experiment_log
+
+    # Making the same thing again is not a new invention
+    updater._record_invention(b, "experiment", {"success": True, "discovered_material": invention.name.replace(" ", "_")}, 2)
+    assert len(innovations.innovations) == 1 and innovations.agent_knows(b.id, invention.id)
+
+    # Teaching passes an invention on
+    c = roles["partner"]
+    assert not innovations.agent_knows(c.id, invention.id)
+    for _ in range(50):
+        if act(sim, a, "teach", target=c).success:
+            break
+    assert innovations.agent_knows(c.id, invention.id)

@@ -48,7 +48,7 @@ class EnergyHandler(ActionHandler):
                 agent.inventory.remove_item('materials', 5)
                 logger.info(f"⚡ {agent.name} built {plant.name}!")
                 agent.needs.satisfy_need(NeedType.ACHIEVEMENT, 0.5)
-                return ActionResult(success=True, emotional_impact=0.6, message=f"Built {plant.name}!", metadata={'plant_id': plant.id})
+                return ActionResult(success=True, emotional_impact=0.6, message=f"Built {plant.name}!", metadata={'plant_id': plant.id, 'product': 'power plant'})
             return ActionResult(success=False, emotional_impact=-0.1, message="Cannot build power plant")
         
         elif action.action_type == ActionType.DISCOVER_ENERGY:
@@ -60,7 +60,7 @@ class EnergyHandler(ActionHandler):
                     logger.info(f"⚡ {agent.name} discovered {source.name}!")
                     agent.needs.satisfy_need(NeedType.GROWTH, 0.5)
                     agent.needs.satisfy_need(NeedType.ACHIEVEMENT, 0.4)
-                    return ActionResult(success=True, emotional_impact=0.7, message=f"Discovered {source.name}!", metadata={'energy_type': energy_type.value})
+                    return ActionResult(success=True, emotional_impact=0.7, message=f"Discovered {source.name}!", metadata={'energy_type': energy_type.value, 'product': source.name})
             return ActionResult(success=False, emotional_impact=0.05, message="Exploration yielded no new energy sources")
         
         elif action.action_type == ActionType.OPERATE_POWER_PLANT:

@@ -489,6 +489,13 @@ class KnowledgeActionHandler(ActionHandler):
 
         if result['success']:
             agent.skills.learn_skill('teaching', 0.03)
+            # Inventions spread by teaching: pass on one the student doesn't know
+            innovations = self.context.get_system('innovation_manager')
+            if innovations is not None:
+                unknown = [i.id for i in innovations.get_agent_innovations(agent.id)
+                           if not innovations.agent_knows(target.id, i.id)]
+                if unknown:
+                    innovations.teach_innovation(agent.id, target.id, unknown[0])
             return ActionResult(
                 success=True,
                 emotional_impact=0.2,
