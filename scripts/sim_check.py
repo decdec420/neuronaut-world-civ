@@ -91,6 +91,24 @@ def emergence_metrics(sim, initial_ids, actions, successes) -> dict:
         "money": round(sum(a.wealth for a in alive), 1),
         "trades_ok": trades_ok,
         "distinct_actions": len(actions),
+        **news_metrics(sim),
+    }
+
+
+def news_metrics(sim) -> dict:
+    """How news travels (Smallville measured this): conversations held, things
+    passed on, and how far the important news got (share of the living who
+    know each major item at least a day old)."""
+    news = sim.news
+    alive = [a.id for a in sim.world.agents if a.alive]
+    now = sim.world.time.current_tick
+    major = [n for n in news.items.values() if n.importance >= 0.8 and now - n.tick >= 144]
+    reach = sorted(((news.reach(n.id, alive), n.text) for n in major), reverse=True)
+    return {
+        "conversations": news.conversations,
+        "news_passed_on": news.told,
+        "major_news_reach": round(sum(r for r, _ in reach) / len(reach), 2) if reach else None,
+        "widest_news": f"{reach[0][0]:.0%}: {reach[0][1][:60]}" if reach else None,
     }
 
 

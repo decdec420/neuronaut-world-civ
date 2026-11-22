@@ -90,6 +90,7 @@ class PerceptionBuilder:
         works = self.sim.infrastructure
         x, y, tick = agent.location.x, agent.location.y, self.sim.world.time.current_tick
         lamp = works.light_near(x, y, infra.LIGHT_RADIUS)
+        perceptions['news'] = [n.text for n in self.sim.news.heard_by(agent.id, tick, 3)]
         perceptions['works'] = {
             'road_tiles': len(works.roads),
             'on_road': (int(x), int(y)) in works.roads,

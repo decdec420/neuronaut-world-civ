@@ -815,6 +815,10 @@ Be bold! Think of something interesting to try.
                          + f". You can only: {', '.join(life['can_do'])}."]
             lines.append(" ".join(heart))
 
+        heard = perceptions.get("news")
+        if heard:
+            lines.append("News you've heard: " + "; ".join(heard) + ".")
+
         works = perceptions.get("works")
         if works:
             parts = [f"{works['road_tiles']} road tiles", f"{works['wells']} wells", f"{works['street_lights']} street lights"]
@@ -905,6 +909,30 @@ Be bold! Think of something interesting to try.
                     "each with the hour you'll start it (0-23), an action from the list, and why.\n"
                     'This time, answer as JSON: {"plan": [{"hour": 8, "action": "<action>", "why": "<reason>"}]}\n')
         return prompt, plan_schema(self.action_menu.names) if self.action_menu else None
+
+    def dialogue_prompt(self, agent, other, passed, current_tick: int):
+        """(prompt, schema): a few lines of conversation between two agents,
+        grounded in what each remembers about the other and the news they
+        just passed on (Smallville-style dialogue)."""
+        from agents.action_menu import dialogue_schema
+
+        def who(a, b):
+            p = a.personality
+            memories = a.memory_stream.retrieve(b.name, current_tick, k=3) if hasattr(a, "memory_stream") else []
+            mood = a.emotions.get_dominant_emotion()[0].value
+            lines = [f"{a.name}, {a.age}, feeling {mood}; extraversion {p.extraversion:.1f}, "
+                     f"agreeableness {p.agreeableness:.1f}."]
+            if memories:
+                lines.append(f"{a.name} remembers: " + "; ".join(m.text[:120] for m in memories))
+            return "\n".join(lines)
+
+        news = "; ".join(f"{t.name} tells {h.name}: {n.text}" for t, h, n in passed) or "nothing new"
+        prompt = (f"Two neighbours in a small village meet and talk.\n{who(agent, other)}\n{who(other, agent)}\n"
+                  f"What they pass on: {news}.\n"
+                  f"Write their short conversation: 2 to 4 lines, each one sentence, in their own voices, "
+                  f"starting with {agent.name}.\n"
+                  'Answer as JSON: {"lines": [{"speaker": "<name>", "text": "<what they say>"}]}\n')
+        return prompt, dialogue_schema({agent.name, other.name})
 
     def reflection_prompt(self, agent, current_tick: int):
         """(prompt, schema): what the agent makes of what has happened lately."""

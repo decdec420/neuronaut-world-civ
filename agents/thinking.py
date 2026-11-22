@@ -94,7 +94,7 @@ class ThinkingScheduler:
                schema: Optional[dict] = None) -> None:
         self.pending[agent_id] = (tick, kind, self.executor.submit(self.complete, prompt, schema))
         self.last_asked[agent_id] = tick
-        self.stats["asked" if kind == "decide" else f"asked_{kind}"] += 1
+        self.stats["asked" if kind == "decide" else f"asked_{kind.split(':')[0]}"] += 1
 
     def wait(self, budget: Optional[float] = None) -> None:
         """Wait up to budget seconds (default tick_budget) for calls in flight."""
@@ -117,7 +117,7 @@ class ThinkingScheduler:
             self.stats["no_answer"] += 1
             return None
         if kind != "decide":
-            self.stats[f"got_{kind}"] += 1
+            self.stats[f"got_{kind.split(':')[0]}"] += 1
             return kind, answer
         if tick - asked > self.max_age:
             self.stats["stale"] += 1

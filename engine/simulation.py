@@ -235,6 +235,9 @@ class SimulationEngine:
         self.death_causes = {}
         # Partnerships formed, separations, births... (engine/handlers/family.py)
         self.life_events = collections.Counter()
+        # Who knows what, and conversations that pass it on (world/news.py)
+        from world.news import NewsNetwork
+        self.news = NewsNetwork()
         # Successful actions by kind, and the village's history (engine/chronicle.py)
         self.action_successes = collections.Counter()
         self.products = collections.Counter()  # things made (glass, steel, coins...), by name
@@ -756,10 +759,21 @@ class SimulationEngine:
     def _remember_event(self, event) -> None:
         importance = self.EVENT_MEMORY_IMPORTANCE.get(event.importance.value, 0.3)
         text = f"{event.title}: {event.description}" if event.description else event.title
+        involved = []
         for agent_id in set(event.agents_involved or ()):
             agent = self._get_agent_by_id(agent_id)
             if agent is not None and agent.alive:
                 agent.memory_stream.add(event.tick, text, importance)
+                involved.append(agent)
+        # Something that matters becomes news: those involved know it, and so
+        # does anyone near enough to have seen it (world/news.py)
+        if event.importance.value >= 2:
+            places = [(event.location['x'], event.location['y'])] if event.location and 'x' in event.location \
+                else [(a.location.x, a.location.y) for a in involved]
+            knowers = {a.id for a in involved}
+            for x, y in places:
+                knowers.update(self.news.witnesses(self.world.agents, x, y))
+            self.news.publish(event.tick, event.title, importance, knowers, about=[a.id for a in involved])
 
     def _get_agent_by_id(self, agent_id: str) -> Optional[Agent]:
         """Get agent by ID."""

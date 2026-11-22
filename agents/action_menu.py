@@ -338,3 +338,26 @@ def _short(text: str, limit: int = 200) -> str:
         return text
     cut = max(text.rfind(". ", 0, limit), text.rfind("; ", 0, limit))
     return text[:cut + 1] if cut > 40 else text[:limit].rsplit(" ", 1)[0] + "..."
+
+
+def dialogue_schema(names) -> Dict:
+    return {
+        "type": "object",
+        "properties": {"lines": {"type": "array", "minItems": 2, "maxItems": 4, "items": {
+            "type": "object",
+            "properties": {"speaker": {"type": "string", "enum": sorted(names)}, "text": {"type": "string"}},
+            "required": ["speaker", "text"]}}},
+        "required": ["lines"],
+    }
+
+
+def parse_dialogue(text: str, names) -> List[tuple]:
+    """[(speaker, line)] from {"lines": [{"speaker", "text"}]}; only the two
+    speakers, at most 4 lines, each kept short."""
+    answer = _json_answer(text or "")
+    lines = answer.get("lines") if answer else None
+    out = []
+    for item in lines if isinstance(lines, list) else []:
+        if isinstance(item, dict) and item.get("speaker") in names and str(item.get("text") or "").strip():
+            out.append((item["speaker"], _short(str(item["text"]).strip(), 160)))
+    return out[:4]

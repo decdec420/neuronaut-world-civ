@@ -121,6 +121,8 @@ class AgentUpdater:
             plan = parse_plan(answer, self.sim.llm_brain.action_menu.names)
             stream.set_plan(self.sim.world.time.day, current_tick, plan)
             self.thinking.stats["plans" if plan else "unreadable_plans"] += 1
+        elif kind.startswith("talk:"):
+            self._apply_dialogue(agent, kind.split(":", 1)[1], answer, current_tick)
         elif kind == "reflect":
             insights = parse_insights(answer)
             added = stream.reflected(current_tick, insights)
@@ -411,6 +413,47 @@ class AgentUpdater:
             agent.shift_job = job_for(self._resolved_name(action), agent.work_life.job) if part_of_day == WORK else None
         agent.current_action = action
         return action, current_goal
+
+    def _apply_dialogue(self, agent, other_id: str, answer: str, current_tick: int) -> None:
+        """A conversation the model wrote: both remember it; the village log
+        and the chronicle keep its words."""
+        from agents.action_menu import parse_dialogue
+        from engine.events import EventCategory, EventImportance
+        other = self.sim._get_agent_by_id(other_id)
+        if other is None:
+            return
+        lines = parse_dialogue(answer, {agent.name, other.name})
+        if not lines:
+            self.thinking.stats["unreadable_talks"] += 1
+            return
+        self.thinking.stats["talks"] += 1
+        said = " / ".join(f"{who}: {text}" for who, text in lines)
+        for who in (agent, other):
+            who.memory_stream.add(current_tick, f"Talked with {other.name if who is agent else agent.name}: {said}", 0.4)
+        self.sim.chronicle.voice(current_tick, lines[0][0], lines[0][1], about=f"talking with "
+                                 f"{other.name if lines[0][0] == agent.name else agent.name}")
+        self.sim.event_logger.log_event(EventCategory.SOCIAL, EventImportance.MINOR,
+                                        f"💬 {agent.name} and {other.name} talked", said[:300],
+                                        current_tick, [agent.id, other.id])
+
+    def _converse(self, agent, action, current_tick: int) -> None:
+        """Talking passes news on (world/news.py): socializing both ways, a
+        story one way. With a model, the two may also have a few lines of
+        dialogue, written in the background (kind "talk")."""
+        name = self._resolved_name(action)
+        if name not in ('socialize', 'tell_story') or not action.target_agent:
+            return
+        other = self.sim._get_agent_by_id(action.target_agent)
+        if other is None or not other.alive:
+            return
+        passed = self.sim.news.converse(agent, other, current_tick, both_ways=(name == 'socialize'))
+        thinking = self.thinking
+        if (thinking is not None and name == 'socialize' and self._wants_to_think(agent)
+                and hasattr(other, 'autonomous_decide') and agent.id not in thinking.pending
+                and agent.id not in thinking.ready and len(thinking.pending) < thinking.workers
+                and self.sim.llm_brain.providers_to_try()):
+            prompt, schema = self.sim.llm_brain.dialogue_prompt(agent, other, passed, current_tick)
+            thinking.submit(agent.id, prompt, current_tick, f"talk:{other.id}", schema)
 
     def _remember_action(self, agent, action, outcome: Dict, current_tick: int) -> None:
         """A first-person memory of what the agent did and how it went; what
@@ -707,6 +750,7 @@ class AgentUpdater:
 
         # 6b. The village's record: counts, and any first (engine/chronicle.py)
         if outcome.get('success', False):
+            self._converse(agent, action, current_tick)
             self.sim.action_successes[self._resolved_name(action)] += 1
             if outcome.get('product'):
                 self.sim.products[str(outcome['product'])] += 1
