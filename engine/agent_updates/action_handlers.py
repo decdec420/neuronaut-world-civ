@@ -340,12 +340,8 @@ class ActionHandlers:
                 )
             else:
                 # Navigate toward remembered location
-                next_step = self.sim.pathfinder.get_next_step(
-                    agent.location.x, agent.location.y,
-                    target_x, target_y
-                )
-                if next_step:
-                    agent.location = Position(next_step[0], next_step[1])
+                # One step (several along a road), and the walk is remembered
+                self.sim.infrastructure.step_toward(agent, self.sim.pathfinder, target_x, target_y, current_tick)
 
                 return {
                     'success': True,
@@ -371,13 +367,9 @@ class ActionHandlers:
 
         # If too far, navigate closer
         if distance > 3.0:
-            next_step = self.sim.pathfinder.get_next_step(
-                agent.location.x, agent.location.y,
-                resource.location.x, resource.location.y
-            )
-
-            if next_step:
-                agent.location = Position(next_step[0], next_step[1])
+            # One step (several along a road), and the walk is remembered
+            if self.sim.infrastructure.step_toward(agent, self.sim.pathfinder,
+                                                   resource.location.x, resource.location.y, current_tick):
                 # Remember this resource location
                 self.sim.resource_memory.remember_resource(
                     agent.id,
@@ -838,12 +830,8 @@ class ActionHandlers:
                 )
             else:
                 # Navigate toward remembered location
-                next_step = self.sim.pathfinder.get_next_step(
-                    agent.location.x, agent.location.y,
-                    target_x, target_y
-                )
-                if next_step:
-                    agent.location = Position(next_step[0], next_step[1])
+                # One step (several along a road), and the walk is remembered
+                self.sim.infrastructure.step_toward(agent, self.sim.pathfinder, target_x, target_y, current_tick)
 
                 return {
                     'success': True,
@@ -892,13 +880,9 @@ class ActionHandlers:
 
         # If too far, navigate closer
         if distance > 3.0:
-            next_step = self.sim.pathfinder.get_next_step(
-                agent.location.x, agent.location.y,
-                resource.location.x, resource.location.y
-            )
-
-            if next_step:
-                agent.location = Position(next_step[0], next_step[1])
+            # One step (several along a road), and the walk is remembered
+            if self.sim.infrastructure.step_toward(agent, self.sim.pathfinder,
+                                                   resource.location.x, resource.location.y, current_tick):
                 # Remember this resource location
                 self.sim.resource_memory.remember_resource(
                     agent.id,

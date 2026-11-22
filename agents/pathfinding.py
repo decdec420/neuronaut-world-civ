@@ -147,11 +147,15 @@ class Pathfinder:
         return math.sqrt(dx * dx + dy * dy)
 
     def _movement_cost(self, x1: int, y1: int, x2: int, y2: int) -> float:
-        """Cost to move from one tile to another"""
+        """Cost to move from one tile to another (road tiles cost less, so
+        paths follow roads agents have built: world/infrastructure.py)"""
         # Diagonal movement costs more
-        if abs(x1 - x2) == 1 and abs(y1 - y2) == 1:
-            return 1.414  # sqrt(2)
-        return 1.0
+        cost = 1.414 if abs(x1 - x2) == 1 and abs(y1 - y2) == 1 else 1.0
+        roads = getattr(self, 'road_tiles', None)
+        if roads and (x2, y2) in roads:
+            from world.infrastructure import ROAD_COST
+            cost *= ROAD_COST
+        return cost
 
     def _get_neighbors(self, x: int, y: int) -> List[Tuple[int, int]]:
         """Get valid neighboring positions (8-directional)"""

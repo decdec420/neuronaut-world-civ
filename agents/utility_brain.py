@@ -55,6 +55,10 @@ ACTION_NEEDS: Dict[str, Dict[N, float]] = {
     "chop_wood": {N.RESOURCES: 0.8, N.SECURITY: 0.2},
     "mine": {N.RESOURCES: 0.8, N.SECURITY: 0.2},
     "build": {N.SHELTER: 0.5, N.SECURITY: 0.2, N.ACHIEVEMENT: 0.3},
+    # Public works (world/infrastructure.py); see also _state_pull
+    "build_road": {N.ACHIEVEMENT: 0.4, N.BELONGING: 0.3, N.STATUS: 0.3},
+    "dig_well": {N.THIRST: 0.4, N.SECURITY: 0.3, N.ACHIEVEMENT: 0.3},
+    "build_streetlight": {N.SECURITY: 0.4, N.BELONGING: 0.3, N.CREATIVITY: 0.3},
     "experiment": {N.CREATIVITY: 0.4, N.ACHIEVEMENT: 0.3, N.GROWTH: 0.3},
     "smelt_ore": {N.ACHIEVEMENT: 0.4, N.GROWTH: 0.3, N.RESOURCES: 0.3},
     "refine_material": {N.ACHIEVEMENT: 0.4, N.GROWTH: 0.3, N.RESOURCES: 0.3},
@@ -118,6 +122,9 @@ ACTION_TRAITS: Dict[str, Dict[str, float]] = {
     "chop_wood": {"conscientiousness": 0.4},
     "mine": {"conscientiousness": 0.4, "risk_taking": 0.2},
     "build": {"conscientiousness": 0.5, "ambition": 0.3},
+    "build_road": {"conscientiousness": 0.4, "agreeableness": 0.3, "ambition": 0.2},
+    "dig_well": {"conscientiousness": 0.4, "agreeableness": 0.3},
+    "build_streetlight": {"creativity": 0.3, "agreeableness": 0.3, "conscientiousness": 0.2},
     "experiment": {"openness": 0.5, "creativity": 0.5},
     "smelt_ore": {"rationality": 0.5, "conscientiousness": 0.3},
     "refine_material": {"rationality": 0.5, "conscientiousness": 0.3},
@@ -180,6 +187,7 @@ UNANSWERED_PENALTY = 0.5 # someone you courted who never answered: less
 FAMILY_WEIGHT = 1.0      # wanting a child (or not), and a partner who does
 CARE_WEIGHT = 1.5        # a child who needs looking after
 OTHERS_CHILD_BOND = 0.3  # someone else's child pulls less than your own
+WALKING_PULL = 1.0       # an agent who walks a lot is drawn to pave and dig wells
 NIGHT_REST_PULL = 2.5
 WORK_PULL = 0.3
 OWN_JOB_PULL = 0.6
@@ -269,7 +277,18 @@ class UtilityBrain:
 
         return (NEED_WEIGHT * need_term + TRAIT_WEIGHT * trait_term + MEMORY_WEIGHT * memory_term
                 + person_weight * liking_term + plan_term - DANGER_WEIGHT * danger_term
-                - LAW_WEIGHT * law_term)
+                - LAW_WEIGHT * law_term + self._state_pull(agent, action))
+
+    def _state_pull(self, agent, action: str) -> float:
+        """What the agent's own life adds: one who has been walking a lot feels
+        the need for roads (and for water closer by)."""
+        if action not in ("build_road", "dig_well"):
+            return 0.0
+        works = getattr(self.sim, "infrastructure", None)
+        if works is None:
+            return 0.0
+        burden = works.walking_burden(agent.id, self.sim.world.time.current_tick)
+        return WALKING_PULL * burden * (1.0 if action == "build_road" else 0.5)
 
     # -- targets -------------------------------------------------------------
 

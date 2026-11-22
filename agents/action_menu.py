@@ -52,7 +52,12 @@ ACTION_INFO = {
     "heal": ("health", "treat someone who is sick (TARGET)"),
     "cure": ("health", "cure someone's illness (TARGET)"),
     "diagnose": ("health", "find out what ails someone (TARGET)"),
-    "gather_materials": ("building", "collect wood, stone, clay or fiber"),
+    "gather_materials": ("building", "collect wood, stone, clay, fiber or sand"),
+    "build_road": ("building", "pave a road toward the place you walk to most (2 stone a tile); "
+                               "walking on roads is three times faster"),
+    "dig_well": ("building", "dig a well here (10 stone, 2 wood): water close at hand for everyone"),
+    "build_streetlight": ("building", "put up a street light here (glass, a post, fuel to burn) "
+                                      "or add fuel to one nearby; it lights the night"),
     "chop_wood": ("building", "cut wood"),
     "mine": ("building", "dig stone or ore"),
     "build": ("building", "build a home, workshop, store or hall"),

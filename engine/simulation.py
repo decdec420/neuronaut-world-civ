@@ -64,6 +64,7 @@ from engine.handlers import (
     MaterialsHandler,
     AdvancedEconomyHandler,
     FamilyHandler,
+    InfrastructureHandler,
 )
 
 # UTILITIES
@@ -303,6 +304,11 @@ class SimulationEngine:
 
         # Pathfinding
         self.pathfinder = systems['pathfinder']
+        # Roads, wells and street lights agents build (world/infrastructure.py);
+        # paths prefer road tiles
+        from world.infrastructure import Infrastructure
+        self.infrastructure = Infrastructure(self.world.map.width, self.world.map.height)
+        self.pathfinder.road_tiles = self.infrastructure.roads
         self.resource_memory = systems['resource_memory']
 
         # Weather and disasters
@@ -358,6 +364,9 @@ class SimulationEngine:
 
             # Romance and family
             FamilyHandler(self._action_context),
+
+            # Public works: roads, wells, street lights
+            InfrastructureHandler(self._action_context),
         ]
 
         self._handler_registry.register_multiple(handlers)
@@ -572,6 +581,9 @@ class SimulationEngine:
         # Birthdays, life stages, old age; then every new death, once
         self.lifecycle_manager.update_aging(current_tick)
         self.lifecycle_manager.handle_deaths()
+
+        # Street lights burn and light the night (world/infrastructure.py)
+        self.infrastructure.update_lights(self.world, current_tick)
 
         # Write down any firsts and milestones (engine/chronicle.py)
         self.chronicle.observe(self, current_tick)

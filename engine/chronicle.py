@@ -106,6 +106,12 @@ class Chronicle:
             self.first("first_temple", tick, f"First temple, built by {name}", "", [name])
         elif action == "create_art":
             self.first("first_art", tick, f"First work of art, by {name}", str(outcome.get("message", "")), [name])
+        elif action == "refine_material" and outcome.get("product") in ("glass", "iron", "copper"):
+            product = outcome["product"]
+            self.first(f"first_{product}", tick, f"First {product}, made by {name}", str(outcome.get("message", "")), [name])
+        elif action == "create_alloy" and outcome.get("product"):
+            product = outcome["product"]
+            self.first(f"first_{product}", tick, f"First {product}, made by {name}", "", [name])
         elif action == "teach":
             self.first("first_lesson", tick, f"First lesson: {name} taught{' ' + target.name if target else ''}",
                        "", [name, target.name if target else None])
@@ -197,6 +203,23 @@ class Chronicle:
                 self.first("first_job", tick, f"First trade of one's own: {worker.name}",
                            f"{worker.name} works as a {worker.work_life.to_dict().get('job_title', 'worker')}.",
                            [worker.name])
+
+        works = getattr(sim, "infrastructure", None)
+        if works is not None:
+            if "first_road" not in self.done and works.roads:
+                self.first("first_road", tick, "First road laid", f"{len(works.roads)} tiles paved.", [])
+            if "first_well" not in self.done and works.wells:
+                well = next(iter(works.wells.values()))
+                self.first("first_well", tick, f"First well, dug by {name_of(well.builder)}", "", [name_of(well.builder)])
+            if "first_streetlight" not in self.done and works.lights:
+                lamp = next(iter(works.lights.values()))
+                self.first("first_streetlight", tick, f"First street light, put up by {name_of(lamp.builder)}",
+                           "A glass lamp to light the night.", [name_of(lamp.builder)])
+            if "first_lit_night" not in self.done and any(l.lit for l in works.lights.values()):
+                self.first("first_lit_night", tick, "The first night with a street lit", "", [])
+            for n in (50, 200, 500):
+                if len(works.roads) >= n:
+                    self.milestone(f"roads_{n}", tick, f"{n} tiles of road")
 
         # Milestones: population, eras
         alive = sum(1 for a in sim.world.agents if a.alive)

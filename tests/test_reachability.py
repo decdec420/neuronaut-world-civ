@@ -61,6 +61,8 @@ PREPARE = {
     "join_tax_revolt": ["<taxed by own government>"],
     "try_for_child": ["<partner wants a child>"],
     "care_for_child": ["<a baby is born>"],
+    "build_road": ["<walks to the same place a few times>"],
+    "build_streetlight": ["<makes glass>"],
 }
 PREP_TRIES = 60
 
@@ -231,6 +233,16 @@ def prepare(sim, roles, name: str):
                 ok, why = attempt_as(sim, who, name, params)
                 if not ok:
                     return f"first needs {who.name} to {name}, which failed ({why})"
+            continue
+        if step == "<walks to the same place a few times>":
+            actor = roles["actor"]
+            for tick in range(8):
+                sim.infrastructure.step_toward(actor, sim.pathfinder, 80, 80, tick)
+            continue
+        if step == "<makes glass>":
+            ok, why = attempt_as(sim, roles["actor"], "refine_material", {"details": "sand into glass"})
+            if not ok:
+                return f"first needs glass, which failed ({why})"
             continue
         if step == "<partner wants a child>":
             ok, why = attempt_as(sim, roles["partner"], "try_for_child", {})

@@ -79,7 +79,27 @@ class PerceptionBuilder:
         perceptions = self._add_religious_info(agent, perceptions)
         perceptions = self._add_strategic_info(agent, perceptions)
         perceptions = self._add_social_info(agent, perceptions)
+        perceptions = self._add_works_info(agent, perceptions)
 
+        return perceptions
+
+    def _add_works_info(self, agent, perceptions: Dict) -> Dict:
+        """Roads, wells and street lights (world/infrastructure.py), as the agent
+        would see them: what's near, what the village has, how much it walks."""
+        from world import infrastructure as infra
+        works = self.sim.infrastructure
+        x, y, tick = agent.location.x, agent.location.y, self.sim.world.time.current_tick
+        lamp = works.light_near(x, y, infra.LIGHT_RADIUS)
+        perceptions['works'] = {
+            'road_tiles': len(works.roads),
+            'on_road': (int(x), int(y)) in works.roads,
+            'wells': len(works.wells),
+            'well_nearby': works.well_near(x, y, infra.WELL_SPACING) is not None,
+            'street_lights': len(works.lights),
+            'lit_lamp_nearby': bool(lamp and lamp.lit),
+            'lamp_needs_fuel': bool(lamp and lamp.fuel == 0),
+            'walking_lately': round(works.walking_burden(agent.id, tick), 2),
+        }
         return perceptions
 
     def _add_social_info(self, agent, perceptions: Dict) -> Dict:

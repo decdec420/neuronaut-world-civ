@@ -124,6 +124,11 @@ class ActionType(Enum):
     SEPARATE = "separate"
     TRY_FOR_CHILD = "try_for_child"
 
+    # ===== PUBLIC WORKS (world/infrastructure.py) =====
+    BUILD_ROAD = "build_road"
+    DIG_WELL = "dig_well"
+    BUILD_STREETLIGHT = "build_streetlight"
+
     # ===== ECONOMIC & TRADE =====
     TRADE = "trade"
     SELL = "sell"

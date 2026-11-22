@@ -815,6 +815,20 @@ Be bold! Think of something interesting to try.
                          + f". You can only: {', '.join(life['can_do'])}."]
             lines.append(" ".join(heart))
 
+        works = perceptions.get("works")
+        if works:
+            parts = [f"{works['road_tiles']} road tiles", f"{works['wells']} wells", f"{works['street_lights']} street lights"]
+            notes = []
+            if works.get("lit_lamp_nearby"):
+                notes.append("a street light is lit near you")
+            elif works.get("lamp_needs_fuel"):
+                notes.append("the street light near you has no fuel")
+            if works.get("well_nearby"):
+                notes.append("there is a well nearby")
+            if works.get("walking_lately", 0) > 0.5:
+                notes.append("you have been walking a lot lately")
+            lines.append("The village has " + ", ".join(parts) + (" (" + "; ".join(notes) + ")" if notes else "") + ".")
+
         known = perceptions.get("relationships", [])
         if known:
             lines.append("People you know: " + "; ".join(
