@@ -1138,6 +1138,12 @@ class Agent:
                         priority=priority
                     ))
 
+        # A full inventory can't take more materials; offering these would make
+        # the agent fail the same gather every tick.
+        if self.inventory.get_total_items() >= self.inventory.capacity:
+            actions = [a for a in actions if a.action_type not in
+                       (ActionType.GATHER_MATERIALS, ActionType.CHOP_WOOD, ActionType.MINE)]
+
         # Explore if nothing else to do
         if len(actions) <= 1:  # Only idle
             # Random exploration

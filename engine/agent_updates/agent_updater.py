@@ -398,7 +398,7 @@ class AgentUpdater:
                         handler = self.sim._handler_registry.get_handler(ActionType(resolved))
                         if handler is not None and handler.validate(agent, Action(ActionType(resolved)))[0]:
                             action = candidate
-                        elif resolved == 'build':
+                        elif resolved == 'build' and self._can_run(agent, Action(ActionType.GATHER_MATERIALS)):
                             # Wants to build but lacks materials: go get them
                             action = Action(ActionType.GATHER_MATERIALS)
                     except (ValueError, KeyError, AttributeError):

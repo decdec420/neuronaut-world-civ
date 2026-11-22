@@ -479,8 +479,13 @@ class ActionHandlers:
         - Trade with others
         """
         # Determine what material to gather based on availability and need
-        # Priority: stone > wood > clay > metal_ore (if unlocked)
         material_priority = ['stone', 'wood', 'clay', 'plant_fiber', 'metal_ore', 'iron_ore']
+        # Gather what the agent holds least of first (ties keep the order above).
+        # Buildings need a mix (a shelter is wood, stone, fiber and clay); always
+        # taking stone first filled every inventory with stone, after which no
+        # building could be designed and every gather failed on a full inventory.
+        held = agent.inventory.items
+        material_priority.sort(key=lambda m: held.get(m, 0))
 
         gathered_material = None
         gathered_amount = 0
@@ -683,6 +688,10 @@ class ActionHandlers:
         skill_bonus = 1.0 + (gathering_skill * 0.5)
 
         amount_to_gather = base_amount * efficiency_multiplier * skill_bonus
+        # Only take what the agent can carry; otherwise add_item fails silently
+        # and the wood is lost from the world while the chop reports success.
+        space = agent.inventory.capacity - agent.inventory.get_total_items()
+        amount_to_gather = min(amount_to_gather, float(max(0, space)))
         actual_amount = self.sim.world.harvest_from_pool('wood', amount_to_gather)
 
         if actual_amount > 0:

@@ -165,6 +165,11 @@ class ResourceGatheringHandler(ActionHandler):
             energy_valid = (True, "")
         else:
             energy_valid = validate_agent_energy(agent, self.MIN_ENERGY_FOR_GATHERING)
+            # Materials can't be carried once the inventory is full. Reject here so
+            # the agent picks something else instead of failing every tick (food and
+            # water are eaten/drunk on the spot, so they are never blocked).
+            if agent.inventory.get_total_items() >= agent.inventory.capacity:
+                return combine_validations(alive_valid, (False, "Inventory full"))
 
         # Combine validations - returns first failure or (True, "") if all pass
         return combine_validations(alive_valid, energy_valid)
