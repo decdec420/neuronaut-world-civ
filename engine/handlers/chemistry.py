@@ -43,8 +43,8 @@ class ChemistryHandler(ActionHandler):
                     compound = chemistry.discover_compound(product_formula, agent.id, current_tick)
                     if compound and compound.discoverer_id == agent.id:
                         logger.info(f"⚗️ {agent.name} discovered {compound.name}!")
-                agent.needs.satisfy_need(NeedType.LEARNING, 0.3)
-                agent.needs.satisfy_need(NeedType.MASTERY, 0.2)
+                agent.needs.satisfy_need(NeedType.GROWTH, 0.3)
+                agent.needs.satisfy_need(NeedType.ACHIEVEMENT, 0.2)
                 return ActionResult(success=True, emotional_impact=0.4, message=f"Chemical reaction: {result.get('reaction_type')}")
             return ActionResult(success=False, emotional_impact=-0.1, message=f"Reaction failed: {result.get('reason')}")
         
@@ -57,7 +57,7 @@ class ChemistryHandler(ActionHandler):
                 iron_element = chemistry.discover_element('Fe', agent.id, current_tick)
                 if iron_element and iron_element.discoverer_id == agent.id:
                     logger.info(f"⚗️ {agent.name} discovered iron!")
-                agent.needs.satisfy_need(NeedType.MASTERY, 0.4)
+                agent.needs.satisfy_need(NeedType.ACHIEVEMENT, 0.4)
                 return ActionResult(success=True, emotional_impact=0.5, message="Successfully smelted iron!")
             return ActionResult(success=False, emotional_impact=-0.2, message=f"Smelting failed: {result.get('reason')}")
         
@@ -67,8 +67,8 @@ class ChemistryHandler(ActionHandler):
                 element = random.choice(undiscovered)
                 chemistry.discover_element(element.symbol, agent.id, current_tick)
                 logger.info(f"⚗️ {agent.name} discovered {element.name}!")
-                agent.needs.satisfy_need(NeedType.LEARNING, 0.5)
-                agent.needs.satisfy_need(NeedType.MASTERY, 0.4)
+                agent.needs.satisfy_need(NeedType.GROWTH, 0.5)
+                agent.needs.satisfy_need(NeedType.ACHIEVEMENT, 0.4)
                 return ActionResult(success=True, emotional_impact=0.6, message=f"Discovered {element.name}!", metadata={'element': element.symbol})
             return ActionResult(success=False, emotional_impact=0.05, message="Experimentation yielded no new elements")
         

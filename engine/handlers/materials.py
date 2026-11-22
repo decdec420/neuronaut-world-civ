@@ -34,8 +34,8 @@ class MaterialsHandler(ActionHandler):
                 material_id, material = random.choice(undiscovered)
                 materials_science.discover_material(material_id, agent.id, current_tick)
                 logger.info(f"🔬 {agent.name} discovered {material.name}!")
-                agent.needs.satisfy_need(NeedType.LEARNING, 0.5)
-                agent.needs.satisfy_need(NeedType.MASTERY, 0.4)
+                agent.needs.satisfy_need(NeedType.GROWTH, 0.5)
+                agent.needs.satisfy_need(NeedType.ACHIEVEMENT, 0.4)
                 emotional_impact = 0.7 if material.unlocks_era else 0.5
                 return ActionResult(success=True, emotional_impact=emotional_impact, message=f"Discovered {material.name}!", metadata={'material_id': material_id})
             return ActionResult(success=False, emotional_impact=0.05, message="Material research yielded no discoveries")
@@ -49,7 +49,7 @@ class MaterialsHandler(ActionHandler):
                     agent.inventory.remove_item('carbon', 1)
                     agent.inventory.add_item('steel', 2)
                     logger.info(f"🔬 {agent.name} created steel!")
-                    agent.needs.satisfy_need(NeedType.MASTERY, 0.6)
+                    agent.needs.satisfy_need(NeedType.ACHIEVEMENT, 0.6)
                     return ActionResult(success=True, emotional_impact=0.8, message="Created steel!", metadata={'alloy': 'steel'})
             
             if agent.inventory.has_item('copper') and agent.inventory.has_item('tin'):
@@ -60,7 +60,7 @@ class MaterialsHandler(ActionHandler):
                     agent.inventory.remove_item('tin', 1)
                     agent.inventory.add_item('bronze', 4)
                     logger.info(f"🔬 {agent.name} created bronze!")
-                    agent.needs.satisfy_need(NeedType.MASTERY, 0.7)
+                    agent.needs.satisfy_need(NeedType.ACHIEVEMENT, 0.7)
                     return ActionResult(success=True, emotional_impact=0.9, message="Created bronze! Bronze Age begins!", metadata={'alloy': 'bronze'})
             
             return ActionResult(success=False, emotional_impact=-0.1, message="Missing materials for alloy creation")
@@ -72,7 +72,7 @@ class MaterialsHandler(ActionHandler):
                     agent.inventory.remove_item('iron_ore', 1)
                     agent.inventory.add_item('iron', 1)
                     logger.info(f"🔬 {agent.name} refined iron ore → iron")
-                    agent.needs.satisfy_need(NeedType.MASTERY, 0.3)
+                    agent.needs.satisfy_need(NeedType.ACHIEVEMENT, 0.3)
                     return ActionResult(success=True, emotional_impact=0.4, message="Refined iron ore into iron", metadata={'material': 'iron'})
             elif agent.inventory.has_item('sand'):
                 result = materials_science.process_material('glass', {'sand': agent.inventory.items.get('sand', 0)}, has_heat=True, temperature=1400)
@@ -80,7 +80,7 @@ class MaterialsHandler(ActionHandler):
                     agent.inventory.remove_item('sand', 1)
                     agent.inventory.add_item('glass', 1)
                     logger.info(f"🔬 {agent.name} made glass")
-                    agent.needs.satisfy_need(NeedType.MASTERY, 0.3)
+                    agent.needs.satisfy_need(NeedType.ACHIEVEMENT, 0.3)
                     return ActionResult(success=True, emotional_impact=0.4, message="Created glass from sand", metadata={'material': 'glass'})
             
             return ActionResult(success=False, emotional_impact=0.0, message="No raw materials to refine")

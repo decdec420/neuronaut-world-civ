@@ -97,7 +97,7 @@ class ReligionHandler(ActionHandler):
 
             if is_priest:
                 agent.needs.satisfy_need(NeedType.MEANING, 0.3)
-                agent.needs.satisfy_need(NeedType.LEADERSHIP, 0.2)
+                agent.needs.satisfy_need(NeedType.STATUS, 0.2)
             else:
                 agent.needs.satisfy_need(NeedType.MEANING, 0.2)
 

@@ -60,7 +60,9 @@ class GovernanceHandler(ActionHandler):
 
         if action.action_type == ActionType.GOVERN:
             # Determine government type
-            if agent.personality.dominance > 0.7:
+            # (there is no "dominance" trait; this used to raise AttributeError,
+            # so no government could ever be founded)
+            if agent.personality.aggression > 0.7:
                 gov_type = GovernmentType.STRONGMAN
             elif agent.personality.conscientiousness > 0.7:
                 gov_type = GovernmentType.COUNCIL
@@ -146,7 +148,7 @@ class GovernanceHandler(ActionHandler):
                 law = governance_manager.laws[vote_target]
                 vote_str = "supported" if support else "opposed"
                 logger.info(f"🗳️ {agent.name} {vote_str} law: {law.name}")
-                agent.needs.satisfy_need(NeedType.AUTONOMY, 0.2)
+                agent.needs.satisfy_need(NeedType.STATUS, 0.2)
                 return ActionResult(success=True, emotional_impact=0.2, message=f"Voted on {law.name}", metadata={'vote_type': 'law'})
 
             # Try voting in election
@@ -158,7 +160,7 @@ class GovernanceHandler(ActionHandler):
                 success = governance_manager.cast_vote(agent.id, vote_target, candidate_id)
                 if success:
                     logger.info(f"🗳️ {agent.name} voted in election")
-                    agent.needs.satisfy_need(NeedType.AUTONOMY, 0.3)
+                    agent.needs.satisfy_need(NeedType.STATUS, 0.3)
                     return ActionResult(success=True, emotional_impact=0.2, message="Voted in election", metadata={'vote_type': 'election'})
                 else:
                     return ActionResult(success=False, emotional_impact=-0.1, message="Cannot vote in this election")

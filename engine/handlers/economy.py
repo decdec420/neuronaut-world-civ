@@ -35,7 +35,19 @@ class AdvancedEconomyHandler(ActionHandler):
         if action.action_type == ActionType.SEND_CARAVAN:
             if agent.wealth < 50:
                 return False, "Not enough wealth to send caravan"
-        
+
+        # Reject what can only fail, so the agent picks something else
+        economy = self.context.get_system('economy')
+        if action.action_type == ActionType.APPLY_FOR_LOAN:
+            banks = economy.banking.banks.values() if economy else []
+            if not any(((agent.location.x - b.location[0]) ** 2 + (agent.location.y - b.location[1]) ** 2) ** 0.5 <= 30.0
+                       for b in banks):
+                return False, "No bank nearby"
+        if action.action_type == ActionType.JOIN_TAX_REVOLT:
+            revolts = economy.taxation.revolts.values() if economy else []
+            if not any(r.active and agent.id not in r.participants for r in revolts):
+                return False, "No tax revolts to join"
+
         return True, ""
 
     def execute(self, agent: 'Agent', action: 'Action') -> ActionResult:
@@ -73,7 +85,7 @@ class AdvancedEconomyHandler(ActionHandler):
                 agent.inventory.remove_item(ore_type, 1)
                 agent.wealth += result['coins_minted']
                 logger.info(f"🪙 {agent.name} minted {result['coins_minted']} coins!")
-                agent.needs.satisfy_need(NeedType.MASTERY, 0.3)
+                agent.needs.satisfy_need(NeedType.ACHIEVEMENT, 0.3)
                 return ActionResult(success=True, emotional_impact=0.5, message=f"Minted {result['coins_minted']} coins!", metadata={'coins': result['coins_minted']})
             return ActionResult(success=False, emotional_impact=-0.2, message=result.get('reason', 'Minting failed'))
         
@@ -82,7 +94,7 @@ class AdvancedEconomyHandler(ActionHandler):
             bank = economy.banking.found_bank(agent.id, (agent.location.x, agent.location.y), initial_capital, current_tick)
             agent.wealth -= initial_capital
             logger.info(f"🏦 {agent.name} opened a bank!")
-            agent.needs.satisfy_need(NeedType.MASTERY, 0.5)
+            agent.needs.satisfy_need(NeedType.ACHIEVEMENT, 0.5)
             return ActionResult(success=True, emotional_impact=0.7, message="Opened a bank!", metadata={'bank_id': bank.id})
         
         elif action.action_type == ActionType.APPLY_FOR_LOAN:
@@ -110,19 +122,19 @@ class AdvancedEconomyHandler(ActionHandler):
             return ActionResult(success=False, emotional_impact=-0.3, message=result.get('reason', 'Loan denied'))
         
         elif action.action_type == ActionType.JOIN_TAX_REVOLT:
-            active_revolts = [r for r in economy.taxation.tax_revolts.values() if not r.succeeded and agent.id not in r.participants]
+            active_revolts = [r for r in economy.taxation.revolts.values() if r.active and agent.id not in r.participants]
             if not active_revolts:
                 return ActionResult(success=False, emotional_impact=0.0, message="No tax revolts to join")
             
             revolt = active_revolts[0]
             revolt.participants.add(agent.id)
             logger.info(f"✊ {agent.name} joined tax revolt!")
-            agent.needs.satisfy_need(NeedType.AUTONOMY, 0.4)
+            agent.needs.satisfy_need(NeedType.STATUS, 0.4)
             agent.emotions.trigger_emotion(EmotionType.ANGER, 0.3)
             return ActionResult(success=True, emotional_impact=0.3, message=f"Joined tax revolt with {len(revolt.participants)} others!", metadata={'revolt_size': len(revolt.participants)})
         
         elif action.action_type == ActionType.SEND_CARAVAN:
-            dest_x, dest_y = random.uniform(0, self.context.world.width), random.uniform(0, self.context.world.height)
+            dest_x, dest_y = random.uniform(0, self.context.world.map.width), random.uniform(0, self.context.world.map.height)
             
             cargo = {}
             for item, quantity in list(agent.inventory.items.items())[:3]:
@@ -139,7 +151,7 @@ class AdvancedEconomyHandler(ActionHandler):
             )
             
             logger.info(f"🐪 {agent.name} sent trading caravan!")
-            agent.needs.satisfy_need(NeedType.MASTERY, 0.3)
+            agent.needs.satisfy_need(NeedType.ACHIEVEMENT, 0.3)
             return ActionResult(success=True, emotional_impact=0.4, message="Sent trading caravan!", metadata={'caravan_id': caravan_id})
         
         return ActionResult(success=False, emotional_impact=0.0, message="Unknown economy action")

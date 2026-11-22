@@ -47,7 +47,7 @@ class EnergyHandler(ActionHandler):
             if plant:
                 agent.inventory.remove_item('materials', 5)
                 logger.info(f"⚡ {agent.name} built {plant.name}!")
-                agent.needs.satisfy_need(NeedType.MASTERY, 0.5)
+                agent.needs.satisfy_need(NeedType.ACHIEVEMENT, 0.5)
                 return ActionResult(success=True, emotional_impact=0.6, message=f"Built {plant.name}!", metadata={'plant_id': plant.id})
             return ActionResult(success=False, emotional_impact=-0.1, message="Cannot build power plant")
         
@@ -58,8 +58,8 @@ class EnergyHandler(ActionHandler):
                 source = energy.discover_energy_source(energy_type, agent.id, current_tick)
                 if source:
                     logger.info(f"⚡ {agent.name} discovered {source.name}!")
-                    agent.needs.satisfy_need(NeedType.LEARNING, 0.5)
-                    agent.needs.satisfy_need(NeedType.MASTERY, 0.4)
+                    agent.needs.satisfy_need(NeedType.GROWTH, 0.5)
+                    agent.needs.satisfy_need(NeedType.ACHIEVEMENT, 0.4)
                     return ActionResult(success=True, emotional_impact=0.7, message=f"Discovered {source.name}!", metadata={'energy_type': energy_type.value})
             return ActionResult(success=False, emotional_impact=0.05, message="Exploration yielded no new energy sources")
         
@@ -81,7 +81,7 @@ class EnergyHandler(ActionHandler):
             if fuel_amount > 0:
                 energy_generated = energy.operate_power_plant(plant.id, fuel_amount)
                 logger.info(f"⚡ {agent.name} generated {energy_generated:.1f} kW")
-                agent.needs.satisfy_need(NeedType.MASTERY, 0.2)
+                agent.needs.satisfy_need(NeedType.ACHIEVEMENT, 0.2)
                 return ActionResult(success=True, emotional_impact=0.3, message=f"Generated {energy_generated:.1f} kW", metadata={'energy': energy_generated})
             return ActionResult(success=False, emotional_impact=-0.1, message="No fuel available")
         

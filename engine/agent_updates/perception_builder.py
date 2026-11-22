@@ -1423,7 +1423,9 @@ class PerceptionBuilder:
         agriculture_info['crops_ready_to_harvest'] = len(mature_crops)
 
         # Animal products ready
-        animals_ready = [a for a in agent_livestock if a.can_harvest_product]
+        # An animal has something to give once its production interval has passed
+        tick = self.sim.world.time.current_tick
+        animals_ready = [a for a in agent_livestock if tick - a.last_production >= a.production_rate]
         agriculture_info['animals_ready_for_harvest'] = len(animals_ready)
 
         # Can plant crops?
