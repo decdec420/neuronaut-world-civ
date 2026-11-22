@@ -65,6 +65,7 @@ from engine.handlers import (
     AdvancedEconomyHandler,
     FamilyHandler,
     InfrastructureHandler,
+    GatheringHandler,
 )
 
 # UTILITIES
@@ -124,7 +125,7 @@ UNHANDLED_ACTION_FALLBACKS = {
     # Culture
     'paint': 'create_art', 'sculpt': 'create_art', 'compose_music': 'create_art',
     'sing': 'play_game', 'dance': 'celebrate', 'perform': 'tell_story',
-    'entertain': 'tell_story', 'organize_event': 'celebrate', 'attend_event': 'celebrate',
+    'entertain': 'tell_story',
     # Learning
     'learn_skill': 'experiment', 'study': 'write', 'practice': 'experiment',
     'mentor': 'teach', 'apprentice': 'teach', 'research': 'experiment',
@@ -238,6 +239,9 @@ class SimulationEngine:
         # Who knows what, and conversations that pass it on (world/news.py)
         from world.news import NewsNetwork
         self.news = NewsNetwork()
+        # Gatherings someone announces and others hear about (world/gatherings.py)
+        from world.gatherings import Gatherings
+        self.gatherings = Gatherings(self)
         # Successful actions by kind, and the village's history (engine/chronicle.py)
         self.action_successes = collections.Counter()
         self.products = collections.Counter()  # things made (glass, steel, coins...), by name
@@ -370,6 +374,9 @@ class SimulationEngine:
 
             # Public works: roads, wells, street lights
             InfrastructureHandler(self._action_context),
+
+            # Gatherings people are invited to by word of mouth
+            GatheringHandler(self._action_context),
         ]
 
         self._handler_registry.register_multiple(handlers)
@@ -587,6 +594,8 @@ class SimulationEngine:
 
         # Street lights burn and light the night (world/infrastructure.py)
         self.infrastructure.update_lights(self.world, current_tick)
+        # Gatherings start and end (world/gatherings.py)
+        self.gatherings.update(current_tick)
 
         # Write down any firsts and milestones (engine/chronicle.py)
         self.chronicle.observe(self, current_tick)

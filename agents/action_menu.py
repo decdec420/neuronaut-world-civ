@@ -83,6 +83,9 @@ ACTION_INFO = {
     "care_for_child": ("romance and family", "look after a baby or child: feed them, give them water, "
                                              "keep them company (TARGET optional)"),
     "celebrate": ("culture", "throw or join a celebration"),
+    "organize_event": ("culture", "invite the village to a gathering here (DETAILS: what and when, "
+                                  "e.g. a feast at 18:00); word spreads as people talk"),
+    "attend_event": ("culture", "go to a gathering you've heard about"),
     "tell_story": ("culture", "tell someone a story (TARGET)"),
     "play_game": ("culture", "play a game with someone (TARGET)"),
     "create_art": ("culture", "make art"),

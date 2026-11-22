@@ -221,6 +221,13 @@ class Chronicle:
                 if len(works.roads) >= n:
                     self.milestone(f"roads_{n}", tick, f"{n} tiles of road")
 
+        gatherings = getattr(sim, "gatherings", None)
+        if gatherings is not None and "first_gathering" not in self.done and gatherings.history:
+            g = gatherings.history[0]
+            names = [name_of(i) for i in sorted(g.attendees)]
+            self.first("first_gathering", tick, f"First gathering: {g.organizer_name}'s {g.kind} at {g.place}",
+                       f"{g.heard_before_start} had heard of it; {len(g.attendees)} came.", names)
+
         # Milestones: population, eras
         alive = sum(1 for a in sim.world.agents if a.alive)
         if alive > self._peak_population:

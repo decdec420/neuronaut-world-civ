@@ -79,6 +79,8 @@ ACTION_NEEDS: Dict[str, Dict[N, float]] = {
     "try_for_child": {N.MEANING: 0.4, N.ROMANCE: 0.3, N.BELONGING: 0.3},
     "care_for_child": {N.MEANING: 0.5, N.BELONGING: 0.5},
     "celebrate": {N.BELONGING: 0.6, N.MEANING: 0.4},
+    "organize_event": {N.BELONGING: 0.4, N.STATUS: 0.3, N.FRIENDSHIP: 0.3},
+    "attend_event": {N.BELONGING: 0.5, N.FRIENDSHIP: 0.3, N.MEANING: 0.2},
     "tell_story": {N.BELONGING: 0.4, N.RECOGNITION: 0.3, N.CREATIVITY: 0.3},
     "play_game": {N.BELONGING: 0.5, N.FRIENDSHIP: 0.3, N.ACHIEVEMENT: 0.2},
     "create_art": {N.CREATIVITY: 0.6, N.MEANING: 0.4},
@@ -143,6 +145,8 @@ ACTION_TRAITS: Dict[str, Dict[str, float]] = {
     "try_for_child": {"empathy": 0.3, "agreeableness": 0.2},
     "care_for_child": {"empathy": 0.6, "agreeableness": 0.3, "conscientiousness": 0.2},
     "celebrate": {"extraversion": 0.6, "openness": 0.2},
+    "organize_event": {"extraversion": 0.5, "agreeableness": 0.2, "ambition": 0.2},
+    "attend_event": {"extraversion": 0.4, "agreeableness": 0.3},
     "tell_story": {"extraversion": 0.5, "creativity": 0.5},
     "play_game": {"extraversion": 0.5, "risk_taking": 0.2},
     "create_art": {"creativity": 0.8, "openness": 0.2},
@@ -166,7 +170,8 @@ ACTION_TRAITS: Dict[str, Dict[str, float]] = {
     "fight": {"aggression": 0.8, "risk_taking": 0.3, "agreeableness": -0.4},
 }
 
-SOCIAL_ACTIONS = {"socialize", "seek_romance", "celebrate", "tell_story", "play_game", "create_art"}
+SOCIAL_ACTIONS = {"socialize", "seek_romance", "celebrate", "tell_story", "play_game", "create_art",
+                  "organize_event", "attend_event"}
 NEEDS_TARGET = {"socialize", "seek_romance", "separate", "try_for_child", "care_for_child", "trade", "teach", "tell_story", "play_game", "gamble",
                 "fight", "heal", "cure", "diagnose"}
 NEEDS_SICK_TARGET = {"heal", "cure", "diagnose"}
@@ -188,6 +193,7 @@ FAMILY_WEIGHT = 1.0      # wanting a child (or not), and a partner who does
 CARE_WEIGHT = 1.5        # a child who needs looking after
 OTHERS_CHILD_BOND = 0.3  # someone else's child pulls less than your own
 WALKING_PULL = 1.0       # an agent who walks a lot is drawn to pave and dig wells
+GATHERING_PULL = 1.0     # a gathering one has heard of, by a host one likes
 NIGHT_REST_PULL = 2.5
 WORK_PULL = 0.3
 OWN_JOB_PULL = 0.6
@@ -282,6 +288,18 @@ class UtilityBrain:
     def _state_pull(self, agent, action: str) -> float:
         """What the agent's own life adds: one who has been walking a lot feels
         the need for roads (and for water closer by)."""
+        if action == "attend_event":
+            # A gathering it has heard of: more so if it likes the host
+            gatherings = getattr(self.sim, "gatherings", None)
+            if gatherings is None:
+                return 0.0
+            rm = self.sim.relationship_manager
+            best = 0.0
+            for g in gatherings.known_to(agent.id, self.sim.world.time.current_tick):
+                rel = rm.get_relationship(agent.id, g.organizer)
+                liking = rel.strength if rel is not None and rel.relationship_type.value != "rivalry" else 0.0
+                best = max(best, GATHERING_PULL * (0.5 + liking))
+            return best
         if action not in ("build_road", "dig_well"):
             return 0.0
         works = getattr(self.sim, "infrastructure", None)

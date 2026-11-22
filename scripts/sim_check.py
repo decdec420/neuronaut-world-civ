@@ -104,7 +104,11 @@ def news_metrics(sim) -> dict:
     now = sim.world.time.current_tick
     major = [n for n in news.items.values() if n.importance >= 0.8 and now - n.tick >= 144]
     reach = sorted(((news.reach(n.id, alive), n.text) for n in major), reverse=True)
+    held = sim.gatherings.history
     return {
+        "gatherings_held": len(held),
+        "gathering_heard_vs_came": f"{sum(g.heard_before_start for g in held)}/{sum(len(g.attendees) for g in held)}"
+                                   if held else None,
         "conversations": news.conversations,
         "news_passed_on": news.told,
         "major_news_reach": round(sum(r for r, _ in reach) / len(reach), 2) if reach else None,

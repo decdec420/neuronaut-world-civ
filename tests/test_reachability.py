@@ -63,6 +63,7 @@ PREPARE = {
     "care_for_child": ["<a baby is born>"],
     "build_road": ["<walks to the same place a few times>"],
     "build_streetlight": ["<makes glass>"],
+    "attend_event": ["<a gathering is announced nearby>"],
 }
 PREP_TRIES = 60
 
@@ -238,6 +239,12 @@ def prepare(sim, roles, name: str):
             actor = roles["actor"]
             for tick in range(8):
                 sim.infrastructure.step_toward(actor, sim.pathfinder, 80, 80, tick)
+            continue
+        if step == "<a gathering is announced nearby>":
+            hour = (sim.world.time.current_tick // 6 + 1) % 24  # the clock as ticks count it
+            ok, why = attempt_as(sim, roles["neighbour"], "organize_event", {"details": f"a feast at {hour}:00"})
+            if not ok:
+                return f"first needs someone to organize a gathering, which failed ({why})"
             continue
         if step == "<makes glass>":
             ok, why = attempt_as(sim, roles["actor"], "refine_material", {"details": "sand into glass"})
