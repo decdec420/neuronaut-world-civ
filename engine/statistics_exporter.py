@@ -114,6 +114,7 @@ class StatisticsExporter:
         return {
             'world': self.sim.world.get_statistics(),
             'agents': [agent.to_dict() for agent in self.sim.world.agents if agent.alive],
+            'infrastructure': self.sim.infrastructure.to_dict(),
             # COMPLETE ECONOMIC SYSTEM - All financial subsystems!
             'economy': economic_stats.get('wealth', {}),  # Backward compatibility
             'market': economic_stats.get('market', {}),  # Backward compatibility

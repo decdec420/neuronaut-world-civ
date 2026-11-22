@@ -6659,6 +6659,9 @@
             // ===== RESOURCE DEPOSITS - Show where materials can be gathered =====
             renderResourceDeposits(data);
 
+            // ===== PUBLIC WORKS - roads, wells, street lights the agents built =====
+            renderInfrastructure(data, nightOverlayAlpha);
+
             // ===== AGENT MOVEMENT TRAILS =====
             renderAgentTrails(ctx);
 
@@ -6883,6 +6886,52 @@
                     ctx.strokeRect(x, y, cellSize, cellSize);
                 }
             }
+        }
+
+        // Public works renderer (world/infrastructure.py): paved road tiles,
+        // wells, and street lights that glow when lit at night
+        function renderInfrastructure(data, nightAlpha) {
+            const works = data.infrastructure;
+            if (!works) return;
+            const cellW = canvas.width / 100, cellH = canvas.height / 100;
+            ctx.save();
+            ctx.fillStyle = 'rgba(120, 113, 108, 0.9)';
+            ctx.strokeStyle = 'rgba(68, 64, 60, 0.9)';
+            ctx.lineWidth = 0.5;
+            (works.roads || []).forEach(([x, y]) => {
+                ctx.fillRect(x * cellW, y * cellH, cellW + 0.5, cellH + 0.5);
+            });
+            (works.wells || []).forEach(w => {
+                const x = (w.x + 0.5) * cellW, y = (w.y + 0.5) * cellH;
+                ctx.beginPath();
+                ctx.arc(x, y, 6, 0, Math.PI * 2);
+                ctx.fillStyle = '#57534e';
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+                ctx.fillStyle = '#38bdf8';
+                ctx.fill();
+            });
+            (works.lights || []).forEach(l => {
+                const x = (l.x + 0.5) * cellW, y = (l.y + 0.5) * cellH;
+                if (l.lit && nightAlpha > 0) {
+                    const r = 8 * cellW;  // the light's reach (LIGHT_RADIUS)
+                    const glow = ctx.createRadialGradient(x, y, 2, x, y, r);
+                    glow.addColorStop(0, 'rgba(253, 224, 71, 0.55)');
+                    glow.addColorStop(1, 'rgba(253, 224, 71, 0)');
+                    ctx.fillStyle = glow;
+                    ctx.beginPath();
+                    ctx.arc(x, y, r, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                ctx.fillStyle = '#292524';
+                ctx.fillRect(x - 1, y - 8, 2, 9);
+                ctx.beginPath();
+                ctx.arc(x, y - 9, 3, 0, Math.PI * 2);
+                ctx.fillStyle = l.lit ? '#fde047' : (l.fuel > 0 ? '#a8a29e' : '#57534e');
+                ctx.fill();
+            });
+            ctx.restore();
         }
 
         // Resource deposit renderer - Subtle markers on the map
