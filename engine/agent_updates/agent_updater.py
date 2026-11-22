@@ -15,6 +15,7 @@ This class is responsible for:
 import logging
 import random
 from typing import Dict, Any, Optional
+from agents.agent import Action, ActionType
 
 logger = logging.getLogger(__name__)
 
@@ -123,8 +124,16 @@ class AgentUpdater:
         Args:
             agent: The agent to apply weather effects to
         """
-        # Check if agent has shelter (in a building)
+        # Shelter = standing near a finished building (or working on one)
         has_shelter = agent.active_construction_id is not None
+        dbs = getattr(self.sim, 'dynamic_building_system', None)
+        if not has_shelter and dbs is not None:
+            for b in dbs.buildings.values():
+                if b.is_complete and not b.collapsed:
+                    bx, by = b.location
+                    if ((agent.location.x - bx) ** 2 + (agent.location.y - by) ** 2) ** 0.5 < 6:
+                        has_shelter = True
+                        break
         weather_impact = self.sim.weather.apply_weather_to_agent(
             agent.health,
             agent.energy,
@@ -133,7 +142,12 @@ class AgentUpdater:
 
         # Apply weather damage (storms, blizzards, heat waves)
         if weather_impact['damage'] > 0:
-            agent.health -= weather_impact['damage']
+            damage = weather_impact['damage']
+            # Resting means hunkering down: partial cover even without a building
+            current = getattr(agent, 'current_action', None)
+            if current is not None and current.action_type == ActionType.REST:
+                damage *= 0.3
+            agent.health -= damage
             if agent.health < 30 and not has_shelter:
                 logger.warning(f"⚠️  {agent.name} taking weather damage! Health: {agent.health:.1f}")
 
@@ -346,39 +360,104 @@ class AgentUpdater:
 
         # ===== AI-POWERED DECISION MAKING =====
         # Use autonomous AI decisions if enabled, otherwise fall back to rule-based
-        if self.sim.config.use_llm_decisions and hasattr(agent, 'autonomous_decide'):
+        llm_action = None
+        if self.sim.config.use_llm_decisions and hasattr(agent, 'autonomous_decide') \
+                and self._survival_override(agent) is None:
             # Make AI-powered decision (handles planning and reflection internally)
             try:
-                action = agent.autonomous_decide(perceptions, current_tick, self.sim.config)
+                llm_action = agent.autonomous_decide(perceptions, current_tick, self.sim.config)
             except Exception as e:
                 logger.error(f"AI decision failed for {agent.name}: {e}")
-                logger.exception(e)
-                # Fall back to rule-based
-                action = agent.decide(perceptions)
+            # No model reachable / unusable answer: use the rule-based brain below
+            if llm_action is not None and llm_action.action_type in (ActionType.IDLE, ActionType.WAIT):
+                llm_action = None
+            if llm_action is not None and not self._can_run(agent, llm_action):
+                llm_action = None
+
+        if llm_action is not None:
+            action = llm_action
+            current_goal = self.sim.strategy_manager.get_current_goal(agent.id)
         else:
             # Original rule-based decision making
             # Check if agent should pursue strategic goal
             current_goal = self.sim.strategy_manager.get_current_goal(agent.id)
-            if current_goal:
+            survival_action = self._survival_override(agent)
+            if survival_action is not None:
+                # Urgent physical needs always beat long-term goals
+                action = survival_action
+            elif current_goal:
                 # Try to advance goal
                 goal_action = self.sim.strategy_manager.evaluate_goal_action(agent, current_goal)
+                action = None
                 if goal_action:
-                    # Use goal-directed action
-                    action = Action(ActionType.IDLE)  # Placeholder
-                    # Map string action to ActionType
                     try:
-                        action_type = ActionType(goal_action)
-                        action = Action(action_type)
-                    except (ValueError, KeyError, AttributeError) as e:
-                        logger.warning(f"Invalid goal action '{goal_action}' for {agent.name}: {e}, using agent.decide()")
-                        action = agent.decide(perceptions)
-                else:
+                        from engine.simulation import UNHANDLED_ACTION_FALLBACKS
+                        candidate = Action(ActionType(goal_action))
+                        # Validate against the handler that will actually run it
+                        resolved = UNHANDLED_ACTION_FALLBACKS.get(goal_action, goal_action)
+                        handler = self.sim._handler_registry.get_handler(ActionType(resolved))
+                        if handler is not None and handler.validate(agent, Action(ActionType(resolved)))[0]:
+                            action = candidate
+                        elif resolved == 'build':
+                            # Wants to build but lacks materials: go get them
+                            action = Action(ActionType.GATHER_MATERIALS)
+                    except (ValueError, KeyError, AttributeError):
+                        action = None
+                if action is None:
+                    # Goal step not possible right now (no seeds, no energy...):
+                    # let the agent decide for itself instead of failing every tick
                     action = agent.decide(perceptions)
             else:
                 # Agent decides action normally
                 action = agent.decide(perceptions)
 
+        agent.current_action = action
         return action, current_goal
+
+    def _can_run(self, agent, action) -> bool:
+        """True if the handler that will actually run this action accepts it now."""
+        from engine.simulation import UNHANDLED_ACTION_FALLBACKS
+        try:
+            resolved = ActionType(UNHANDLED_ACTION_FALLBACKS.get(action.action_type.value, action.action_type.value))
+            handler = self.sim._handler_registry.get_handler(resolved)
+            if handler is None:
+                return False
+            probe = Action(resolved, target_agent=action.target_agent,
+                           target_position=action.target_position, parameters=action.parameters)
+            if probe.target_agent is None and resolved.value in ('socialize', 'seek_romance', 'trade', 'teach', 'heal', 'fight', 'tell_story'):
+                return True  # partner gets auto-picked at execution
+            return handler.validate(agent, probe)[0]
+        except Exception:
+            return True
+
+    def _survival_override(self, agent):
+        """Return an urgent survival action, or None if the agent is fine."""
+        from agents.agent import NeedType
+        def level(n):
+            need = agent.needs.needs.get(n)
+            return need.level if need else 0.0
+        thirst, hunger, sleep = level(NeedType.THIRST), level(NeedType.HUNGER), level(NeedType.SLEEP)
+        worst = max(thirst, hunger, sleep)
+        weather = getattr(self.sim, 'weather', None)
+        try:
+            effects = weather.get_current_effects() if weather else None
+        except Exception:
+            effects = None
+        if (effects is not None and getattr(effects, 'shelter_required', False)
+                and agent.active_construction_id is None and worst < 0.85
+                and agent.health < 70):
+            return Action(ActionType.REST)  # storm and hurt: take cover
+        if getattr(agent, 'energy', 100) < 15 and worst < 0.9:
+            return Action(ActionType.REST)  # exhausted: recover before anything else
+        if worst < 0.7:
+            return None
+        if worst == thirst:
+            return Action(ActionType.GATHER_WATER)
+        if worst == hunger:
+            if agent.inventory.has_item('food', 1) if hasattr(agent.inventory, 'has_item') else False:
+                return Action(ActionType.EAT)
+            return Action(ActionType.GATHER_FOOD)
+        return Action(ActionType.REST)
 
     async def _execute_action_with_purpose(self, agent, action, current_goal: Optional[Any], current_tick: int) -> None:
         """

@@ -421,23 +421,52 @@ class StrategyManager:
 
         # Map plan steps to actual action types
         action_mapping = {
-            'find_food_source': 'explore',
-            'gather_food': 'gather_food',
-            'gather_materials': 'gather_materials',
-            'build_shelter': 'build',
-            'meet_new_people': 'socialize',
-            'socialize_regularly': 'socialize',
-            'meet_potential_partners': 'seek_romance',
-            'build_relationship': 'socialize',
-            'study_existing_knowledge': 'learn_skill',
-            'experiment_with_combinations': 'craft',
-            'build_strength': 'train_combat',
-            'gather_allies': 'recruit',
+            # Survival / shelter
+            'find_food_source': 'forage',
+            'stockpile_food': 'gather_food',
+            'build_farm_if_possible': 'plant_crops',
+            'find_good_location': 'survey_land',
+            'build_shelter': 'build_house',
+            # Wealth
+            'gather_valuable_resources': 'mine',
             'learn_trade_skill': 'learn_skill',
             'establish_trade_relationships': 'trade',
+            'build_business': 'build_workshop',
+            # Social / love
+            'meet_new_people': 'socialize',
+            'socialize_regularly': 'socialize',
+            'help_others': 'comfort',
+            'build_trust': 'converse',
+            'meet_potential_partners': 'seek_romance',
+            'build_relationship': 'socialize',
+            'court_partner': 'court',
+            # Leadership
+            'build_reputation': 'organize_event',
+            'gain_political_power': 'campaign',
+            'form_faction': 'form_group',
+            'challenge_leadership': 'campaign',
+            # Innovation / art
+            'study_existing_knowledge': 'study',
+            'experiment_with_combinations': 'experiment',
+            'develop_new_technique': 'invent',
+            'learn_art_skill': 'practice',
+            'create_artwork': 'create_art',
+            'share_with_others': 'teach',
+            # Rivalry
+            'build_strength': 'practice',
+            'gather_allies': 'recruit',
+            'prepare_for_conflict': 'craft_weapon',
+            'confront_rival': 'duel',
         }
 
-        return action_mapping.get(current_action, current_action)
+        # Steps with no concrete action (e.g. the generic 'work_toward_goal'
+        # fallback) return None so the agent decides for itself instead of
+        # logging an "invalid goal action" warning every tick.
+        from agents.agent import ActionType
+        mapped = action_mapping.get(current_action, current_action)
+        valid = {a.value for a in ActionType}
+        return mapped if mapped in valid else None
+
 
     def get_statistics(self) -> Dict:
         """Get strategy statistics"""

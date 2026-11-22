@@ -265,11 +265,11 @@ class World:
 
         # Track resource generation rates - INCREASED for sustainable civilization!
         self.resource_regen_rates = {
-            'stone': 0.0,         # Non-renewable
+            'stone': 0.5,         # Slow: new deposits get uncovered (was 0, ran out for good)
             'wood': 1.5,          # INCREASED from 0.2 to 1.5 - faster forest growth
-            'food': 3.0,          # INCREASED from 0.5 to 3.0 - abundant nature
-            'water': 2.0,         # INCREASED from 0.3 to 2.0 - rain refills water
-            'clay': 0.0,          # Non-renewable
+            'food': 6.0,          # 12 agents eat ~6/tick; 3.0 ran the world dry
+            'water': 8.0,         # 12 agents drink ~8/tick; 2.0 ran the world dry
+            'clay': 0.3,          # Slow: riverbanks refill (was 0)
             'sand': 0.0,          # Non-renewable
             'hide': 0.3,          # INCREASED from 0.05 to 0.3 - wildlife reproduces
             'plant_fiber': 1.0,   # INCREASED from 0.15 to 1.0 - plants grow back

@@ -138,7 +138,7 @@ class SystemCoordinator:
 
         # Log disaster event
         self.sim.event_logger.log_event(
-            EventCategory.WORLD,
+            EventCategory.ENVIRONMENTAL,
             EventImportance.MAJOR if casualties > 0 else EventImportance.MODERATE,
             f"{effects.emoji} {disaster.disaster_type.value.title()} strikes!",
             f"{effects.description} | Casualties: {casualties}, Buildings destroyed: {buildings_destroyed}, Injured: {agents_injured}",

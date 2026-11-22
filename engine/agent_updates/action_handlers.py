@@ -510,6 +510,11 @@ class ActionHandlers:
                     efficiency_multiplier = 1.4  # Stone pickaxe
 
                 amount_to_gather = base_amount * efficiency_multiplier
+                # Only take what the agent can carry; the rest stays in the world
+                space = agent.inventory.capacity - agent.inventory.get_total_items()
+                if space <= 0:
+                    break
+                amount_to_gather = min(amount_to_gather, float(space))
                 actual_amount = self.sim.world.harvest_from_pool(material_name, amount_to_gather)
 
                 if actual_amount > 0:
@@ -621,10 +626,10 @@ class ActionHandlers:
     def _choose_story_type(self, agent: Agent) -> StoryType:
         """Choose which type of cultural story an agent tells based on their state"""
         # Happy agents tell songs and legends
-        joy_level = agent.emotions.emotion_levels.get(EmotionType.JOY, 0.0)
+        joy_level = getattr(agent.emotions.emotions.get(EmotionType.JOY), 'intensity', 0.0)
 
         # Fearful agents tell warnings
-        fear_level = agent.emotions.emotion_levels.get(EmotionType.FEAR, 0.0)
+        fear_level = getattr(agent.emotions.emotions.get(EmotionType.FEAR), 'intensity', 0.0)
 
         # Check agent achievements and experiences
         has_achievements = hasattr(agent, 'achievements') and len(agent.achievements) > 0
@@ -736,6 +741,11 @@ class ActionHandlers:
                 skill_bonus = 1.0 + (gathering_skill * 0.5)
 
                 amount_to_gather = base_amount * efficiency_multiplier * skill_bonus
+                # Only take what the agent can carry; the rest stays in the world
+                space = agent.inventory.capacity - agent.inventory.get_total_items()
+                if space <= 0:
+                    break
+                amount_to_gather = min(amount_to_gather, float(space))
                 actual_amount = self.sim.world.harvest_from_pool(material_name, amount_to_gather)
 
                 if actual_amount > 0:

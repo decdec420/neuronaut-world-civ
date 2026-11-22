@@ -948,12 +948,12 @@ async def get_culture():
             })
         
         # Get fun system cultural data (celebrations, traditions, art)
-        fun_stats = simulation.fun_system.get_statistics() if hasattr(simulation, 'fun_system') else {}
+        fun_stats = simulation.fun_system.get_stats() if hasattr(simulation, 'fun_system') else {}
         
         # Get knowledge system cultural knowledge
         cultural_knowledge = []
         if hasattr(simulation, 'knowledge_system'):
-            for kr in simulation.knowledge_system.knowledge.values():
+            for kr in simulation.knowledge_system.knowledge_records.values():
                 if hasattr(kr, 'knowledge_type') and 'culture' in kr.knowledge_type.lower():
                     cultural_knowledge.append({
                         "name": kr.name,

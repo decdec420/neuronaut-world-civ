@@ -1072,7 +1072,7 @@
                     <span>Day <strong id="header-day">1</strong></span>
                 </div>
                 <div class="stat-pill">
-                    👥 <strong id="header-agents">50</strong> Agents
+                    👥 <strong id="header-agents">0</strong> Agents
                 </div>
                 <div class="stat-pill">
                     ⚗️ <strong id="header-discoveries">0</strong> Discoveries
@@ -2766,8 +2766,11 @@
             ws = new WebSocket('ws://localhost:8000/ws');
 
             ws.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                if (data.type === 'ping') return;
+                const raw = JSON.parse(event.data);
+                if (raw.type === 'ping') return;
+                // The server sends a bare snapshot first, then wraps updates as
+                // {type: 'simulation_update', data: {...}}. Unwrap so every update renders.
+                const data = (raw.type === 'simulation_update' && raw.data) ? raw.data : raw;
 
                 // ===== DETECT EVENTS FOR PARTICLE EFFECTS =====
                 detectAndTriggerParticleEffects(data, previousData);
@@ -2889,19 +2892,25 @@
             });
         });
 
+        // Returns the element, or a harmless stand-in if the page no longer has it,
+        // so one missing element doesn't abort the whole dashboard refresh.
+        const __dummyEl = { style: {}, dataset: {}, classList: { add(){}, remove(){}, toggle(){}, contains(){ return false; } },
+                            appendChild(){}, setAttribute(){}, querySelector(){ return null; }, textContent: '', innerHTML: '', value: '' };
+        function $safe(id) { return document.getElementById(id) || __dummyEl; }
+        function setTextSafe(id, value) { const el = document.getElementById(id); if (el) el.textContent = value; }
         // Update UI with real data
         function updateUI(data) {
             // Header stats
-            document.getElementById('header-day').textContent = data.world?.current_day || 1;
-            document.getElementById('header-agents').textContent = data.agents?.length || 50;
-            document.getElementById('header-discoveries').textContent = data.experimentation?.total_discoveries || 0;
-            document.getElementById('header-buildings').textContent = data.dynamic_buildings?.completed_buildings || 0;
-            document.getElementById('header-libraries').textContent = data.knowledge?.total_libraries || 0;
-            document.getElementById('header-era').textContent = data.tech_progression?.current_era || 'Stone Age';
+            $safe('header-day').textContent = data.world?.current_day || 1;
+            $safe('header-agents').textContent = data.world?.alive_agents ?? data.agents?.length ?? 0;
+            $safe('header-discoveries').textContent = data.experimentation?.total_discoveries || 0;
+            $safe('header-buildings').textContent = data.dynamic_buildings?.completed_buildings || data.buildings?.complete || 0;
+            $safe('header-libraries').textContent = data.knowledge?.total_libraries || 0;
+            $safe('header-era').textContent = data.tech_progression?.current_era || 'Stone Age';
 
             // Update tech era display
             const currentEra = data.tech_progression?.current_era || 'Stone Age';
-            document.getElementById('tech-current-era').textContent = currentEra;
+            $safe('tech-current-era').textContent = currentEra;
 
             // Store agents globally for filtering
             window.allAgents = data.agents || [];
@@ -2914,11 +2923,11 @@
                 const stressed = data.agents.filter(a => a.mood < -0.3).length;
                 const avgAge = total > 0 ? Math.round(data.agents.reduce((sum, a) => sum + (a.age || 0), 0) / total) : 0;
 
-                document.getElementById('agents-total').textContent = total;
-                document.getElementById('agents-alive').textContent = alive;
-                document.getElementById('agents-active').textContent = active;
-                document.getElementById('agents-stressed').textContent = stressed;
-                document.getElementById('agents-avg-age').textContent = avgAge;
+                $safe('agents-total').textContent = total;
+                $safe('agents-alive').textContent = alive;
+                $safe('agents-active').textContent = active;
+                $safe('agents-stressed').textContent = stressed;
+                $safe('agents-avg-age').textContent = avgAge;
 
                 // Render all agents initially
                 renderAgentCards(data.agents);
@@ -2934,41 +2943,41 @@
             }
 
             // Update counts in tabs
-            document.getElementById('discoveries-count').textContent = data.experimentation?.total_discoveries || 0;
-            document.getElementById('failures-count').textContent = data.experimentation?.total_failed_experiments || 0;
-            document.getElementById('design-count').textContent = data.dynamic_buildings?.total_designs || 0;
-            document.getElementById('built-count').textContent = data.dynamic_buildings?.completed_buildings || 0;
-            document.getElementById('collapsed-count').textContent = data.dynamic_buildings?.collapsed_buildings || 0;
-            document.getElementById('lib-count').textContent = data.knowledge?.total_libraries || 0;
-            document.getElementById('knowledge-count').textContent = data.knowledge?.total_knowledge || 0;
-            document.getElementById('oral-count').textContent = data.knowledge?.oral_tradition || 0;
-            document.getElementById('written-count').textContent = data.knowledge?.written_records || 0;
-            document.getElementById('literacy-rate').textContent =
+            $safe('discoveries-count').textContent = data.experimentation?.total_discoveries || 0;
+            $safe('failures-count').textContent = data.experimentation?.total_failed_experiments || 0;
+            $safe('design-count').textContent = data.dynamic_buildings?.total_designs || 0;
+            $safe('built-count').textContent = data.dynamic_buildings?.completed_buildings || 0;
+            $safe('collapsed-count').textContent = data.dynamic_buildings?.collapsed_buildings || 0;
+            $safe('lib-count').textContent = data.knowledge?.total_libraries || 0;
+            $safe('knowledge-count').textContent = data.knowledge?.total_knowledge || 0;
+            $safe('oral-count').textContent = data.knowledge?.oral_tradition || 0;
+            $safe('written-count').textContent = data.knowledge?.written_records || 0;
+            $safe('literacy-rate').textContent =
                 (data.knowledge?.literacy_rate * 100 || 0).toFixed(0) + '%';
-            document.getElementById('teaching-count').textContent = data.knowledge?.teaching_sessions || 0;
-            document.getElementById('death-count').textContent = data.consequences?.deaths || 0;
-            document.getElementById('bankrupt-count').textContent = data.consequences?.bankruptcies || 0;
-            document.getElementById('all-consequences').textContent = data.consequences?.total_consequences || 0;
-            document.getElementById('active-roles').textContent = data.roles?.total_roles_emerged || 0;
-            document.getElementById('eras-achieved').textContent = data.tech_progression?.eras_achieved || 0;
-            document.getElementById('tech-percent').textContent =
+            $safe('teaching-count').textContent = data.knowledge?.teaching_sessions || 0;
+            $safe('death-count').textContent = data.consequences?.deaths || 0;
+            $safe('bankrupt-count').textContent = data.consequences?.bankruptcies || 0;
+            $safe('all-consequences').textContent = data.consequences?.total_consequences || 0;
+            $safe('active-roles').textContent = data.roles?.total_roles_emerged || 0;
+            $safe('eras-achieved').textContent = data.tech_progression?.eras_achieved || 0;
+            $safe('tech-percent').textContent =
                 (data.tech_progression?.progress_to_next * 100 || 0).toFixed(0) + '%';
-            document.getElementById('tech-progress').style.width =
+            $safe('tech-progress').style.width =
                 (data.tech_progression?.progress_to_next * 100 || 0) + '%';
 
             // Knowledge system updates
             if (data.knowledge) {
-                document.getElementById('know-total').textContent = data.knowledge.total_knowledge || 0;
-                document.getElementById('know-oral').textContent = data.knowledge.oral_tradition || 0;
-                document.getElementById('know-written').textContent = data.knowledge.written_records || 0;
-                document.getElementById('know-libraries').textContent = data.knowledge.total_libraries || 0;
-                document.getElementById('know-docs-stored').textContent = data.knowledge.total_documents || 0;
-                document.getElementById('know-literacy').textContent =
+                $safe('know-total').textContent = data.knowledge.total_knowledge || 0;
+                $safe('know-oral').textContent = data.knowledge.oral_tradition || 0;
+                $safe('know-written').textContent = data.knowledge.written_records || 0;
+                $safe('know-libraries').textContent = data.knowledge.total_libraries || 0;
+                $safe('know-docs-stored').textContent = data.knowledge.total_documents || 0;
+                $safe('know-literacy').textContent =
                     ((data.knowledge.literacy_rate || 0) * 100).toFixed(0) + '%';
-                document.getElementById('know-teaching').textContent =
+                $safe('know-teaching').textContent =
                     data.knowledge.total_knowledge || 0; // Total knowledge pieces being taught
-                document.getElementById('know-sessions').textContent = data.knowledge.teaching_sessions || 0;
-                document.getElementById('know-most-spread').textContent =
+                $safe('know-sessions').textContent = data.knowledge.teaching_sessions || 0;
+                $safe('know-most-spread').textContent =
                     data.knowledge.most_spread_knowledge || 'None';
             }
         }
@@ -4276,25 +4285,25 @@
                 const stats = data.statistics || {};
 
                 // Update metrics bar
-                document.getElementById('consequence-total').textContent = stats.total_consequences || 0;
-                document.getElementById('consequence-deaths').textContent = stats.deaths || 0;
-                document.getElementById('consequence-bankruptcies').textContent = stats.bankruptcies || 0;
+                setTextSafe('consequence-total', stats.total_consequences || 0);
+                setTextSafe('consequence-deaths', stats.deaths || 0);
+                setTextSafe('consequence-bankruptcies', stats.bankruptcies || 0);
 
                 // Count by type
                 const byType = stats.by_type || {};
-                document.getElementById('consequence-injuries').textContent = byType.injury || 0;
-                document.getElementById('consequence-collapses').textContent = byType.building_collapse || 0;
-                document.getElementById('consequence-exiles').textContent = byType.exile || 0;
-                document.getElementById('consequence-explosions').textContent = byType.explosion || 0;
+                setTextSafe('consequence-injuries', byType.injury || 0);
+                setTextSafe('consequence-collapses', byType.building_collapse || 0);
+                setTextSafe('consequence-exiles', byType.exile || 0);
+                setTextSafe('consequence-explosions', byType.explosion || 0);
 
                 // Update most dangerous action
                 const dangerousAction = stats.most_dangerous_action || 'No data yet';
-                document.getElementById('consequence-dangerous-action').textContent = dangerousAction;
+                setTextSafe('consequence-dangerous-action', dangerousAction);
 
                 // Update header counts
-                document.getElementById('death-count').textContent = stats.deaths || 0;
-                document.getElementById('bankrupt-count').textContent = stats.bankruptcies || 0;
-                document.getElementById('all-consequences').textContent = stats.total_consequences || 0;
+                { const el = document.getElementById('death-count'); if (el) el.textContent = stats.deaths || 0; }
+                { const el = document.getElementById('bankrupt-count'); if (el) el.textContent = stats.bankruptcies || 0; }
+                setTextSafe('all-consequences', stats.total_consequences || 0);
 
                 // Render filtered consequences
                 renderFilteredConsequences();
@@ -7038,7 +7047,7 @@
             // Safety checks - elements might not exist on other tabs
             const elements = {
                 'canvas-day': data.world?.current_day || 1,
-                'canvas-tick': data.world?.current_tick || 0,
+                'canvas-tick': data.world?.total_ticks ?? data.world?.current_tick ?? 0,
                 'canvas-pop': data.agents.filter(a => a.alive).length,
                 'canvas-disc': data.experimentation?.total_discoveries || 0,
                 'canvas-build': data.dynamic_buildings?.completed_buildings || 0,

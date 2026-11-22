@@ -179,6 +179,10 @@ class PersonalityProfile:
     empathy: float = 0.5  # Understanding others' emotions
     rationality: float = 0.5  # Logic vs emotion in decisions
 
+    def get_trait(self, name: str, default: float = 0.5) -> float:
+        """Look up a trait by name (used by the interaction handlers)."""
+        return getattr(self, name, default)
+
     @classmethod
     def random(cls) -> 'PersonalityProfile':
         """Generate random personality"""

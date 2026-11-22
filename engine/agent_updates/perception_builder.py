@@ -785,7 +785,7 @@ class PerceptionBuilder:
                     'distance_from_epicenter': round(dist, 1),
                     'radius': disaster.radius,
                     'in_danger_zone': dist < disaster.radius,
-                    'damage_potential': self.sim.disasters.get_disaster_effects(disaster).damage if self.sim.disasters.get_disaster_effects(disaster) else 0
+                    'damage_potential': getattr(self.sim.disasters.get_disaster_effects(disaster), 'agent_damage', 0)
                 }
 
                 # Add warning level

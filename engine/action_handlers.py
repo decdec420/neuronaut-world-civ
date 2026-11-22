@@ -449,8 +449,13 @@ def validate_agent_energy(agent: 'Agent', min_energy: float = 0.1) -> tuple[bool
     hunger_level = agent.needs.needs.get(NeedType.HUNGER, type('obj', (), {'level': 0.5})()).level
     sleep_level = agent.needs.needs.get(NeedType.SLEEP, type('obj', (), {'level': 0.5})()).level
 
-    # Energy = 1 - average of need levels (inverted: high needs = low energy)
-    energy = 1.0 - ((hunger_level + sleep_level) / 2.0)
+    # Use the agent's actual energy stat (0-100). The old formula derived energy
+    # from hunger, so a hungry agent had 0% energy and could not gather food:
+    # a death spiral. Fall back to the derived value only if the stat is missing.
+    if hasattr(agent, 'energy'):
+        energy = max(0.0, min(1.0, agent.energy / 100.0))
+    else:
+        energy = 1.0 - ((hunger_level + sleep_level) / 2.0)
 
     if energy < min_energy:
         return False, f"Not enough energy (has {energy:.1%}, needs {min_energy:.0%})"
