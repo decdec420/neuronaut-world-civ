@@ -174,3 +174,90 @@ def test_no_model_means_rule_brain():
     with quiet():
         assert agent.autonomous_decide(getattr(agent, "last_perception", None) or {}, 0, sim.config) is None
     assert decide(sim, agent) is not None
+
+
+# ---------------------------------------------------------------------------
+# Providers: which models get asked, and the local Ollama call
+# ---------------------------------------------------------------------------
+
+class _FakeOllama:
+    """A local HTTP server that answers /api/generate like Ollama and records requests."""
+
+    def __init__(self, answer):
+        import http.server
+        import json
+        import threading
+        requests_seen = self.requests = []
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):
+                body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                requests_seen.append((self.path, body))
+                data = json.dumps({"response": answer}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+            def log_message(self, *args):
+                pass
+
+        self.server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+        self.url = f"http://127.0.0.1:{self.server.server_address[1]}"
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def close(self):
+        self.server.shutdown()
+
+
+def _brain(**env):
+    import config
+    from agents.llm_brain import MultiLLMBrain
+    old = {k: os.environ.get(k) for k in env}
+    os.environ.update(env)
+    try:
+        config.reset_config()
+        cfg = config.load_config() if hasattr(config, "load_config") else config.Config()
+        return MultiLLMBrain(api_keys=cfg.get_api_keys(), config=cfg)
+    finally:
+        for k, v in old.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+        config.reset_config()
+
+
+def test_without_cloud_keys_the_local_model_is_asked():
+    from agents.llm_brain import MultiLLMBrain, LLMProvider
+    brain = MultiLLMBrain(api_keys={})
+    assert brain.providers_to_try() == [LLMProvider.OLLAMA_LOCAL]
+    brain = MultiLLMBrain(api_keys={"groq": "key"})
+    assert brain.providers_to_try() == [LLMProvider.GROQ, LLMProvider.OLLAMA_LOCAL]
+
+
+def test_ollama_call_uses_the_configured_server_model_and_context():
+    fake = _FakeOllama("ACTION: rest\nREASON: tired")
+    try:
+        brain = _brain(OLLAMA_BASE_URL=fake.url, OLLAMA_MODEL="tiny-model:1b", OLLAMA_NUM_CTX="8192")
+        assert brain.complete("What now?") == "ACTION: rest\nREASON: tired"
+    finally:
+        fake.close()
+    path, body = fake.requests[0]
+    assert path == "/api/generate" and body["model"] == "tiny-model:1b"
+    assert body["options"]["num_ctx"] == 8192 and body["prompt"] == "What now?"
+    assert brain.calls == 1 and brain.call_failures == 0
+
+
+def test_a_down_ollama_is_skipped_for_a_while():
+    import socket
+    from agents.llm_brain import LLMProvider
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()  # nothing listens here
+    brain = _brain(OLLAMA_BASE_URL=f"http://127.0.0.1:{port}")
+    assert brain.complete("What now?") is None
+    assert LLMProvider.OLLAMA_LOCAL not in brain.providers_to_try()
+    assert brain.complete("What now?") is None and brain.calls == 1  # not asked again

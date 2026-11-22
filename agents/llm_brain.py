@@ -22,6 +22,8 @@ Supported Providers:
 import requests
 import json
 import logging
+import threading
+import time
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import Dict, List, Optional, Any
@@ -153,9 +155,29 @@ class MultiLLMBrain:
     - Creative problem solving
     """
 
-    def __init__(self, api_keys: Dict[str, str] = None):
+    # The key each cloud provider needs (in api_keys); Ollama needs none
+    KEY_NAMES = {
+        LLMProvider.GROQ: 'groq', LLMProvider.TOGETHER_AI: 'together',
+        LLMProvider.GEMINI_FLASH: 'gemini', LLMProvider.HUGGING_FACE: 'huggingface',
+    }
+    OLLAMA_RETRY_AFTER = 30.0  # seconds to wait before trying a down Ollama again
+
+    def __init__(self, api_keys: Dict[str, str] = None, config=None):
         self.api_keys = api_keys or {}
         self.rate_limiter = RateLimiter()
+
+        # Local model (config.py: OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_NUM_CTX, LLM_TIMEOUT)
+        self.ollama_url = (getattr(config, 'ollama_host', None) or 'http://localhost:11434').rstrip('/')
+        self.ollama_model = getattr(config, 'ollama_model', None) or 'llama3.2:3b'
+        self.ollama_num_ctx = getattr(config, 'ollama_num_ctx', 4096)
+        self.timeout = getattr(config, 'llm_timeout', 60.0)
+        self._ollama_retry_at = 0.0
+
+        # Calls, failures and time spent (model calls can run in threads)
+        self._stats_lock = threading.Lock()
+        self.calls = 0
+        self.call_failures = 0
+        self.total_latency = 0.0
 
         # Provider priority (fastest/best first, fallback to local)
         self.provider_priority = [
@@ -198,25 +220,28 @@ class MultiLLMBrain:
         - Complex: Use smartest available provider
         """
 
-        # For complex decisions, prefer smarter models
+        candidates = self.providers_to_try(complexity)
+        return candidates[0] if candidates else LLMProvider.OLLAMA_LOCAL
+
+    def _configured(self, provider: LLMProvider) -> bool:
+        """A cloud provider counts only with its API key; Ollama unless it was
+        just found down."""
+        if provider == LLMProvider.OLLAMA_LOCAL:
+            return time.monotonic() >= self._ollama_retry_at
+        return bool(self.api_keys.get(self.KEY_NAMES[provider]))
+
+    def providers_to_try(self, complexity: str = "simple") -> List[LLMProvider]:
+        """Providers to ask, in order: configured ones within their rate limits.
+
+        (This used to pick the first provider within its rate limits whether or
+        not it had a key, so with no cloud keys every call went to Groq, failed,
+        and never reached Ollama.)"""
         if complexity == "complex":
-            priority = [
-                LLMProvider.GEMINI_FLASH,   # Smartest free option
-                LLMProvider.GROQ,            # Also good with 70B model
-                LLMProvider.TOGETHER_AI,
-                LLMProvider.HUGGING_FACE,
-                LLMProvider.OLLAMA_LOCAL
-            ]
+            priority = [LLMProvider.GEMINI_FLASH, LLMProvider.GROQ, LLMProvider.TOGETHER_AI,
+                        LLMProvider.HUGGING_FACE, LLMProvider.OLLAMA_LOCAL]
         else:
             priority = self.provider_priority
-
-        # Find first available provider
-        for provider in priority:
-            if self.rate_limiter.can_use(provider):
-                return provider
-
-        # Always fallback to local (unlimited)
-        return LLMProvider.OLLAMA_LOCAL
+        return [p for p in priority if self._configured(p) and self.rate_limiter.can_use(p)]
 
     def call_llm(
         self,
@@ -249,12 +274,16 @@ class MultiLLMBrain:
                 logger.warning(f"Unknown provider: {provider}")
                 return None
 
+            response_time = (datetime.now() - start_time).total_seconds()
+            with self._stats_lock:
+                self.calls += 1
+                self.total_latency += response_time
+                if not response_text:
+                    self.call_failures += 1
             if response_text:
                 # Record usage
                 self.rate_limiter.record_usage(provider)
                 self.provider_usage[provider] += 1
-
-                response_time = (datetime.now() - start_time).total_seconds()
 
                 return LLMResponse(
                     text=response_text,
@@ -266,33 +295,45 @@ class MultiLLMBrain:
 
         except Exception as e:
             logger.error(f"LLM call failed for {provider.value}: {e}")
+            with self._stats_lock:
+                self.calls += 1
+                self.call_failures += 1
             return None
 
     def _call_ollama(self, prompt: str, temperature: float, max_tokens: int) -> Optional[str]:
-        """Call local Ollama - unlimited, always works"""
+        """Call the local Ollama model set in .env (it used to ignore the
+        settings: always localhost and llama3.2:3b, with Ollama's default
+        context window, which can cut a decision prompt short)."""
         try:
             response = requests.post(
-                'http://localhost:11434/api/generate',
+                f'{self.ollama_url}/api/generate',
                 json={
-                    "model": "llama3.2:3b",
+                    "model": self.ollama_model,
                     "prompt": prompt,
                     "stream": False,
+                    "keep_alive": "30m",  # stay loaded between ticks
                     "options": {
                         "temperature": temperature,
-                        "num_predict": max_tokens
+                        "num_predict": max_tokens,
+                        "num_ctx": self.ollama_num_ctx,
                     }
                 },
-                timeout=15
+                timeout=self.timeout
             )
 
             if response.status_code == 200:
                 return response.json().get('response', '')
 
-            logger.warning(f"Ollama returned status {response.status_code}")
+            logger.warning(f"Ollama returned status {response.status_code}: {response.text[:200]}")
             return None
 
         except requests.exceptions.ConnectionError:
-            logger.warning("Ollama not running. Start with: ollama serve")
+            # Don't make every agent wait on a server that isn't there
+            self._ollama_retry_at = time.monotonic() + self.OLLAMA_RETRY_AFTER
+            logger.warning(f"Ollama not reachable at {self.ollama_url}. Start it with: ollama serve")
+            return None
+        except requests.exceptions.Timeout:
+            logger.warning(f"Ollama took longer than {self.timeout:.0f}s; the agent uses the rule-based brain")
             return None
         except Exception as e:
             logger.error(f"Ollama error: {e}")
@@ -443,20 +484,21 @@ class MultiLLMBrain:
         # Determine complexity
         complexity = self._assess_complexity(agent, perceptions, thinking_mode)
 
-        # Get best available provider
-        provider = self.get_available_provider(complexity)
-
         # Build prompt based on thinking mode
         prompt = self._build_thinking_prompt(agent, perceptions, thinking_mode)
+        return self.complete(prompt, complexity, label=f"{agent.name}: {thinking_mode}")
 
-        # Get AI response
-        response = self.call_llm(provider, prompt, temperature=0.8, max_tokens=300)
-
-        if response:
-            self.total_decisions += 1
-            logger.info(f"🧠 {agent.name} thinking via {provider.value}: {thinking_mode}")
-            return response.text
-
+    def complete(self, prompt: str, complexity: str = "simple", label: str = "",
+                 temperature: float = 0.8, max_tokens: int = 300) -> Optional[str]:
+        """Ask each configured provider in turn; the first answer wins.
+        Safe to call from worker threads."""
+        for provider in self.providers_to_try(complexity):
+            response = self.call_llm(provider, prompt, temperature=temperature, max_tokens=max_tokens)
+            if response:
+                with self._stats_lock:
+                    self.total_decisions += 1
+                logger.info(f"🧠 {label} via {provider.value} ({response.response_time:.1f}s)")
+                return response.text
         return None
 
     def _assess_complexity(self, agent, perceptions: Dict, thinking_mode: str) -> str:
@@ -2118,6 +2160,12 @@ while supplies last. This could drive competition and conflict.
         """Get usage statistics"""
         return {
             "total_decisions": self.total_decisions,
+            "calls": self.calls,
+            "call_failures": self.call_failures,
+            "average_latency_s": round(self.total_latency / self.calls, 2) if self.calls else None,
+            "decisions_parsed": self.decisions_parsed,
+            "parse_failures": self.parse_failures,
+            "ollama": {"url": self.ollama_url, "model": self.ollama_model, "num_ctx": self.ollama_num_ctx},
             "provider_usage": {p.value: count for p, count in self.provider_usage.items()},
             "rate_limits": {
                 p.value: {

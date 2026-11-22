@@ -234,11 +234,10 @@ class SystemFactory:
 
         # Initialize LLM brain (shared across all agents)
         if config.use_llm_decisions:
-            systems['llm_brain'] = MultiLLMBrain(api_keys=config.get_api_keys())
+            systems['llm_brain'] = MultiLLMBrain(api_keys=config.get_api_keys(), config=config)
             print("🧠 AI Autonomy ENABLED - Agents will make AI-powered decisions!")
-            print(f"   LLM Providers: {'Groq' if config.get_api_keys().get('groq') else ''} "
-                  f"{'Gemini' if config.get_api_keys().get('gemini') else ''} "
-                  f"{'Ollama' if True else ''}")
+            keyed = [name for name in ('groq', 'together', 'gemini', 'huggingface') if config.get_api_keys().get(name)]
+            print(f"   LLM providers, in order: {', '.join(keyed + [f'Ollama ({config.ollama_model} at {config.ollama_host})'])}")
             print(f"   Long-term planning: Every {config.long_term_planning_interval} ticks")
             print(f"   Self-reflection: Every {config.reflection_interval} ticks")
         else:

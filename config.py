@@ -27,9 +27,20 @@ class Config:
         self.huggingface_api_key = os.getenv('HUGGINGFACE_API_KEY', '')
         self.together_api_key = os.getenv('TOGETHER_API_KEY', '')
 
-        # Ollama settings
-        self.ollama_host = os.getenv('OLLAMA_HOST', 'http://localhost:11434')
+        # Ollama settings (a local model; no API key). OLLAMA_BASE_URL is the
+        # documented name; OLLAMA_HOST still works.
+        self.ollama_host = os.getenv('OLLAMA_BASE_URL') or os.getenv('OLLAMA_HOST', 'http://localhost:11434')
+        # Small instruct model that runs on CPU (e.g. an Intel Mac): ~2 GB to
+        # download, ~4 GB of free RAM while loaded
         self.ollama_model = os.getenv('OLLAMA_MODEL', 'llama3.2:3b')
+        try:
+            # Context window in tokens. A decision prompt is ~2,000 tokens; some
+            # Ollama versions default to 2,048 and silently cut the prompt.
+            self.ollama_num_ctx = int(os.getenv('OLLAMA_NUM_CTX', '4096'))
+            self.llm_timeout = float(os.getenv('LLM_TIMEOUT', '60'))  # seconds per model call
+        except ValueError:
+            print("⚠️  Invalid OLLAMA_NUM_CTX or LLM_TIMEOUT, using 4096 and 60")
+            self.ollama_num_ctx, self.llm_timeout = 4096, 60.0
 
         # Feature flags with validation
         self.use_llm_decisions = os.getenv('USE_LLM_DECISIONS', 'true').lower() == 'true'
