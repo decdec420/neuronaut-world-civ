@@ -74,6 +74,7 @@ class EventLogger:
         # Use deque with maxlen for automatic memory management
         self.max_events = 10000  # Keep last 10k events
         self.events: Deque[Event] = deque(maxlen=self.max_events)
+        self.listeners = []  # called with each new event (e.g. agents' memories)
 
     def log_event(
         self,
@@ -102,6 +103,8 @@ class EventLogger:
 
         # Deque automatically drops oldest when full
         self.events.append(event)
+        for listener in self.listeners:
+            listener(event)
 
         return event
 

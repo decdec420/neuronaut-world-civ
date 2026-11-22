@@ -271,3 +271,64 @@ def parse_decision(text: str, valid: Set[str], people_by_name: Dict[str, str]) -
         return None
     return Decision(action=action, target_id=_person(target, people_by_name),
                     details=_field(text, "DETAILS") or "", reason=_field(text, "REASON") or "")
+
+
+# ---------------------------------------------------------------------------
+# Day plans and reflections (agents/memory_stream.py)
+# ---------------------------------------------------------------------------
+
+def plan_schema(valid: Set[str]) -> Dict:
+    return {
+        "type": "object",
+        "properties": {"plan": {"type": "array", "maxItems": 5, "items": {
+            "type": "object",
+            "properties": {"hour": {"type": "integer", "minimum": 0, "maximum": 23},
+                           "action": {"type": "string", "enum": sorted(valid)},
+                           "why": {"type": "string"}},
+            "required": ["hour", "action", "why"]}}},
+        "required": ["plan"],
+    }
+
+
+INSIGHTS_SCHEMA = {
+    "type": "object",
+    "properties": {"insights": {"type": "array", "maxItems": 3, "items": {"type": "string"}}},
+    "required": ["insights"],
+}
+
+
+def parse_plan(text: str, valid: Set[str]) -> List[tuple]:
+    """[(hour, action, why)] from {"plan": [{"hour", "action", "why"}]}; items
+    with an unknown action or hour are dropped."""
+    answer = _json_answer(text or "")
+    items = answer.get("plan") if answer else None
+    plan = []
+    for item in items if isinstance(items, list) else []:
+        if not isinstance(item, dict):
+            continue
+        try:
+            hour = int(item.get("hour"))
+        except (TypeError, ValueError):
+            continue
+        action = _action_name(str(item.get("action") or ""), valid)
+        if action and 0 <= hour <= 23:
+            plan.append((hour, action, str(item.get("why") or "")[:120]))
+    return plan[:5]
+
+
+def parse_insights(text: str) -> List[str]:
+    """Up to 3 insights from {"insights": [...]}, or one per line."""
+    answer = _json_answer(text or "")
+    if answer is not None and isinstance(answer.get("insights"), list):
+        lines = [str(x) for x in answer["insights"]]
+    else:
+        lines = [line for line in (text or "").splitlines() if line.strip()]
+    return [_short(line.strip(" -•*\t\"")) for line in lines if line.strip(" -•*\t\"")][:3]
+
+
+def _short(text: str, limit: int = 200) -> str:
+    """At most `limit` characters, ending at a sentence end where possible."""
+    if len(text) <= limit:
+        return text
+    cut = max(text.rfind(". ", 0, limit), text.rfind("; ", 0, limit))
+    return text[:cut + 1] if cut > 40 else text[:limit].rsplit(" ", 1)[0] + "..."

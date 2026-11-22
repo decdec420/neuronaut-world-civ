@@ -584,7 +584,7 @@ class MultiLLMBrain:
             risk_warnings = self._get_risk_warnings(agent)
 
             # Add recent memories
-            memory_context = self._get_memory_context(agent)
+            memory_context = self._get_memory_context(agent, perceptions)
 
             # Add combat context if targets available
             combat_context = self._get_combat_context(agent)
@@ -844,46 +844,52 @@ Be bold! Think of something interesting to try.
 
 """
 
-    def _get_memory_context(self, agent) -> str:
-        """
-        CRITICAL FIX #2: Extract structured memories for decision-making
-
-        Returns recent experiences that inform current choices
-        """
-
-        if not hasattr(agent, 'memory'):
+    def _get_memory_context(self, agent, perceptions: Optional[Dict] = None) -> str:
+        """The agent's most useful memories right now (agents/memory_stream.py:
+        recency + importance + relevance to its needs, people and work) and its
+        plan for today. (This used to read memory methods that don't exist, so
+        the model never saw a memory.)"""
+        stream = getattr(agent, 'memory_stream', None)
+        if stream is None:
             return ""
+        perceptions = perceptions or {}
+        now = perceptions.get('tick', max((r.tick for r in stream.records), default=0))
+        urgent = sorted(agent.needs.needs.items(), key=lambda kv: -kv[1].level)[:3]
+        about = [nt.value for nt, _ in urgent]
+        about += [a['name'] for a in perceptions.get('nearby_agents', [])[:4]]
+        life = perceptions.get('life_info', {})
+        if life.get('partner'):
+            about.append(life['partner'])
+        work = getattr(agent, 'work_life', None)
+        if work is not None and work.job:
+            about.append(work.to_dict().get('job_title', ''))
+        lines = [f"- {r.to_dict()['text']}" for r in stream.retrieve(" ".join(about), now, k=5)]
+        if stream.day_plan:
+            lines.append("Your plan for today: " + "; ".join(
+                f"{h:02d}:00 {a}" + (f" ({why})" if why else "") for h, a, why in stream.day_plan))
+        return ("What you remember:\n" + "\n".join(lines) + "\n") if lines else ""
 
-        memories = []
+    def plan_prompt(self, agent, perceptions: Dict, day: int):
+        """(prompt, schema): plan the day, Smallville-style."""
+        from agents.action_menu import plan_schema
+        prompt = (self.decision_preamble() + "About you, right now:\n"
+                  + self._describe_agent(agent, perceptions, "") + self._get_memory_context(agent, perceptions)
+                  + f"\nIt is the start of day {day}. Plan your day: up to 5 things you mean to do, "
+                    "each with the hour you'll start it (0-23), an action from the list, and why.\n"
+                    'This time, answer as JSON: {"plan": [{"hour": 8, "action": "<action>", "why": "<reason>"}]}\n')
+        return prompt, plan_schema(self.action_menu.names) if self.action_menu else None
 
-        # Get recent episodic memories (actual experiences)
-        if hasattr(agent.memory, 'get_recent_memories'):
-            recent = agent.memory.get_recent_memories(5)
-            for mem in recent:
-                # Format with importance indicators
-                importance_emoji = "⭐" * min(3, int(mem.importance * 3 + 1))
-                memories.append(f"{importance_emoji} [{mem.event_type}] {mem.description}")
-
-        # Also check for learned facts in semantic memory
-        if hasattr(agent.memory, 'semantic_memory'):
-            facts = []
-            for key, value in list(agent.memory.semantic_memory.items())[:3]:
-                if 'dangerous' in key or 'location' in key or 'successful' in key:
-                    facts.append(f"💡 {value}")
-
-            if facts:
-                memories.extend(facts)
-
-        if not memories:
-            return ""
-
-        return f"""
-📚 **RECENT MEMORIES & LEARNED KNOWLEDGE:**
-{chr(10).join(memories)}
-
-Use what you've learned! Remember your successes and failures.
-
-"""
+    def reflection_prompt(self, agent, current_tick: int):
+        """(prompt, schema): what the agent makes of what has happened lately."""
+        from agents.action_menu import INSIGHTS_SCHEMA
+        recent = agent.memory_stream.recent(20)
+        lines = "\n".join(f"{i}. {r.to_dict()['text']}" for i, r in enumerate(recent, 1))
+        prompt = (f"You are {agent.name}, a {agent.age}-year-old living in a small village.\n"
+                  f"Things that happened to you lately, oldest first:\n{lines}\n\n"
+                  "What do these tell you about your life, the people around you or your village? "
+                  "Give 1 to 3 insights, one sentence each, in your own words.\n"
+                  'Answer as JSON: {"insights": ["..."]}\n')
+        return prompt, INSIGHTS_SCHEMA
 
     def _get_risk_warnings(self, agent) -> str:
         """

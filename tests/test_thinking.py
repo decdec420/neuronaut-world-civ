@@ -19,7 +19,7 @@ class Agent:
 
 
 def slow_model(seconds, answer="ACTION: rest"):
-    def complete(prompt):
+    def complete(prompt, schema=None):
         time.sleep(seconds)
         return f"{answer} ({prompt})"
     return complete
@@ -30,10 +30,10 @@ def test_calls_run_in_parallel_and_answers_arrive_within_the_budget():
     t = ThinkingScheduler(slow_model(0.3), workers=3, think_every=5, tick_budget=2.0)
     agents = [Agent(i) for i in range(3)]
     start = time.perf_counter()
-    assert t.start(agents, tick=0, build_prompt=lambda a: a.id) == 3
+    assert t.start(agents, tick=0, build_prompt=lambda a: ("decide", a.id, None)) == 3
     t.wait()
     assert time.perf_counter() - start < 0.6  # three 0.3 s calls, not 0.9 s
-    assert [t.take(a.id, 0) for a in agents] == [f"ACTION: rest ({a.id})" for a in agents]
+    assert [t.take(a.id, 0) for a in agents] == [("decide", f"ACTION: rest ({a.id})") for a in agents]
     assert t.stats["on_time"] == 3
     t.close()
 
@@ -42,17 +42,17 @@ def test_a_slow_model_never_holds_the_tick_longer_than_the_budget():
     from agents.thinking import ThinkingScheduler
     t = ThinkingScheduler(slow_model(0.5), workers=2, think_every=1, tick_budget=0.1)
     agents = [Agent(i) for i in range(4)]
-    assert t.start(agents, tick=0, build_prompt=lambda a: a.id) == 2  # only as many as workers
+    assert t.start(agents, tick=0, build_prompt=lambda a: ("decide", a.id, None)) == 2  # only as many as workers
     start = time.perf_counter()
     t.wait()
     assert time.perf_counter() - start < 0.3
     assert t.take("a0", 0) is None  # not ready: the rule brain decides this tick
     # The others wait their turn rather than queueing behind a slow model
-    assert t.start(agents, tick=1, build_prompt=lambda a: a.id) == 0
+    assert t.start(agents, tick=1, build_prompt=lambda a: ("decide", a.id, None)) == 0
     time.sleep(0.6)
-    assert t.take("a0", 2) == "ACTION: rest (a0)" and t.stats["late"] == 1  # used on a later turn
+    assert t.take("a0", 2) == ("decide", "ACTION: rest (a0)") and t.stats["late"] == 1  # used on a later turn
     # Longest-waiting agents go next
-    assert t.start(agents, tick=2, build_prompt=lambda a: a.id) == 2
+    assert t.start(agents, tick=2, build_prompt=lambda a: ("decide", a.id, None)) == 2
     assert set(t.pending) == {"a2", "a3"}
     t.close()
 
@@ -61,7 +61,7 @@ def test_stale_answers_and_thinking_too_often():
     from agents.thinking import ThinkingScheduler
     t = ThinkingScheduler(slow_model(0.0), workers=1, think_every=6, tick_budget=1.0, max_age=10)
     agent = Agent(0)
-    t.start([agent], tick=0, build_prompt=lambda a: "p")
+    t.start([agent], tick=0, build_prompt=lambda a: ("decide", "p", None))
     t.wait()
     assert not t.is_due(agent.id, 3)  # an answer is waiting
     assert t.take(agent.id, 11) is None and t.stats["stale"] == 1  # too old to act on

@@ -532,6 +532,8 @@ class Agent:
         self.shift_job: Optional[str] = None
         from agents.utility_brain import ActionMemory
         self.action_memory = ActionMemory()  # what has worked for this agent
+        from agents.memory_stream import MemoryStream
+        self.memory_stream = MemoryStream()  # what it has done and lived through (Smallville-style)
 
         # PURPOSEFUL ACTION TRACKING - Creates empire builders!
         self.current_action_purpose: Optional[Dict] = None  # Why they're doing this

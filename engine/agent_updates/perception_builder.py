@@ -50,6 +50,7 @@ class PerceptionBuilder:
         """
         # Start with basic perception from agent
         perceptions = agent.perceive(world_state)
+        perceptions['tick'] = world_state.get('tick', self.sim.world.time.current_tick)
 
         # === REFACTORED SECTIONS (implemented in PerceptionBuilder) ===
         perceptions = self._add_combat_info(agent, perceptions)

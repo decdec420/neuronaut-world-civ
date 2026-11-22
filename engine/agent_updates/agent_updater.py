@@ -16,7 +16,7 @@ import logging
 import random
 from typing import Dict, Any, Optional
 from agents.agent import Action, ActionType
-from agents.daily_life import JOBS, WORK, job_for
+from agents.daily_life import JOBS, SLEEP, WORK, job_for
 from agents.utility_brain import UtilityBrain
 
 logger = logging.getLogger(__name__)
@@ -50,7 +50,7 @@ class AgentUpdater:
         if config.use_llm_decisions and brain is not None:
             from agents.thinking import ThinkingScheduler
             self.thinking = ThinkingScheduler(
-                lambda prompt: brain.complete(prompt, label="decision", json_schema=brain.decision_schema()),
+                lambda prompt, schema: brain.complete(prompt, label="thought", json_schema=schema),
                 workers=config.llm_workers, think_every=config.llm_think_every,
                 tick_budget=config.llm_tick_budget)
 
@@ -77,7 +77,7 @@ class AgentUpdater:
         # (No model to ask, e.g. Ollama is down: don't build prompts for nobody)
         if self.thinking is not None and self.sim.llm_brain.providers_to_try():
             self.thinking.start([a for a in self.sim.world.agents if a.alive], current_tick,
-                                lambda agent: self._decision_prompt(agent, world_state))
+                                lambda agent: self._next_thought(agent, world_state, current_tick))
             self.thinking.wait()
 
         # Update all agents with error isolation
@@ -98,12 +98,32 @@ class AgentUpdater:
         return (hasattr(agent, 'autonomous_decide') and agent.life_stage != "baby"
                 and self._survival_override(agent) is None)
 
-    def _decision_prompt(self, agent, world_state) -> Optional[str]:
+    def _next_thought(self, agent, world_state, current_tick: int):
+        """(kind, prompt, schema) for what the agent should think about next,
+        Smallville-style: plan its day when it's awake and has no plan for
+        today; reflect once enough has happened; otherwise decide what to do."""
         if not self._wants_to_think(agent):
             return None
         perceptions = self.sim._perception_builder.build_perceptions(agent, world_state)
         agent.last_perception = perceptions
-        return self.sim.llm_brain._build_thinking_prompt(agent, perceptions, "decide_action")
+        brain, time, stream = self.sim.llm_brain, self.sim.world.time, agent.memory_stream
+        if stream.plan_day != time.day and agent.routine.block(time.hour) != SLEEP:
+            return ("plan",) + brain.plan_prompt(agent, perceptions, time.day)
+        if stream.wants_reflection():
+            return ("reflect",) + brain.reflection_prompt(agent, current_tick)
+        return "decide", brain._build_thinking_prompt(agent, perceptions, "decide_action"), brain.decision_schema()
+
+    def _apply_thought(self, agent, kind: str, answer: str, current_tick: int) -> None:
+        """A day plan or reflection came back: keep it in the memory stream."""
+        from agents.action_menu import parse_plan, parse_insights
+        stream = agent.memory_stream
+        if kind == "plan":
+            plan = parse_plan(answer, self.sim.llm_brain.action_menu.names)
+            stream.set_plan(self.sim.world.time.day, current_tick, plan)
+            self.thinking.stats["plans" if plan else "unreadable_plans"] += 1
+        elif kind == "reflect":
+            added = stream.reflected(current_tick, parse_insights(answer))
+            self.thinking.stats["reflections"] += added
 
     async def _update_single_agent(self, agent, current_tick: int, world_state: Dict) -> None:
         """
@@ -332,16 +352,19 @@ class AgentUpdater:
         # (agents/thinking.py); otherwise the rule-based brain below
         llm_action = None
         if self.thinking is not None and self._wants_to_think(agent):
-            answer = self.thinking.take(agent.id, current_tick)
-            if answer is None and not self._in_tick and self.thinking.is_due(agent.id, current_tick) \
+            result = self.thinking.take(agent.id, current_tick)
+            if result is None and not self._in_tick and self.thinking.is_due(agent.id, current_tick) \
                     and self.sim.llm_brain.providers_to_try():
                 # Asked outside a tick (a tool or a test): think now, within the budget
-                self.thinking.submit(agent.id, self.sim.llm_brain._build_thinking_prompt(
-                    agent, perceptions, "decide_action"), current_tick)
+                brain = self.sim.llm_brain
+                self.thinking.submit(agent.id, brain._build_thinking_prompt(agent, perceptions, "decide_action"),
+                                     current_tick, "decide", brain.decision_schema())
                 self.thinking.wait()
-                answer = self.thinking.take(agent.id, current_tick)
-            if answer:
-                llm_action = agent._parse_action_from_llm(answer.strip(), perceptions)
+                result = self.thinking.take(agent.id, current_tick)
+            if result is not None and result[0] != "decide":
+                self._apply_thought(agent, result[0], result[1], current_tick)
+            elif result is not None:
+                llm_action = agent._parse_action_from_llm(result[1].strip(), perceptions)
             # Unusable answer: use the rule-based brain below
             if llm_action is not None and llm_action.action_type in (ActionType.IDLE, ActionType.WAIT):
                 llm_action = None
@@ -367,8 +390,12 @@ class AgentUpdater:
             else:
                 goal_action = None
                 intent = getattr(agent, 'ai_intent', None)
+                planned = agent.memory_stream.planned_action(self.sim.world.time.hour)
                 if intent is not None and current_tick <= intent[1]:
                     goal_action = intent[0]  # what its own model last decided
+                elif planned:
+                    from engine.simulation import UNHANDLED_ACTION_FALLBACKS
+                    goal_action = UNHANDLED_ACTION_FALLBACKS.get(planned, planned)  # its plan for this hour
                 elif current_goal:
                     from engine.simulation import UNHANDLED_ACTION_FALLBACKS
                     step = self.sim.strategy_manager.evaluate_goal_action(agent, current_goal)
@@ -379,6 +406,22 @@ class AgentUpdater:
             agent.shift_job = job_for(self._resolved_name(action), agent.work_life.job) if part_of_day == WORK else None
         agent.current_action = action
         return action, current_goal
+
+    def _remember_action(self, agent, action, outcome: Dict, current_tick: int) -> None:
+        """A first-person memory of what the agent did and how it went; what
+        moved it more (or failed) matters more."""
+        name = self._resolved_name(action).replace('_', ' ')
+        target = self.sim._get_agent_by_id(action.target_agent) if action.target_agent else None
+        doing = name + (f" with {target.name}" if target is not None else "")
+        succeeded = bool(outcome.get('success', False))
+        message = str(outcome.get('message', '') or '').strip()
+        text = (doing[0].upper() + doing[1:] if succeeded else f"Tried to {doing}") + (f": {message}" if message else "")
+        try:
+            impact = abs(float(outcome.get('emotional_impact', 0.0) or 0.0))
+        except (TypeError, ValueError):
+            impact = 0.0
+        importance = 0.1 + 0.4 * min(1.0, impact) + (0.0 if succeeded else 0.1)
+        agent.memory_stream.add(current_tick, text, importance)
 
     @staticmethod
     def _snapshot_needs(needs):
@@ -653,6 +696,9 @@ class AgentUpdater:
 
         # 6. Agent learns from outcome (existing system)
         agent.learn_from_outcome(action, outcome)
+
+        # 6a. ...and remembers it (agents/memory_stream.py)
+        self._remember_action(agent, action, outcome, current_tick)
 
         # 7. TRACK ACTION FOR ROLE EMERGENCE - Pure behavioral observation!
         # Record what agent actually did (not what they're "supposed" to do)

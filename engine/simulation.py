@@ -252,6 +252,8 @@ class SimulationEngine:
         self.group_manager = systems['group_manager']
         self.economy = systems['economy']
         self.event_logger = systems['event_logger']
+        # Everyone involved in an event remembers it (agents/memory_stream.py)
+        self.event_logger.listeners.append(self._remember_event)
 
         # Old systems
         self.building_manager = systems['building_manager']
@@ -727,6 +729,16 @@ class SimulationEngine:
         result = handler.execute(agent, action)
 
         return result.to_dict()
+
+    EVENT_MEMORY_IMPORTANCE = {0: 0.1, 1: 0.3, 2: 0.5, 3: 0.8, 4: 1.0}
+
+    def _remember_event(self, event) -> None:
+        importance = self.EVENT_MEMORY_IMPORTANCE.get(event.importance.value, 0.3)
+        text = f"{event.title}: {event.description}" if event.description else event.title
+        for agent_id in set(event.agents_involved or ()):
+            agent = self._get_agent_by_id(agent_id)
+            if agent is not None and agent.alive:
+                agent.memory_stream.add(event.tick, text, importance)
 
     def _get_agent_by_id(self, agent_id: str) -> Optional[Agent]:
         """Get agent by ID."""
