@@ -6,6 +6,7 @@ Save, load, carry on: a saved world comes back exactly as it was.
 
 import asyncio
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -23,6 +24,13 @@ def run(sim, ticks):
         asyncio.run(go())
 
 
+def _item(name: str) -> str:
+    """Item names some actions make carry a uuid4 suffix ("medicine_722ba7f8"):
+    those come from the OS, not the world's dice, so they differ between two
+    otherwise identical runs."""
+    return re.sub(r"_[0-9a-f]{8}$", "_<id>", name)
+
+
 def fingerprint(sim) -> dict:
     """What a save must keep: agents, relationships, buildings, governments,
     religions, money, time."""
@@ -31,7 +39,8 @@ def fingerprint(sim) -> dict:
         "tick": sim.world.time.current_tick,
         "agents": sorted((a.id, a.name, a.alive, round(a.health, 6), round(a.location.x, 6), round(a.location.y, 6),
                           round(a.wealth, 6), a.age, a.partner_id, a.life_stage, a.death_cause,
-                          tuple(sorted(a.inventory.items.items())), len(a.memory_stream.records))
+                          tuple(sorted((_item(k), v) for k, v in a.inventory.items.items())),
+                          len(a.memory_stream.records))
                          for a in sim.world.agents),
         "relationships": sorted((r.agent_a, r.agent_b, r.relationship_type.value, round(r.strength, 6))
                                 for r in sim.relationship_manager.relationships.values()),
