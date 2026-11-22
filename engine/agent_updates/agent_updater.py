@@ -415,6 +415,22 @@ class AgentUpdater:
         return action, current_goal
 
     @staticmethod
+    def _snapshot_needs(needs):
+        """A copy of an agent's need levels."""
+        from engine.psychology import NeedState, Need
+        return NeedState(needs={t: Need(t, n.level, n.priority, n.decay_rate) for t, n in needs.needs.items()})
+
+    @staticmethod
+    def _success_score(action_outcome, action_succeeded: bool) -> float:
+        """0-1: 0 if the action failed; otherwise 0.5-1 by how much better off
+        it left the agent. (This called SimulationEngine._calculate_success_score,
+        which never existed; the error was swallowed, so nothing was recorded.)"""
+        if not action_succeeded:
+            return 0.0
+        lift = max(0.0, min(1.0, 0.5 + 10.0 * action_outcome.life_satisfaction_delta))
+        return 0.5 + 0.5 * lift
+
+    @staticmethod
     def _resolved_name(action) -> str:
         """The action that will actually run (aliases resolve to their action)."""
         from engine.simulation import UNHANDLED_ACTION_FALLBACKS
@@ -563,8 +579,9 @@ class AgentUpdater:
             current_goal: The agent's current strategic goal (may be None)
             current_tick: Current simulation tick
         """
-        # 1. Capture agent state BEFORE action
-        needs_before = agent.needs
+        # 1. Capture agent state BEFORE action (a copy: this used to be the same
+        # object as "after", so every measured change was zero)
+        needs_before = self._snapshot_needs(agent.needs)
         life_sat_before = needs_before.get_overall_satisfaction()
 
         # 2. Evaluate WHY agent is doing this (purpose evaluation)
@@ -598,7 +615,7 @@ class AgentUpdater:
                 'expected_satisfaction': purpose.expected_life_satisfaction_change
             }
         except Exception as e:
-            # Fallback if evaluation fails
+            logger.warning(f"Purpose evaluation failed for {agent.name} ({action_name}): {e}")
             agent.current_action_purpose = None
 
         # 3. Execute action
@@ -618,7 +635,7 @@ class AgentUpdater:
                     agent_needs_after=needs_after,
                     context={
                         'action': action_name,
-                        'what_happened': outcome.get('reason', 'Action completed'),
+                        'what_happened': outcome.get('message', 'Action completed'),
                         'wealth_change': outcome.get('wealth_change', 0.0),
                         'resources_gained': outcome.get('resources_gained', {}),
                         'resources_lost': outcome.get('resources_lost', {})
@@ -628,12 +645,13 @@ class AgentUpdater:
                 # Store outcome with agent (for learning & UI)
                 outcome_data = {
                     'action': action_name,
+                    'tick': current_tick,
                     'succeeded': action_outcome.succeeded,
                     'life_satisfaction_delta': action_outcome.life_satisfaction_delta,
                     'need_changes': {nt.value: change for nt, change in action_outcome.need_changes.items()},
                     'skill_growth': action_outcome.skill_growth,
                     'lesson_learned': action_outcome.lesson_learned,
-                    'success_score': self.sim._calculate_success_score(action_outcome)
+                    'success_score': self._success_score(action_outcome, bool(outcome.get('success', False)))
                 }
 
                 # Add to recent outcomes (keep last 10)
@@ -652,8 +670,9 @@ class AgentUpdater:
                     agent.decision_quality_scores = agent.decision_quality_scores[-10:]
 
             except Exception as e:
-                # Fallback if outcome measurement fails
-                pass
+                # Report, don't hide (this used to swallow an AttributeError
+                # every tick, so no outcome was ever recorded)
+                logger.warning(f"Outcome measurement failed for {agent.name} ({action_name}): {e}")
 
         # 6. Agent learns from outcome (existing system)
         agent.learn_from_outcome(action, outcome)
@@ -664,9 +683,16 @@ class AgentUpdater:
             action_name = action.action_type.value if hasattr(action.action_type, 'value') else str(action.action_type)
             self.sim.role_emergence.record_action(agent.id, action_name)
 
-        # 7a. Remember whether it worked (shapes the rule-based brain's next choices)
+        # 7a. Remember how well it worked (shapes the rule-based brain's next
+        # choices): the measured score when there is one (did it succeed and
+        # leave the agent better off), otherwise plain success
         if hasattr(agent, 'action_memory'):
-            agent.action_memory.record(self._resolved_name(action), bool(outcome.get('success', False)))
+            measured = agent.recent_action_outcomes[-1] if agent.recent_action_outcomes else None
+            if measured is not None and measured.get('action') == action_name and measured.get('tick') == current_tick:
+                worked = measured['success_score']
+            else:
+                worked = 1.0 if outcome.get('success', False) else 0.0
+            agent.action_memory.record(self._resolved_name(action), worked)
 
         # 7b'. What was made: the first maker of anything invents it
         self._record_invention(agent, self._resolved_name(action), outcome, current_tick)

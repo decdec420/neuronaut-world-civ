@@ -185,9 +185,10 @@ class ActionMemory:
     def expectation(self, action: str) -> float:
         return self.rate.get(action, 0.5)  # untried: no opinion
 
-    def record(self, action: str, succeeded: bool) -> None:
+    def record(self, action: str, worked: float) -> None:
+        """worked: 0-1 (a bool counts as 0 or 1)."""
         old = self.expectation(action)
-        self.rate[action] = old + self.learning_rate * ((1.0 if succeeded else 0.0) - old)
+        self.rate[action] = old + self.learning_rate * (float(worked) - old)
 
 
 class UtilityBrain:
