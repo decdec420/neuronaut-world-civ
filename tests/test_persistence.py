@@ -117,8 +117,13 @@ def test_saves_list_load_and_delete_through_the_save_manager(tmp_path):
     from test_reachability import make_world
     from engine.save_manager import SaveManager
     from engine.persistence import load_full_state
+    from world.dynamic_buildings import Building
     sim, _ = make_world()
     sim.persistence.simulation = sim
+    # A finished building (saving used to crash on any building)
+    dbs = sim.dynamic_building_system
+    dbs.buildings["b1"] = Building(id="b1", name="Hut", design_id="missing", location=(50, 50),
+                                   is_complete=True, builder_ids={"x"})
     manager = SaveManager(saves_dir=str(tmp_path))
     assert manager.create_save("My World", sim.persistence.create_snapshot(), simulation=sim)
     save_id = manager.list_saves()[0]["id"]

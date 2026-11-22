@@ -325,11 +325,15 @@ class PersistenceEngine:
                     "durability": building.durability,
                     "collapsed": building.collapsed,
                     "materials_used": building.materials_used,
-                    "purposes": building.purposes,
-                    "category": building.category,
-                    "built_by": building.built_by,
+                    # Purposes and category belong to the design; builders are a set.
+                    # (This read building.purposes/.category/.built_by, which don't
+                    # exist, so saving failed once any building was finished.)
+                    "purposes": list(getattr(designs.get(building.design_id), 'intended_purposes', [])),
+                    "category": getattr(designs.get(building.design_id), 'category', None),
+                    "built_by": sorted(building.builder_ids),
                     "built_date": building.built_date.isoformat() if building.built_date else None,
                 }
+                for designs in [simulation.dynamic_building_system.designs]
                 for building_id, building in simulation.dynamic_building_system.buildings.items()
             } if hasattr(simulation, 'dynamic_building_system') else {},
             "knowledge": self._serialize_knowledge(simulation.knowledge_system) if hasattr(simulation, 'knowledge_system') else {},
