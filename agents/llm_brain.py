@@ -170,6 +170,25 @@ class MultiLLMBrain:
         self.total_decisions = 0
         self.provider_usage = {p: 0 for p in LLMProvider}
 
+        # The action menu (set by the simulation from its handler registry) and
+        # how often answers could / couldn't be read as a listed action
+        self.action_menu = None
+        self.decisions_parsed = 0
+        self.parse_failures = 0
+        self.last_parse_failures: List[str] = []  # a few recent unreadable answers, for debugging
+
+    def set_action_menu(self, menu) -> None:
+        """Use this menu (agents.action_menu.ActionMenu) in decision prompts."""
+        self.action_menu = menu
+
+    def record_parse(self, ok: bool, response: str = "") -> None:
+        if ok:
+            self.decisions_parsed += 1
+        else:
+            self.parse_failures += 1
+            self.last_parse_failures = (self.last_parse_failures + [response[:200]])[-5:]
+            logger.warning(f"Could not read an action from the AI answer: {response[:120]!r}")
+
     def get_available_provider(self, complexity: str = "simple") -> LLMProvider:
         """
         Get best available provider for this decision
@@ -486,36 +505,7 @@ class MultiLLMBrain:
         else:
             resources_str = 'none visible'
 
-        # Base context about the agent
-        context = f"""You are {agent.name}, a {agent.age}-year-old {agent.gender.value}.
-
-Your Personality:
-- Ambitious: {agent.personality.ambition:.1f}/1.0
-- Creative: {agent.personality.creativity:.1f}/1.0
-- Social (Extraversion): {agent.personality.extraversion:.1f}/1.0
-- Risk-Taking: {agent.personality.risk_taking:.1f}/1.0
-- Conscientiousness: {agent.personality.conscientiousness:.1f}/1.0
-- Openness to new experiences: {agent.personality.openness:.1f}/1.0
-
-Current Needs (0=satisfied, 1=desperate):
-- Hunger: {agent.needs.needs[NeedType.HUNGER].level:.2f}
-- Thirst: {agent.needs.needs[NeedType.THIRST].level:.2f}
-- Energy/Sleep: {agent.energy:.0f}/100
-- Romance/Sex: {agent.needs.needs[NeedType.SEX].level:.2f}
-- Social Belonging: {agent.needs.needs[NeedType.BELONGING].level:.2f}
-- Meaning/Purpose: {agent.needs.needs[NeedType.MEANING].level:.2f}
-- Creativity: {agent.needs.needs[NeedType.CREATIVITY].level:.2f}
-
-Your Resources:
-- Wealth: ${agent.wealth}
-- Health: {agent.health}/100
-- Inventory: {', '.join(list(agent.inventory.items.keys())[:8]) or 'empty'}
-
-Current Situation:
-- Location: ({agent.location.x}, {agent.location.y})
-- Nearby people: {', '.join([a['name'] for a in nearby_agents[:5]]) or 'alone'}
-- Nearby resources: {resources_str}
-"""
+        context = self._describe_agent(agent, perceptions, resources_str)
 
         # Add thinking mode specific instructions
         if thinking_mode == "decide_action":
@@ -567,23 +557,20 @@ Current Situation:
             # Add consequences context
             consequences_context = self._get_consequences_context(agent)
 
-            prompt = context + goal_context + memory_context + risk_warnings + combat_context + governance_context + scarcity_context + tech_context + weather_context + buildings_context + knowledge_context + disaster_context + experimentation_context + roles_context + innovations_context + fun_context + consequences_context + f"""
-What do you want to do RIGHT NOW? Think like a real person with desires, fears, and goals.
+            from agents.action_menu import RESPONSE_FORMAT
+            menu_text = self.action_menu.text if self.action_menu else "(no actions available)"
+            sections = [goal_context, memory_context, risk_warnings, combat_context, governance_context,
+                        scarcity_context, tech_context, weather_context, buildings_context, knowledge_context,
+                        disaster_context, experimentation_context, roles_context, innovations_context,
+                        fun_context, consequences_context]
+            prompt = context + "".join(self._compact(section) for section in sections) + f"""
+What do you want to do right now? You decide: weigh your needs, your
+personality, the people in your life and what you're working toward.
 
-Available actions: eat, drink, rest, gather_food, gather_water, explore, socialize, trade, fight, experiment, build, craft, seek_romance, play_game, celebrate, teach, learn, create_art, govern, make_law, vote
+What you can do (write the action name exactly as listed):
+{menu_text}
 
-Think about:
-1. What is most urgent for your survival?
-2. What would make you happy?
-3. What fits your personality?
-4. **What are you working toward? Which actions move you closer to your goals?**
-5. What opportunities are around you?
-6. **What have you learned from past mistakes and successes?**
-7. **Are you desperate enough to fight for resources? Is anyone vulnerable?**
-
-Respond with:
-ACTION: [chosen action]
-REASON: [why in 1 sentence, mention your goal if relevant]
+{RESPONSE_FORMAT}
 """
 
         elif thinking_mode == "long_term_planning":
@@ -661,6 +648,66 @@ Be bold! Think of something interesting to try.
             prompt = context + "\n\nWhat are you thinking about right now? What matters to you?"
 
         return prompt
+
+    @staticmethod
+    def _compact(section: str, max_chars: int = 450) -> str:
+        """Trim a context section for the prompt: no markdown bold, no blank
+        lines, cut at a line boundary. Keeps the decision prompt small enough
+        for a local model's context window."""
+        lines = [line.replace("**", "").rstrip() for line in section.splitlines() if line.strip()]
+        kept, size = [], 0
+        for line in lines:
+            if size + len(line) > max_chars:
+                kept.append("  ...")
+                break
+            kept.append(line)
+            size += len(line) + 1
+        return ("\n".join(kept) + "\n") if kept else ""
+
+    def _describe_agent(self, agent, perceptions: Dict, resources_str: str) -> str:
+        """Who the agent is and what it knows about its world, compactly."""
+        p = agent.personality
+        traits = ", ".join(f"{t.replace('_', '-')} {getattr(p, t):.1f}" for t in (
+            "openness", "conscientiousness", "extraversion", "agreeableness", "neuroticism",
+            "ambition", "creativity", "empathy", "risk_taking", "aggression", "sexuality", "rationality"))
+        needs = ", ".join(f"{nt.value} {need.level:.2f}" for nt, need in agent.needs.needs.items())
+        carried = sorted(((k, v) for k, v in agent.inventory.items.items() if v > 0), key=lambda kv: -kv[1])
+        inventory = ", ".join(f"{k} {v}" for k, v in carried[:12]) or "nothing"
+        if len(carried) > 12:
+            inventory += f" (+{len(carried) - 12} other things)"
+
+        lines = [f"You are {agent.name}, a {agent.age}-year-old {agent.gender.value}."]
+        hour = perceptions.get("time_of_day")
+        if hour is not None:
+            lines.append(f"It is {hour:02d}:00.")
+        work_life = getattr(agent, "work_life", None)
+        if work_life is not None and work_life.job:
+            lines.append(f"Your work: {work_life.to_dict()['job_title']}.")
+        lines += [
+            f"Personality (0-1): {traits}",
+            f"Needs (0 = satisfied, 1 = desperate): {needs}",
+            f"Energy {agent.energy:.0f}/100, health {agent.health:.0f}/100, money {agent.wealth:.0f}",
+            f"You carry: {inventory} (capacity {agent.inventory.capacity})",
+        ]
+
+        nearby = perceptions.get("nearby_agents", [])
+        if nearby:
+            lines.append("Near you: " + "; ".join(
+                f"{a['name']} ({a.get('distance', 0):.0f} away)" for a in nearby[:6]))
+        else:
+            lines.append("Nobody is near you.")
+        lines.append(f"Resources in sight: {resources_str}")
+
+        known = perceptions.get("relationships", [])
+        if known:
+            lines.append("People you know: " + "; ".join(
+                f"{r['name']} ({r['type']}, {r['strength']:.1f})" for r in known[:8]))
+
+        community = perceptions.get("community", {})
+        for label, key in (("Governments", "governments"), ("Laws", "laws"), ("Religions", "religions")):
+            items = community.get(key) or []
+            lines.append(f"{label}: " + ("; ".join(items[:5]) if items else "none yet"))
+        return "\n".join(lines) + "\n"
 
     def _get_goal_context(self, agent) -> str:
         """

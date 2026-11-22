@@ -111,6 +111,9 @@ class AgentUpdater:
 
         # ===== BUILD PERCEPTIONS =====
         perceptions = self.sim._perception_builder.build_perceptions(agent, world_state)
+        # The AI brain's prompt reads its context (laws, buildings, combat...) from here;
+        # it was never set, so every one of those prompt sections came out empty
+        agent.last_perception = perceptions
 
         # ===== MAKE DECISION =====
         action, current_goal = await self._make_agent_decision(agent, perceptions, current_tick)

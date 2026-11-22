@@ -27,6 +27,7 @@ import contextlib
 import io
 import os
 import random
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -303,16 +304,18 @@ def llm_menu_and_parser():
     brain = sim.llm_brain
     if brain is None:
         return set(), (lambda name: None)
+    agent.last_perception = perceptions
     with quiet():
         prompt = brain._build_thinking_prompt(agent, perceptions, "decide_action")
-    menu = set()
-    for line in prompt.splitlines():
-        if line.strip().lower().startswith("available actions:"):
-            menu |= {w.strip().lower() for w in line.split(":", 1)[1].split(",") if w.strip()}
+    # A name counts as on the menu only if the prompt the model sees contains it
+    # as a whole word
+    from agents.agent import ActionType
+    menu = {a.value for a in ActionType
+            if re.search(rf"(?<![a-z_]){re.escape(a.value)}(?![a-z_])", prompt)}
 
     def parse(name: str):
         with quiet():
-            action = agent._parse_action_from_llm(f"ACTION: {name}\nREASON: it fits my plans")
+            action = agent._parse_action_from_llm(f"ACTION: {name}\nREASON: it fits my plans", perceptions)
         return action.action_type.value if action is not None else None
     return menu, parse
 

@@ -184,6 +184,12 @@ class SimulationEngine:
         self._register_action_handlers()
         print("⚙️  Action Handler System enabled - Modular action execution!")
 
+        # The AI brain's menu comes from the same registry and aliases the
+        # engine runs actions with, so the two can't drift apart.
+        if self.llm_brain is not None:
+            from agents.action_menu import build_menu
+            self.llm_brain.set_action_menu(build_menu(self._handler_registry, UNHANDLED_ACTION_FALLBACKS))
+
         # ===== AGENT UTILITIES =====
         # Agent lookup cache for O(1) performance
         self._agent_helper = AgentCacheHelper()

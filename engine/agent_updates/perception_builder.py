@@ -77,7 +77,43 @@ class PerceptionBuilder:
         perceptions = self._add_economic_info(agent, perceptions)
         perceptions = self._add_religious_info(agent, perceptions)
         perceptions = self._add_strategic_info(agent, perceptions)
+        perceptions = self._add_social_info(agent, perceptions)
 
+        return perceptions
+
+    def _add_social_info(self, agent, perceptions: Dict) -> Dict:
+        """The people an agent knows, and what its village has built socially.
+
+        Adds 'relationships' (name, type, strength; strongest first),
+        'people_by_name' (lower-case first name -> id, so the AI brain can
+        name anyone in the village as a target) and 'community' (governments,
+        laws and religions as short descriptions).
+        """
+        sim = self.sim
+        by_id = {a.id: a for a in sim.world.agents if a.alive}
+        perceptions['people_by_name'] = {a.name.lower(): a.id for a in by_id.values() if a.id != agent.id}
+
+        known = []
+        for rel in sim.relationship_manager.get_agent_relationships(agent.id):
+            other = by_id.get(rel.agent_b if rel.agent_a == agent.id else rel.agent_a)
+            if other is not None:
+                known.append({'name': other.name, 'type': rel.relationship_type.value, 'strength': rel.strength})
+        perceptions['relationships'] = sorted(known, key=lambda r: -r['strength'])
+
+        def name_of(agent_id):
+            other = by_id.get(agent_id)
+            return other.name if other else 'someone gone'
+
+        governance = sim.governance_manager
+        governments = [f"{g.name} ({g.government_type.value}, led by {name_of(g.leader_id)}, "
+                       f"{len(g.citizens)} citizens{', you are one' if agent.id in g.citizens else ''})"
+                       for g in governance.governments.values()]
+        laws = [f"{law.name}: {law.description} ({'in force' if law.active else 'repealed'})"
+                for law in governance.laws.values()]
+        religions = [f"{r.name} (founded by {r.founder_name or name_of(r.founder_id)}, "
+                     f"{len(r.followers)} followers{', you are one' if agent.id in r.followers else ''})"
+                     for r in sim.religion.religions.values()]
+        perceptions['community'] = {'governments': governments, 'laws': laws, 'religions': religions}
         return perceptions
 
     def _add_combat_info(self, agent, perceptions: Dict) -> Dict:
@@ -195,7 +231,9 @@ class PerceptionBuilder:
         # Add political power
         governance_info['political_power'] = self.sim.governance_manager.political_power.get(agent.id, 0.0)
 
-        perceptions['governance'] = governance_info
+        # The prompt reads 'governance_info' (it used to be written as 'governance'
+        # and never reached the AI brain)
+        perceptions['governance_info'] = governance_info
         return perceptions
 
     def _add_scarcity_info(self, agent, perceptions: Dict) -> Dict:
