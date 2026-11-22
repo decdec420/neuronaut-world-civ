@@ -44,6 +44,16 @@ class Config:
         except ValueError:
             print("⚠️  Invalid OLLAMA_NUM_CTX, LLM_TIMEOUT or LLM_CONTEXT_CHARS, using 4096, 60 and 1800")
             self.ollama_num_ctx, self.llm_timeout, self.llm_context_chars = 4096, 60.0, 1800
+        try:
+            # Thinking in parallel (agents/thinking.py): model calls in flight at
+            # once, ticks between an agent's thoughts, and seconds a tick waits
+            # for answers before agents use the rule-based brain
+            self.llm_workers = max(1, int(os.getenv('LLM_WORKERS', '2')))
+            self.llm_think_every = max(1, int(os.getenv('LLM_THINK_EVERY', '6')))
+            self.llm_tick_budget = max(0.0, float(os.getenv('LLM_TICK_BUDGET', '2')))
+        except ValueError:
+            print("⚠️  Invalid LLM_WORKERS, LLM_THINK_EVERY or LLM_TICK_BUDGET, using 2, 6 and 2")
+            self.llm_workers, self.llm_think_every, self.llm_tick_budget = 2, 6, 2.0
 
         # Feature flags with validation
         self.use_llm_decisions = os.getenv('USE_LLM_DECISIONS', 'true').lower() == 'true'

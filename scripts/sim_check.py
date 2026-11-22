@@ -163,7 +163,23 @@ def run_seed(ticks: int, seed: int, use_llm: bool) -> dict:
         "tick_ms_start": 1000 * avg(tick_seconds[: max(1, ticks // 10)]),
         "tick_ms_end": 1000 * avg(tick_seconds[-max(1, ticks // 10):]),
         "max_rss_mb": max_rss_mb(),
+        "ai": ai_stats(sim) if use_llm else None,
     }
+
+
+def ai_stats(sim) -> dict:
+    """How the AI brain did: model calls, latency, readable answers, and how
+    many decisions its answers made (agents/thinking.py)."""
+    brain = getattr(sim, "llm_brain", None)
+    thinking = getattr(sim._agent_updater, "thinking", None)
+    if brain is None or thinking is None:
+        return {"model": "none"}
+    stats = brain.get_stats()
+    out = {k: stats[k] for k in ("calls", "call_failures", "average_latency_s", "decisions_parsed", "parse_failures")}
+    out.update(dict(thinking.stats))
+    out["tick_wait_s"] = round(thinking.wait_seconds, 1)
+    thinking.close()
+    return out
 
 
 def main() -> int:
@@ -205,6 +221,8 @@ def main() -> int:
         if r["deaths"]:
             print(f"    deaths: {r['deaths']}")
         print(f"    emergence: {r['emergence']}")
+        if r["ai"] is not None:
+            print(f"    ai: {r['ai']}")
         if args.long:
             print(f"    tick time: first 10% {r['tick_ms_start']:.1f} ms, last 10% {r['tick_ms_end']:.1f} ms"
                   f" | peak memory {r['max_rss_mb']:.0f} MB")

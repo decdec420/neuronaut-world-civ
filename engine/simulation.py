@@ -738,4 +738,6 @@ class SimulationEngine:
     def stop(self):
         """Stop simulation."""
         self.running = False
+        if getattr(self._agent_updater, 'thinking', None) is not None:
+            self._agent_updater.thinking.close()  # don't wait on model calls in flight
         print("Simulation stopped")

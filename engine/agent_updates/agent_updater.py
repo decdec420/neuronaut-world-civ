@@ -42,6 +42,18 @@ class AgentUpdater:
         self.utility_brain = UtilityBrain(
             simulation, [e.action for entries in menu.by_category.values() for e in entries])
 
+        # The AI brain's calls run in worker threads (agents/thinking.py)
+        self.thinking = None
+        self._in_tick = False
+        brain = getattr(simulation, 'llm_brain', None)
+        config = simulation.config
+        if config.use_llm_decisions and brain is not None:
+            from agents.thinking import ThinkingScheduler
+            self.thinking = ThinkingScheduler(
+                lambda prompt: brain.complete(prompt, label="decision", json_schema=brain.decision_schema()),
+                workers=config.llm_workers, think_every=config.llm_think_every,
+                tick_budget=config.llm_tick_budget)
+
     async def update_all_agents(self, current_tick: int) -> None:
         """
         Main entry point for updating all agents in the simulation.
@@ -60,12 +72,38 @@ class AgentUpdater:
         # Get world state once for all agents (performance optimization)
         world_state = self.sim.world.get_state()
 
-        # Update all agents with error isolation
-        for agent in self.sim.world.agents:
-            if not agent.alive:
-                continue
+        # Agents due to think ask their model now, in parallel; the tick waits
+        # a bounded time for the answers (agents/thinking.py)
+        # (No model to ask, e.g. Ollama is down: don't build prompts for nobody)
+        if self.thinking is not None and self.sim.llm_brain.providers_to_try():
+            self.thinking.start([a for a in self.sim.world.agents if a.alive], current_tick,
+                                lambda agent: self._decision_prompt(agent, world_state))
+            self.thinking.wait()
 
-            await self._update_single_agent(agent, current_tick, world_state)
+        # Update all agents with error isolation
+        self._in_tick = True
+        try:
+            for agent in self.sim.world.agents:
+                if not agent.alive:
+                    if self.thinking is not None:
+                        self.thinking.forget(agent.id)
+                    continue
+
+                await self._update_single_agent(agent, current_tick, world_state)
+        finally:
+            self._in_tick = False
+
+    def _wants_to_think(self, agent) -> bool:
+        """Whether this agent's own model decides (survival first, babies never)."""
+        return (hasattr(agent, 'autonomous_decide') and agent.life_stage != "baby"
+                and self._survival_override(agent) is None)
+
+    def _decision_prompt(self, agent, world_state) -> Optional[str]:
+        if not self._wants_to_think(agent):
+            return None
+        perceptions = self.sim._perception_builder.build_perceptions(agent, world_state)
+        agent.last_perception = perceptions
+        return self.sim.llm_brain._build_thinking_prompt(agent, perceptions, "decide_action")
 
     async def _update_single_agent(self, agent, current_tick: int, world_state: Dict) -> None:
         """
@@ -290,24 +328,33 @@ class AgentUpdater:
         current_goal = None
 
         # ===== AI-POWERED DECISION MAKING =====
-        # Use autonomous AI decisions if enabled, otherwise fall back to rule-based
+        # The agent's own model decides when it has an answer ready
+        # (agents/thinking.py); otherwise the rule-based brain below
         llm_action = None
-        if self.sim.config.use_llm_decisions and hasattr(agent, 'autonomous_decide') \
-                and agent.life_stage != "baby" and self._survival_override(agent) is None:
-            # Make AI-powered decision (handles planning and reflection internally)
-            try:
-                llm_action = agent.autonomous_decide(perceptions, current_tick, self.sim.config)
-            except Exception as e:
-                logger.error(f"AI decision failed for {agent.name}: {e}")
-            # No model reachable / unusable answer: use the rule-based brain below
+        if self.thinking is not None and self._wants_to_think(agent):
+            answer = self.thinking.take(agent.id, current_tick)
+            if answer is None and not self._in_tick and self.thinking.is_due(agent.id, current_tick) \
+                    and self.sim.llm_brain.providers_to_try():
+                # Asked outside a tick (a tool or a test): think now, within the budget
+                self.thinking.submit(agent.id, self.sim.llm_brain._build_thinking_prompt(
+                    agent, perceptions, "decide_action"), current_tick)
+                self.thinking.wait()
+                answer = self.thinking.take(agent.id, current_tick)
+            if answer:
+                llm_action = agent._parse_action_from_llm(answer.strip(), perceptions)
+            # Unusable answer: use the rule-based brain below
             if llm_action is not None and llm_action.action_type in (ActionType.IDLE, ActionType.WAIT):
                 llm_action = None
             if llm_action is not None and not self._can_run(agent, llm_action):
+                self.thinking.stats["not_possible"] += 1
                 llm_action = None
 
         if llm_action is not None:
             action = llm_action
             current_goal = self.sim.strategy_manager.get_current_goal(agent.id)
+            # Until it thinks again, the rule-based brain leans toward this
+            agent.ai_intent = (self._resolved_name(action), current_tick + self.thinking.think_every)
+            self.thinking.stats["used"] += 1
         else:
             # Rule-based brain: survival first, then every runnable action
             # weighed by the agent's needs, personality, memory, people and day plan
@@ -319,7 +366,10 @@ class AgentUpdater:
                 action = survival_action
             else:
                 goal_action = None
-                if current_goal:
+                intent = getattr(agent, 'ai_intent', None)
+                if intent is not None and current_tick <= intent[1]:
+                    goal_action = intent[0]  # what its own model last decided
+                elif current_goal:
                     from engine.simulation import UNHANDLED_ACTION_FALLBACKS
                     step = self.sim.strategy_manager.evaluate_goal_action(agent, current_goal)
                     goal_action = UNHANDLED_ACTION_FALLBACKS.get(step, step) if step else None
