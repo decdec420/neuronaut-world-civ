@@ -496,6 +496,28 @@ class ReligionManager:
 
     # ===== QUERIES =====
 
+    # A faith a follower doesn't practise (pray, worship, ritual) for this long
+    # (ticks; a day is 144) fades and the follower lapses
+    LAPSE_TICKS = 432
+
+    def record_practice(self, agent_id: str, current_tick: int) -> None:
+        if not hasattr(self, 'last_practice'):
+            self.last_practice = {}
+        self.last_practice[agent_id] = current_tick
+
+    def lapse_inactive_followers(self, current_tick: int) -> List[str]:
+        """Followers who haven't practised for LAPSE_TICKS leave their faith."""
+        last = getattr(self, 'last_practice', {})
+        lapsed = []
+        for religion in self.religions.values():
+            for agent_id in list(religion.followers):
+                if current_tick - last.get(agent_id, current_tick) >= self.LAPSE_TICKS:
+                    religion.followers.discard(agent_id)
+                    religion.priests.discard(agent_id)
+                    last.pop(agent_id, None)
+                    lapsed.append(agent_id)
+        return lapsed
+
     def get_agent_religion(self, agent_id: str) -> Optional[Religion]:
         """Get religion agent belongs to"""
         for religion in self.religions.values():

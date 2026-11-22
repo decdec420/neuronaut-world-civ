@@ -87,3 +87,38 @@ def test_nothing_to_vote_on_is_rejected_up_front():
     handler = sim._handler_registry.get_handler(ActionType.VOTE)
     ok, reason = handler.validate(roles["actor"], Action(ActionType.VOTE))
     assert not ok and reason == "Nothing to vote on"
+
+
+def test_religion_found_join_ritual_temple_convert_lapse():
+    sim, roles = make_world()
+    a, b, d = roles["actor"], roles["neighbour"], roles["partner"]
+    rel = sim.religion
+
+    # Nobody A cares about has a faith, so worshipping founds one
+    founded = act(sim, a, "worship")
+    assert founded.metadata.get("founded")
+    faith = rel.get_agent_religion(a.id)
+
+    # B likes A, so B's worship joins A's faith instead of founding another
+    befriend(sim, b, a)
+    assert act(sim, b, "worship").metadata.get("joined")
+    assert b.id in faith.followers and len(rel.religions) == 1
+
+    # A leads a ritual (B is nearby and takes part) and builds a temple
+    assert act(sim, a, "perform_ritual").metadata["participants"] >= 2
+    assert act(sim, a, "build_temple").success
+
+    # D, who cares for nobody in A's faith, founds a second one; B comes to
+    # like D far more than A and converts
+    befriend(sim, d, a, 0.0)
+    befriend(sim, d, b, 0.0)
+    assert act(sim, d, "worship").metadata.get("founded")
+    befriend(sim, b, a, 0.1)
+    befriend(sim, b, d, 0.95)
+    assert act(sim, b, "worship").metadata.get("joined")
+    assert b.id not in faith.followers and b.id in rel.get_agent_religion(d.id).followers
+
+    # A faith nobody practises fades: A lapses after LAPSE_TICKS without practice
+    rel.record_practice(a.id, 0)
+    lapsed = rel.lapse_inactive_followers(rel.LAPSE_TICKS)
+    assert a.id in lapsed and rel.get_agent_religion(a.id) is None

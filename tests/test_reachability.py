@@ -49,8 +49,7 @@ TRIES_PER_WORLD = 8  # several outcomes are random (discoveries succeed 3-5% of 
 PREPARE = {
     "tend_crops": ["plant_crops"],
     "harvest": ["plant_crops", "<let crops grow>"],
-    "build_temple": ["<belongs to a religion>"], "worship": ["<belongs to a religion>"],
-    "perform_ritual": ["<belongs to a religion>"],
+    "build_temple": ["worship"], "perform_ritual": ["worship"],
     "make_law": ["govern"],
     "vote": ["govern", "make_law"],
     "guard": ["claim_territory"], "patrol": ["claim_territory"],
@@ -193,15 +192,6 @@ def prepare(sim, roles, name: str):
                 sim.world.time.current_tick = tick
                 with quiet():
                     sim.agriculture.update_crops(tick)
-            continue
-        if step == "<belongs to a religion>":
-            # Praying is how an agent founds a belief (or comes to one)
-            for _ in range(PREP_TRIES):
-                if sim.religion.get_agent_religion(roles["actor"].id):
-                    break
-                attempt(sim, roles, "pray")
-            else:
-                return "praying never led to a religion"
             continue
         why = "never tried"
         for _ in range(PREP_TRIES):

@@ -474,6 +474,7 @@ class SimulationEngine:
 
         # Update religion system (rituals)
         completed_rituals = self.religion.update_rituals(current_tick)
+        self.religion.lapse_inactive_followers(current_tick)
 
         # Apply spiritual benefits from completed rituals
         for ritual in completed_rituals:
