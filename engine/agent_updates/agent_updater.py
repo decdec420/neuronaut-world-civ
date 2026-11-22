@@ -226,11 +226,13 @@ class AgentUpdater:
         if random.random() < 0.0005:  # 0.05% chance per tick
             from world.health import DiseaseType, Severity
 
-            # Environmental diseases based on conditions
-            if hasattr(agent, 'needs') and agent.needs.needs.get(NeedType.HUNGER) and agent.needs.needs[NeedType.HUNGER].level < 0.3:
+            # Environmental diseases based on conditions. Need levels run
+            # 0 = satisfied -> 1 = desperate; this used to test < 0.3, giving
+            # well-fed agents malnutrition (AUDIT.md #9)
+            if hasattr(agent, 'needs') and agent.needs.needs.get(NeedType.HUNGER) and agent.needs.needs[NeedType.HUNGER].level > 0.7:
                 # Malnutrition from starvation
                 self.sim.health.infect_agent(agent.id, DiseaseType.MALNUTRITION, Severity.MODERATE, current_tick)
-            elif hasattr(agent, 'needs') and agent.needs.needs.get(NeedType.THIRST) and agent.needs.needs[NeedType.THIRST].level < 0.3:
+            elif hasattr(agent, 'needs') and agent.needs.needs.get(NeedType.THIRST) and agent.needs.needs[NeedType.THIRST].level > 0.7:
                 # Dehydration
                 self.sim.health.infect_agent(agent.id, DiseaseType.DEHYDRATION, Severity.MODERATE, current_tick)
             elif agent.energy < 20:
