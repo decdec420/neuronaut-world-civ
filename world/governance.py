@@ -95,6 +95,7 @@ class Election:
     ends_at: datetime = field(default_factory=datetime.now)
 
     # Candidates
+    ends_tick: int = 0  # the sim tick it closes on (ends_at is wall-clock and unused)
     candidates: Dict[str, int] = field(default_factory=dict)  # agent_id -> vote count
     eligible_voters: Set[str] = field(default_factory=set)
     votes_cast: Set[str] = field(default_factory=set)  # Who voted
@@ -219,21 +220,19 @@ class GovernanceManager:
         self,
         government_id: str,
         position: str,
-        duration_ticks: int = 100
+        duration_ticks: int = 100,
+        current_tick: int = 0
     ) -> Election:
-        """Hold an election"""
+        """Hold an election that closes duration_ticks from now"""
         election_id = str(uuid.uuid4())
 
         government = self.governments[government_id]
-
-        from datetime import timedelta
-        ends_at = datetime.now() + timedelta(seconds=duration_ticks)
 
         election = Election(
             id=election_id,
             government_id=government_id,
             position=position,
-            ends_at=ends_at,
+            ends_tick=current_tick + duration_ticks,
             eligible_voters=government.citizens.copy()
         )
 
@@ -364,11 +363,41 @@ class GovernanceManager:
 
             return False
 
-    def update_governments(self):
-        """Update all governments (approval, stability, etc.)"""
+    # A democracy's leader stands for re-election this often (ticks; a day is
+    # 144), and the vote stays open this long. These are the institution's own
+    # rules: nobody is made to run or to vote.
+    ELECTION_EVERY = 432
+    ELECTION_OPEN_FOR = 72
+
+    def open_election(self, government_id: str) -> Optional[Election]:
+        for election in self.elections.values():
+            if election.government_id == government_id and not election.complete:
+                return election
+        return None
+
+    def update_governments(self, current_tick: int = 0):
+        """Update all governments (approval, stability, elections, repeals)"""
+        for election_id, election in list(self.elections.items()):
+            if not election.complete and current_tick >= election.ends_tick > 0:
+                self.finalize_election(election_id)
+
         for government in self.governments.values():
             if not government.active:
                 continue
+
+            # Democracies choose their leader by election
+            if (government.government_type == GovernmentType.DEMOCRACY and current_tick > 0
+                    and self.open_election(government.id) is None
+                    and current_tick - getattr(government, 'last_election_tick', 0) >= self.ELECTION_EVERY):
+                self.hold_election(government.id, "leader", self.ELECTION_OPEN_FOR, current_tick)
+                government.last_election_tick = current_tick
+
+            # A law most citizens have voted against is repealed
+            for law_id in government.laws:
+                law = self.laws.get(law_id)
+                if (law and law.active and len(law.opposers) > len(law.supporters)
+                        and len(law.supporters) + len(law.opposers) >= max(2, len(government.citizens) // 2)):
+                    law.active = False
 
             # Update approval rating based on:
             # - Law support
@@ -399,10 +428,17 @@ class GovernanceManager:
                 government.active = False
                 government.government_type = GovernmentType.ANARCHY
 
+    def laws_binding(self, agent_id: str) -> List[Law]:
+        """The laws in force for an agent (those of its government)."""
+        government = self.get_agent_government(agent_id)
+        if government is None:
+            return []
+        return [self.laws[l] for l in government.laws if l in self.laws and self.laws[l].active]
+
     def get_agent_government(self, agent_id: str) -> Optional[Government]:
         """Get government agent belongs to"""
         for government in self.governments.values():
-            if agent_id in government.citizens:
+            if agent_id in government.citizens and government.active:
                 return government
         return None
 

@@ -27,147 +27,216 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+# What a law can forbid when its proposer doesn't say: things done to other
+# people. The proposer picks the one it has suffered from most.
+BANNABLE = ("fight", "gamble", "trade", "claim_territory")
+
+
 class GovernanceHandler(ActionHandler):
-    """Handles political and governance actions for agents."""
+    """Governments, laws and votes.
+
+    GOVERN  - take part in governing: an agent outside any government joins
+              the one its best-liked acquaintance belongs to, or founds one if
+              it knows nobody in one; a leader exercises leadership; during an
+              open election a citizen stands as a candidate.
+    MAKE_LAW - propose a law in your government (if its rules let you). It
+              bans an action: the one named in the parameters/details, or the
+              one the proposer has suffered from most.
+    VOTE    - vote in your government's open election, or on a law you
+              haven't voted on, according to your own view.
+    """
 
     def can_handle(self, action_type: ActionType) -> bool:
         return action_type in [ActionType.GOVERN, ActionType.MAKE_LAW, ActionType.VOTE]
+
+    # -- helpers ---------------------------------------------------------------
+
+    def _liking(self, agent_id: str, other_id: str) -> float:
+        rel = self.context.get_system('relationship_manager').get_relationship(agent_id, other_id)
+        if rel is None:
+            return 0.0
+        return -rel.strength if rel.relationship_type.value == 'rivalry' else rel.strength
+
+    def _government_to_join(self, agent):
+        """The government of the person this agent likes best, if any."""
+        gm = self.context.get_system('governance_manager')
+        best, best_liking = None, 0.0
+        for gov in gm.governments.values():
+            if not gov.active:
+                continue
+            for citizen in gov.citizens:
+                liking = self._liking(agent.id, citizen)
+                if liking > best_liking:
+                    best, best_liking = gov, liking
+        return best
+
+    def _vote_target(self, agent):
+        """('election', election) or ('law', law) the agent can vote on now."""
+        gm = self.context.get_system('governance_manager')
+        gov = gm.get_agent_government(agent.id)
+        if gov is None:
+            return None
+        election = gm.open_election(gov.id)
+        if election and agent.id in election.eligible_voters and agent.id not in election.votes_cast \
+                and election.candidates:
+            return 'election', election
+        for law_id in gov.laws:
+            law = gm.laws.get(law_id)
+            if law and law.active and agent.id not in law.supporters and agent.id not in law.opposers:
+                return 'law', law
+        return None
 
     def validate(self, agent: 'Agent', action: 'Action') -> tuple[bool, str]:
         alive_valid = validate_agent_alive(agent)
         if not alive_valid[0]:
             return alive_valid
-
-        if action.action_type == ActionType.GOVERN:
-            charisma = agent.personality.charisma if hasattr(agent.personality, 'charisma') else 0.5
-            governance_manager = self.context.get_system('governance_manager')
-            power = governance_manager.political_power.get(agent.id, 0.0) if governance_manager else 0.0
-            if charisma < 0.5 and power < 0.3:
-                return False, "Not influential enough to govern"
-
+        gm = self.context.get_system('governance_manager')
+        if gm is None:
+            return False, "Governance system unavailable"
+        if action.action_type == ActionType.MAKE_LAW:
+            gov = gm.get_agent_government(agent.id)
+            if gov is None:
+                return False, "Not part of any government"
+            if not gm._can_make_law(agent.id, gov):
+                return False, "No authority to make laws here"
+        if action.action_type == ActionType.VOTE:
+            params = action.parameters or {}
+            if not params.get('vote_target') and self._vote_target(agent) is None:
+                return False, "Nothing to vote on"
         return True, ""
+
+    # -- actions -----------------------------------------------------------------
 
     def execute(self, agent: 'Agent', action: 'Action') -> ActionResult:
         from world.governance import GovernmentType
-        from engine.events import EventCategory, EventImportance
         from engine.psychology import EmotionType
 
-        governance_manager = self.context.get_system('governance_manager')
-        if not governance_manager:
-            return ActionResult(success=False, emotional_impact=0.0, message="Governance system unavailable")
-
-        current_tick = self.context.current_tick
+        gm = self.context.get_system('governance_manager')
+        tick = self.context.current_tick
+        params = action.parameters or {}
 
         if action.action_type == ActionType.GOVERN:
-            # Determine government type
-            # (there is no "dominance" trait; this used to raise AttributeError,
-            # so no government could ever be founded)
-            if agent.personality.aggression > 0.7:
-                gov_type = GovernmentType.STRONGMAN
-            elif agent.personality.conscientiousness > 0.7:
-                gov_type = GovernmentType.COUNCIL
-            elif agent.personality.openness > 0.7:
-                gov_type = GovernmentType.DEMOCRACY
-            else:
-                gov_type = GovernmentType.OLIGARCHY
+            gov = gm.get_agent_government(agent.id)
+            if gov is None:
+                to_join = self._government_to_join(agent)
+                if to_join is not None:
+                    gm.agent_joins_government(agent.id, to_join.id)
+                    agent.needs.satisfy_need(NeedType.BELONGING, 0.3)
+                    self._log(f"{agent.name} joined {to_join.name}",
+                              f"{agent.name} became a citizen of {to_join.name}.", tick, [agent.id])
+                    return ActionResult(success=True, emotional_impact=0.3, message=f"Joined {to_join.name}",
+                                        metadata={'government_id': to_join.id, 'joined': True})
 
-            gov_name = action.parameters.get('name', f"{agent.name}'s Government") if action.parameters else f"{agent.name}'s Government"
+                # Found one. The form follows the founder's temperament.
+                p = agent.personality
+                if p.aggression > 0.7:
+                    gov_type = GovernmentType.STRONGMAN
+                elif p.conscientiousness > 0.7:
+                    gov_type = GovernmentType.COUNCIL
+                elif p.openness > 0.7:
+                    gov_type = GovernmentType.DEMOCRACY
+                else:
+                    gov_type = GovernmentType.OLIGARCHY
+                name = params.get('name') or params.get('details') or f"{agent.name}'s Government"
+                gov = gm.agent_forms_government(founder_id=agent.id, name=name[:60], gov_type=gov_type)
+                gov.last_election_tick = tick
+                agent.emotions.trigger_emotion(EmotionType.PRIDE, 0.8)
+                agent.needs.satisfy_need(NeedType.STATUS, 0.5)
+                self._log(f"🏛️ {agent.name} founded {gov.name}",
+                          f"{agent.name} founded {gov.name}, a {gov_type.value}.", tick, [agent.id])
+                return ActionResult(success=True, emotional_impact=0.7, message=f"Founded {gov.name}",
+                                    metadata={'government_id': gov.id, 'type': gov_type.value, 'founded': True})
 
-            government = governance_manager.agent_forms_government(
-                founder_id=agent.id,
-                name=gov_name,
-                gov_type=gov_type
-            )
+            election = gm.open_election(gov.id)
+            if election and agent.id not in election.candidates:
+                gm.agent_runs_for_office(agent.id, election.id)
+                agent.needs.satisfy_need(NeedType.STATUS, 0.2)
+                return ActionResult(success=True, emotional_impact=0.2,
+                                    message=f"Running for {election.position} of {gov.name}",
+                                    metadata={'government_id': gov.id, 'candidate': True})
 
-            logger.info(f"🏛️ {agent.name} formed {gov_name} ({gov_type.value})")
+            # Taking part in running things builds standing
+            gm.political_power[agent.id] = min(1.0, gm.political_power.get(agent.id, 0.0) + 0.05)
+            agent.needs.satisfy_need(NeedType.STATUS, 0.2 if agent.id == gov.leader_id else 0.1)
+            role = "Led" if agent.id == gov.leader_id else "Took part in"
+            return ActionResult(success=True, emotional_impact=0.2, message=f"{role} {gov.name}",
+                                metadata={'government_id': gov.id})
 
-            agent.emotions.trigger_emotion(EmotionType.PRIDE, 0.8)
-            agent.emotions.trigger_emotion(EmotionType.JOY, 0.6)
-            agent.needs.satisfy_need(NeedType.STATUS, 0.5)
-
-            return ActionResult(
-                success=True,
-                emotional_impact=0.7,
-                message=f"Formed {gov_name}",
-                metadata={'government_id': government.id, 'type': gov_type.value}
-            )
-
-        elif action.action_type == ActionType.MAKE_LAW:
-            params = action.parameters if action.parameters else {}
-            government_id = params.get('government_id')
-            law_name = params.get('law_name', 'Untitled Law')
-            law_description = params.get('description', '')
-            prohibition = params.get('prohibition')
-            requirement = params.get('requirement')
-
-            if not government_id:
-                for gov_id, gov in governance_manager.governments.items():
-                    if agent.id in gov.citizens:
-                        government_id = gov_id
-                        break
-
-            if not government_id:
-                return ActionResult(success=False, emotional_impact=-0.1, message="Not part of any government")
-
-            law = governance_manager.agent_creates_law(
-                creator_id=agent.id,
-                government_id=government_id,
-                name=law_name,
-                description=law_description,
-                prohibition=prohibition,
-                requirement=requirement
-            )
-
+        if action.action_type == ActionType.MAKE_LAW:
+            gov = gm.get_agent_government(agent.id)
+            banned = params.get('prohibition') or self._ban_from_details(params.get('details', '')) \
+                or self._grievance(agent)
+            name = params.get('law_name') or f"No {banned.replace('_', ' ')}"
+            description = params.get('description') or params.get('details') or f"Nobody may {banned.replace('_', ' ')}."
+            law = gm.agent_creates_law(creator_id=agent.id, government_id=gov.id, name=name[:60],
+                                       description=description[:200], prohibition=banned,
+                                       requirement=params.get('requirement'))
             if not law:
-                return ActionResult(success=False, emotional_impact=-0.2, message="Insufficient authority to make laws")
-
-            logger.info(f"📜 {agent.name} proposed law: {law_name}")
-
+                return ActionResult(success=False, emotional_impact=-0.2, message="No authority to make laws here")
             agent.emotions.trigger_emotion(EmotionType.PRIDE, 0.5)
             agent.needs.satisfy_need(NeedType.STATUS, 0.3)
+            self._log(f"📜 {agent.name} proposed: {law.name}", f"In {gov.name}: {law.description}", tick, [agent.id])
+            return ActionResult(success=True, emotional_impact=0.4, message=f"Proposed law: {law.name}",
+                                metadata={'law_id': law.id, 'law_name': law.name, 'prohibition': banned})
 
-            return ActionResult(
-                success=True,
-                emotional_impact=0.4,
-                message=f"Proposed law: {law_name}",
-                metadata={'law_id': law.id, 'law_name': law_name}
-            )
-
-        elif action.action_type == ActionType.VOTE:
-            params = action.parameters if action.parameters else {}
-            vote_target = params.get('vote_target')
-            vote_choice = params.get('choice')
-
-            if not vote_target:
-                return ActionResult(success=False, emotional_impact=0.0, message="No vote target specified")
-
-            # Try voting on law
-            if vote_target in governance_manager.laws:
-                support = vote_choice if isinstance(vote_choice, bool) else vote_choice == 'yes'
-                governance_manager.vote_on_law(agent.id, vote_target, support)
-                law = governance_manager.laws[vote_target]
-                vote_str = "supported" if support else "opposed"
-                logger.info(f"🗳️ {agent.name} {vote_str} law: {law.name}")
-                agent.needs.satisfy_need(NeedType.STATUS, 0.2)
-                return ActionResult(success=True, emotional_impact=0.2, message=f"Voted on {law.name}", metadata={'vote_type': 'law'})
-
-            # Try voting in election
-            elif vote_target in governance_manager.elections:
-                candidate_id = vote_choice if isinstance(vote_choice, str) else action.target_agent
-                if not candidate_id:
-                    return ActionResult(success=False, emotional_impact=0.0, message="No candidate specified")
-
-                success = governance_manager.cast_vote(agent.id, vote_target, candidate_id)
-                if success:
-                    logger.info(f"🗳️ {agent.name} voted in election")
-                    agent.needs.satisfy_need(NeedType.STATUS, 0.3)
-                    return ActionResult(success=True, emotional_impact=0.2, message="Voted in election", metadata={'vote_type': 'election'})
-                else:
-                    return ActionResult(success=False, emotional_impact=-0.1, message="Cannot vote in this election")
+        if action.action_type == ActionType.VOTE:
+            target = params.get('vote_target')
+            if target and target in gm.laws:
+                kind, item = 'law', gm.laws[target]
+            elif target and target in gm.elections:
+                kind, item = 'election', gm.elections[target]
             else:
-                return ActionResult(success=False, emotional_impact=0.0, message="Invalid vote target")
+                found = self._vote_target(agent)
+                if found is None:
+                    return ActionResult(success=False, emotional_impact=0.0, message="Nothing to vote on")
+                kind, item = found
+
+            if kind == 'law':
+                choice = params.get('choice')
+                support = (choice == 'yes') if choice in ('yes', 'no') else self._supports(agent, item)
+                gm.vote_on_law(agent.id, item.id, support)
+                agent.needs.satisfy_need(NeedType.BELONGING, 0.2)
+                return ActionResult(success=True, emotional_impact=0.2,
+                                    message=f"Voted {'for' if support else 'against'} {item.name}",
+                                    metadata={'vote_type': 'law', 'support': support})
+
+            candidate = action.target_agent if action.target_agent in item.candidates else \
+                max(item.candidates, key=lambda c: (1.0 if c == agent.id else self._liking(agent.id, c)))
+            if not gm.agent_votes(agent.id, item.id, candidate):
+                return ActionResult(success=False, emotional_impact=-0.1, message="Cannot vote in this election")
+            agent.needs.satisfy_need(NeedType.STATUS, 0.1)
+            agent.needs.satisfy_need(NeedType.BELONGING, 0.2)
+            return ActionResult(success=True, emotional_impact=0.2, message="Voted in the election",
+                                metadata={'vote_type': 'election', 'candidate': candidate})
 
         return ActionResult(success=False, emotional_impact=0.0, message="Unknown governance action")
 
+    def _supports(self, agent, law) -> bool:
+        """Support a law if you like who proposed it and it doesn't ban what you do."""
+        memory = getattr(agent, 'action_memory', None)
+        banned_habit = bool(law.prohibition and memory and law.prohibition in memory.rate)
+        return self._liking(agent.id, law.created_by) - (0.5 if banned_habit else 0.0) \
+            + (agent.personality.agreeableness - 0.5) * 0.4 >= 0.0
+
+    @staticmethod
+    def _ban_from_details(details: str):
+        lowered = (details or '').lower()
+        return next((b for b in BANNABLE if b.replace('_', ' ') in lowered or b in lowered), None)
+
+    def _grievance(self, agent) -> str:
+        """The thing others have done to this agent most (fights by default)."""
+        warfare = self.context.get_system('warfare_manager')
+        attacked = 0
+        if warfare is not None:
+            attacked = len(warfare.get_agent_conflicts(agent.id))
+        return 'fight' if attacked or agent.personality.agreeableness >= 0.5 else 'gamble'
+
+    def _log(self, title, description, tick, agent_ids):
+        from engine.events import EventCategory, EventImportance
+        event_logger = self.context.event_logger
+        if event_logger:
+            event_logger.log_event(EventCategory.POLITICAL, EventImportance.MAJOR, title, description,
+                                   tick, agent_ids)
+
     def get_required_systems(self) -> list[str]:
-        return ['world', 'governance_manager']
+        return ['governance_manager', 'relationship_manager']

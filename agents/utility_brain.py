@@ -13,6 +13,8 @@ from) is a candidate. Each gets a utility from the agent's own state:
 - memory: how often it has worked for this agent before
 - people: for actions with a partner, how much the agent likes them
 - danger: actions that can get it killed weigh less for careful or hurt agents
+- law: what its government has banned weighs less, the more conscientious
+  and agreeable it is
 - day plan and habits: rest pulls hard at night, work during work hours
   (the agent's own job most), company in the evening; the step its current
   goal calls for pulls a little
@@ -168,6 +170,10 @@ TEMPERATURE = 0.15
 DANGER = {"fight": 1.0}
 DANGER_WEIGHT = 1.5
 
+# Respect for the law: how much a ban in the agent's own government weighs
+# against an action, scaled by how conscientious and agreeable it is.
+LAW_WEIGHT = 1.5
+
 
 class ActionMemory:
     """What has worked for one agent: a running success rate per action."""
@@ -195,7 +201,8 @@ class UtilityBrain:
     # -- scoring -------------------------------------------------------------
 
     def utility(self, agent, action: str, part_of_day: Optional[str] = None,
-                goal_action: Optional[str] = None, friendship: float = 0.0) -> float:
+                goal_action: Optional[str] = None, friendship: float = 0.0,
+                banned: frozenset = frozenset()) -> float:
         from agents.daily_life import JOBS, SLEEP, WORK, FREE_TIME
         needs = agent.needs.needs
         need_term = sum(w * needs[n].get_urgency() for n, w in ACTION_NEEDS.get(action, {}).items() if n in needs)
@@ -227,8 +234,14 @@ class UtilityBrain:
         # Liking someone draws you to do things with them, and away from hurting them
         liking_term = -friendship if action == "fight" else friendship
 
+        law_term = 0.0
+        if action in banned:
+            p = agent.personality
+            law_term = (p.get_trait("conscientiousness") + p.get_trait("agreeableness")) / 2.0
+
         return (NEED_WEIGHT * need_term + TRAIT_WEIGHT * trait_term + MEMORY_WEIGHT * memory_term
-                + FRIEND_WEIGHT * liking_term + plan_term - DANGER_WEIGHT * danger_term)
+                + FRIEND_WEIGHT * liking_term + plan_term - DANGER_WEIGHT * danger_term
+                - LAW_WEIGHT * law_term)
 
     # -- targets -------------------------------------------------------------
 
@@ -264,6 +277,8 @@ class UtilityBrain:
     def options(self, agent, perceptions: Dict, can_run, part_of_day=None, goal_action=None):
         """Every runnable action with its utility, as (utility, Action)."""
         from agents.agent import Action, ActionType, Position
+        banned = frozenset(law.prohibition for law in self.sim.governance_manager.laws_binding(agent.id)
+                           if law.prohibition)
         scored = []
         for name in self.candidates:
             target, liked = (None, 0.0)
@@ -278,7 +293,7 @@ class UtilityBrain:
             action = Action(ActionType(name), target_agent=target, target_position=position)
             if not can_run(action):
                 continue
-            scored.append((self.utility(agent, name, part_of_day, goal_action, liked), action))
+            scored.append((self.utility(agent, name, part_of_day, goal_action, liked, banned), action))
         return scored
 
     def choose(self, agent, perceptions: Dict, can_run, part_of_day=None, goal_action=None):

@@ -419,6 +419,33 @@ class AgentUpdater:
         name = action.action_type.value
         return UNHANDLED_ACTION_FALLBACKS.get(name, name)
 
+    def _observe_laws(self, agent, action_name: str, current_tick: int) -> None:
+        """Record a broken law; witnesses who are citizens think less of the offender."""
+        from engine.psychology import EmotionType
+        from engine.events import EventCategory, EventImportance
+        gm = self.sim.governance_manager
+        broken = [law for law in gm.laws_binding(agent.id) if law.prohibition == action_name]
+        if not broken:
+            return
+        government = gm.get_agent_government(agent.id)
+        witnesses = [a for a in self.sim.world.agents
+                     if a.alive and a.id != agent.id and a.id in government.citizens
+                     and a.location.distance_to(agent.location) <= 10.0]
+        for law in broken:
+            law.times_broken += 1
+            if not witnesses:
+                continue
+            law.times_enforced += 1
+            for witness in witnesses:
+                self.sim.relationship_manager.update_relationship(witness.id, agent.id, 'broke_law', False)
+                witness.reputation_by_agent[agent.id] = max(0.0, witness.reputation_by_agent.get(agent.id, 0.5) - 0.1)
+            agent.emotions.trigger_emotion(EmotionType.SHAME, 0.2 + 0.4 * agent.personality.conscientiousness)
+            self.sim.event_logger.log_event(
+                EventCategory.POLITICAL, EventImportance.MINOR,
+                f"{agent.name} broke the law: {law.name}",
+                f"{len(witnesses)} citizen(s) saw {agent.name} {action_name.replace('_', ' ')}.",
+                current_tick, [agent.id] + [w.id for w in witnesses])
+
     def _announce_job(self, agent, job_key: str, current_tick: int) -> None:
         """Log an agent settling into (or changing) its job."""
         from engine.events import EventCategory, EventImportance
@@ -604,6 +631,11 @@ class AgentUpdater:
         # 7a. Remember whether it worked (shapes the rule-based brain's next choices)
         if hasattr(agent, 'action_memory'):
             agent.action_memory.record(self._resolved_name(action), bool(outcome.get('success', False)))
+
+        # 7c. Doing something your government has banned is noticed by citizens
+        # nearby and costs you their regard (the law's own consequence)
+        if outcome.get('success', False):
+            self._observe_laws(agent, self._resolved_name(action), current_tick)
 
         # 7b. A work shift counts toward the agent's job (the action passed
         # validation before it was chosen, so this was real work)

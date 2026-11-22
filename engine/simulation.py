@@ -435,7 +435,7 @@ class SimulationEngine:
 
         # Update all managers
         self.building_manager.update_buildings()
-        self.governance_manager.update_governments()
+        self.governance_manager.update_governments(current_tick)
 
         # Update fun system (celebrations, games, etc.)
         completed_celebrations = self.fun_system.update_celebrations(delta_time=1.0)
