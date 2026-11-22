@@ -4,6 +4,28 @@ An autonomous AI civilization sim: ~12 agents with needs, memory, personalities,
 an economy, buildings, culture and (optionally) LLM-driven decisions, shown live
 in a browser dashboard. The goal is a society you can sit back and watch grow.
 
+## Design philosophy: the agents are in charge
+
+The point of this sim is to see what agents create when they're fully in
+charge. The world provides capabilities; what happens is up to them.
+
+- **Never script outcomes.** No "if X then found a religion", no guaranteed
+  governments, no forced jobs or marriages. Don't add rules whose purpose is to
+  make a particular feature happen.
+- **Every capability must be reachable.** If agents can never choose an action
+  (it's missing from the AI brain's menu, or no rule-based option produces it),
+  it doesn't count as built. Fixing that is opening a door, not pushing.
+- **Make things possible, not inevitable.** Remove artificial blockers (e.g. a
+  world with no money supply plus money-only trade) instead of adding pushes.
+- **Choices come from the agent's own state:** needs, personality, memories,
+  relationships, what it perceives. Use weights, not scripts.
+- **The LLM brain is where real autonomy lives.** The rule-based brain is a
+  fallback. Prefer changes that give the LLM brain the full menu and better
+  information about its world.
+- **Measure emergence, don't target it.** `sim_check.py` may count governments,
+  religions, inventions, births, etc. Zero is a valid result, as long as
+  those things were possible and nobody chose them.
+
 ## Run it
 
 ```bash
@@ -72,8 +94,11 @@ python3 scripts/sim_check.py --llm            # LLM decision path
 2. Stone/clay pools drain with 12 builders → thousands of
    "No materials available to gather". Rebalance or make agents stop trying.
 3. `gather_food` "Failed to gather food" ~500 per 600 ticks. Find out why.
-4. Governance, religion and inventions haven't been seen to emerge. Trace
-   whether their triggers are reachable.
+4. Governance, religion and inventions never happen because agents can't
+   choose them (AUDIT.md #5). Make them reachable, without scripting them.
+   The LLM brain's prompt lists only 21 of ~200 actions
+   (`agents/llm_brain.py`, "Available actions:"); pray/worship/ritual,
+   mint_coins, invent, propose/marry and more are missing.
 5. LLM path untested against a real model (Ollama). Test and tune prompts.
 6. Roughly 100 status `.md` files in the repo root and `docs/` are stale; leave
    them unless asked, and never add more.
