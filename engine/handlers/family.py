@@ -133,6 +133,11 @@ class FamilyHandler(ActionHandler):
             return False, f"{'You are' if mother is agent else mother.name + ' is'} already expecting"
         if family.fertility(mother.age) == 0 or family.fertility(father.age) == 0:
             return False, "Not at an age to have children"
+        # A technical limit for performance (MAX_POPULATION), not a rule of the world
+        config = self.context.get_system('config')
+        living = sum(1 + a.is_pregnant for a in self.context.world.agents if a.alive)
+        if config is not None and living >= config.max_population:
+            return False, f"The world is at its population limit ({config.max_population}, a technical cap)"
         return True, ""
 
     # -- actions -----------------------------------------------------------------

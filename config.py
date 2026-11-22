@@ -45,6 +45,18 @@ class Config:
             print("⚠️  Invalid TICKS_PER_LIFE_YEAR value, using default 144")
             self.ticks_per_life_year = 144
 
+        # Population cap: a technical limit for performance (each agent costs
+        # tick time, and AI-brain calls when those are on), not a design rule.
+        # At the cap no new pregnancy starts; nothing else changes.
+        try:
+            self.max_population = int(os.getenv('MAX_POPULATION', '60'))
+            if self.max_population < 1:
+                print("⚠️  MAX_POPULATION must be >= 1, using default 60")
+                self.max_population = 60
+        except ValueError:
+            print("⚠️  Invalid MAX_POPULATION value, using default 60")
+            self.max_population = 60
+
         # Validate and parse integer environment variables
         try:
             self.long_term_planning_interval = int(os.getenv('LONG_TERM_PLANNING_INTERVAL', '100'))

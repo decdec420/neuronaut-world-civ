@@ -171,3 +171,14 @@ def test_names_never_repeat_in_a_world():
     for i in range(150):
         names.append(Agent(gender=Gender.MALE if i % 2 else Gender.FEMALE).name)
     assert len(names) == len(set(names))
+
+
+def test_the_population_cap_stops_new_pregnancies_only():
+    sim, roles = make_world()
+    a, b = roles["actor"], roles["partner"]
+    sim.config.max_population = 4  # the 4 agents of make_world
+    result, why = _try(sim, a)
+    assert result is None and "population limit" in why
+    sim.config.max_population = 5
+    result, _ = _try(sim, a)
+    assert result is not None and result.success
