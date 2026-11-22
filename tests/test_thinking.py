@@ -101,3 +101,12 @@ def test_a_tick_with_a_slow_model_uses_late_answers_on_later_turns():
     assert thinking.stats["late"] >= 1 and thinking.stats["used"] >= 1
     assert any(getattr(a, "ai_intent", (None,))[0] == "create_art" for a in sim.world.agents)
     thinking.close()
+
+
+def test_smoke_script_runs_end_to_end_with_the_fake_model():
+    import subprocess
+    script = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts", "llm_smoke.py")
+    run = subprocess.run([sys.executable, script, "--fake", "--ticks", "15", "--agents", "3"],
+                         capture_output=True, text=True, timeout=300)
+    assert run.returncode == 0, run.stdout + run.stderr
+    assert "parse failures 0%" in run.stdout and "RESULT: OK" in run.stdout
