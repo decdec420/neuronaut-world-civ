@@ -34,6 +34,17 @@ class Config:
         # Feature flags with validation
         self.use_llm_decisions = os.getenv('USE_LLM_DECISIONS', 'true').lower() == 'true'
 
+        # Life: how many ticks make one year of an agent's life (life/aging.py).
+        # 144 ticks is one sim day, so a lifetime is ~80 days of sim time.
+        try:
+            self.ticks_per_life_year = int(os.getenv('TICKS_PER_LIFE_YEAR', '144'))
+            if self.ticks_per_life_year < 1:
+                print("⚠️  TICKS_PER_LIFE_YEAR must be >= 1, using default 144")
+                self.ticks_per_life_year = 144
+        except ValueError:
+            print("⚠️  Invalid TICKS_PER_LIFE_YEAR value, using default 144")
+            self.ticks_per_life_year = 144
+
         # Validate and parse integer environment variables
         try:
             self.long_term_planning_interval = int(os.getenv('LONG_TERM_PLANNING_INTERVAL', '100'))

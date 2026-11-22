@@ -558,7 +558,8 @@ class SimulationEngine:
         if current_tick % 50 == 0:
             self._update_role_emergence(current_tick)
 
-        # Remove dead agents (DELEGATED)
+        # Birthdays, life stages, old age; then every new death, once
+        self.lifecycle_manager.update_aging(current_tick)
         self.lifecycle_manager.handle_deaths()
 
         # Check civilization milestones (DELEGATED)

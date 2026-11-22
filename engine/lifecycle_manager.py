@@ -115,6 +115,41 @@ class LifecycleManager:
         # Track birth for population history
         self.sim.births_this_day += 1
 
+    def update_aging(self, current_tick: int) -> None:
+        """Birthdays, life stages and death of old age (life/aging.py)."""
+        import random
+        from life import aging
+        ticks_per_year = self.sim.config.ticks_per_life_year
+        for agent in self.sim.world.agents:
+            if not agent.alive:
+                continue
+            agent.age_ticks += 1
+            if agent.age_ticks >= ticks_per_year:
+                agent.age_ticks = 0
+                agent.age += 1
+                self.sim.life_system.update_life_stage(agent.id, agent.age)
+                stage = aging.life_stage(agent.age)
+                if stage != agent.life_stage:
+                    self._stage_changed(agent, stage, current_tick)
+            risk = aging.yearly_old_age_risk(agent.age)
+            if risk and random.random() < risk / ticks_per_year:
+                agent.alive = False
+                agent.health = 0.0
+                agent.death_cause = "old age"
+                agent.death_tick = current_tick
+
+    def _stage_changed(self, agent: Agent, stage: str, current_tick: int) -> None:
+        agent.life_stage = stage
+        self.sim.life_events[f"became_{stage}"] += 1
+        if stage == "adult":
+            title, importance = f"🎓 {agent.name} has come of age", EventImportance.MODERATE
+        elif stage == "elder":
+            title, importance = f"{agent.name} is now an elder", EventImportance.MINOR
+        else:
+            return
+        self.sim.event_logger.log_event(EventCategory.LIFE, importance, title,
+                                        f"{agent.name} turned {agent.age}.", current_tick, [agent.id])
+
     def _widow(self, dead: Agent) -> None:
         """A partnership ends when one partner dies; the other grieves."""
         from engine.psychology import EmotionType
@@ -145,68 +180,75 @@ class LifecycleManager:
         current_tick = self.sim.world.time.current_tick
 
         for agent in self.sim.world.agents[:]:  # Copy list
-            if not agent.alive and agent.partner_id:
+            # Each death is counted, logged and mourned once. (This used to
+            # re-log every dead agent every tick, and skip anyone who died in
+            # their first 100 ticks.)
+            if agent.alive or agent.death_recorded:
+                continue
+            agent.death_recorded = True
+            if agent.death_tick is None:
+                agent.death_tick = current_tick
+            if agent.partner_id:
                 self._widow(agent)
-            if not agent.alive and agent.ticks_lived > 100:
-                # Determine death cause from agent
-                death_cause = getattr(agent, 'death_cause', None) or ("old age" if agent.age > 100 else "health")
+            death_cause = agent.death_cause or "unknown causes"
+            agent.death_cause = death_cause
 
-                # Track death for population history
-                self.sim.deaths_this_day += 1
-                self.sim.death_causes[death_cause] = self.sim.death_causes.get(death_cause, 0) + 1
+            # Track death for population history
+            self.sim.deaths_this_day += 1
+            self.sim.death_causes[death_cause] = self.sim.death_causes.get(death_cause, 0) + 1
 
-                # Log death if not already logged
-                title, desc = EventGenerator.agent_died(
-                    agent.name,
-                    agent.age,
-                    death_cause
-                )
-                self.sim.event_logger.log_event(
-                    EventCategory.LIFE,
-                    EventImportance.MODERATE,
-                    title, desc,
-                    current_tick,
-                    [agent.id]
-                )
+            # Log death if not already logged
+            title, desc = EventGenerator.agent_died(
+                agent.name,
+                agent.age,
+                death_cause
+            )
+            self.sim.event_logger.log_event(
+                EventCategory.LIFE,
+                EventImportance.MODERATE,
+                title, desc,
+                current_tick,
+                [agent.id]
+            )
 
-                # ===== DEATH STORY - Create LEGENDARY memorial! =====
-                current_day = current_tick // 144
+            # ===== DEATH STORY - Create LEGENDARY memorial! =====
+            current_day = current_tick // 144
 
-                # Build legacy context for story
-                legacy_context = {
-                    'agent_id': agent.id,
-                    'achievement_count': len(self.sim.achievement_tracker.agent_achievements.get(agent.id, []).achievements) if agent.id in self.sim.achievement_tracker.agent_achievements else 0,
-                    'children_count': len(agent.children_ids),
-                    'grandchildren_count': 0,  # TODO: Calculate
-                    'buildings_built': getattr(agent, 'buildings_constructed', 0),
-                    'discoveries': 0,  # TODO: Track
-                    'wealth': agent.inventory.items.get('wealth', 0),
-                    'birth_day': 0,  # TODO: Track
-                    'generation': 1  # TODO: Track
-                }
+            # Build legacy context for story
+            legacy_context = {
+                'agent_id': agent.id,
+                'achievement_count': len(self.sim.achievement_tracker.agent_achievements.get(agent.id, []).achievements) if agent.id in self.sim.achievement_tracker.agent_achievements else 0,
+                'children_count': len(agent.children_ids),
+                'grandchildren_count': 0,  # TODO: Calculate
+                'buildings_built': getattr(agent, 'buildings_constructed', 0),
+                'discoveries': 0,  # TODO: Track
+                'wealth': agent.inventory.items.get('wealth', 0),
+                'birth_day': 0,  # TODO: Track
+                'generation': 1  # TODO: Track
+            }
 
-                death_story = self.sim.story_generator.generate_death_story(
-                    agent.name, agent.age, death_cause, current_day, legacy_context
-                )
-                self.sim.story_feed.add_story(death_story)
-                logger.info(f"💀 STORY: {death_story.title}")
+            death_story = self.sim.story_generator.generate_death_story(
+                agent.name, agent.age, death_cause, current_day, legacy_context
+            )
+            self.sim.story_feed.add_story(death_story)
+            logger.info(f"💀 STORY: {death_story.title}")
 
-                # ===== ACHIEVEMENTS - Final check =====
-                # Update days survived for elder achievements
-                if agent.id in self.sim.achievement_tracker.agent_achievements:
-                    self.sim.achievement_tracker.update_agent_stat(agent.id, 'days_survived', agent.ticks_lived)
-                    final_achievements = self.sim.achievement_tracker.check_agent_achievements(agent.id, current_day)
-                    for ach in final_achievements:
-                        logger.info(f"🏆 {agent.name} earned posthumous achievement: {ach.name}")
+            # ===== ACHIEVEMENTS - Final check =====
+            # Update days survived for elder achievements
+            if agent.id in self.sim.achievement_tracker.agent_achievements:
+                self.sim.achievement_tracker.update_agent_stat(agent.id, 'days_survived', agent.ticks_lived)
+                final_achievements = self.sim.achievement_tracker.check_agent_achievements(agent.id, current_day)
+                for ach in final_achievements:
+                    logger.info(f"🏆 {agent.name} earned posthumous achievement: {ach.name}")
 
-                # Civilization achievement - FIRST DEATH
-                from engine.achievements import AchievementType
-                first_death_ach = self.sim.achievement_tracker.unlock_civilization_achievement(
-                    AchievementType.FIRST_DEATH, current_day
-                )
-                if first_death_ach:
-                    logger.info(f"🎆 CIVILIZATION: {first_death_ach.name}")
+            # Civilization achievement - FIRST DEATH
+            from engine.achievements import AchievementType
+            first_death_ach = self.sim.achievement_tracker.unlock_civilization_achievement(
+                AchievementType.FIRST_DEATH, current_day
+            )
+            if first_death_ach:
+                logger.info(f"🎆 CIVILIZATION: {first_death_ach.name}")
 
-                # Remove from world (after delay)
-                # In production, would archive agent data
-                # For now, keep in list as dead
+            # Remove from world (after delay)
+            # In production, would archive agent data
+            # For now, keep in list as dead

@@ -69,6 +69,8 @@ class WorldInitializer:
                 age=random.randint(18, 40),
                 gender=gender
             )
+            # Birthdays spread through the year (life/aging.py)
+            agent.age_ticks = random.randrange(self.sim.config.ticks_per_life_year)
 
             # Random starting position
             agent.location = Position(

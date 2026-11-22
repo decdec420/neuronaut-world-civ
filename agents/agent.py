@@ -497,12 +497,14 @@ class Agent:
         self.pregnancy_start_tick: int = 0
         self.pregnancy_duration_ticks: int = 1500  # ~9 months (at ~144 ticks/day = 10.4 days)
 
-        # Life stage
+        # Life stage; age_ticks counts toward the next birthday (life/aging.py)
         self.life_stage: str = self._determine_life_stage()  # baby, child, adult, elder
+        self.age_ticks: int = 0
 
         # Death tracking
         self.death_tick: Optional[int] = None
         self.death_cause: Optional[str] = None
+        self.death_recorded: bool = False  # counted, logged and mourned once
 
         # Current action
         self.current_action: Optional[Action] = None
@@ -553,15 +555,9 @@ class Agent:
         return name
 
     def _determine_life_stage(self) -> str:
-        """Determine life stage based on age"""
-        if self.age < 2:
-            return "baby"
-        elif self.age < 16:
-            return "child"
-        elif self.age < 60:
-            return "adult"
-        else:
-            return "elder"
+        """baby, child, adult or elder, by age (life/aging.py)"""
+        from life.aging import life_stage
+        return life_stage(self.age)
 
     def check_pregnancy(self, current_tick: int) -> Optional['Agent']:
         """
@@ -721,31 +717,19 @@ class Agent:
             self.health -= disease_damage
             logger.warning(f"🦠 {self.name} contracted a disease! Lost {disease_damage:.1f} health!")
 
-        # Age tracking
+        # Age tracking (birthdays, life stages and old age: LifecycleManager.update_aging)
         self.ticks_lived += 1
-
-        # Update life stage based on age
-        self.life_stage = self._determine_life_stage()
 
         # Memory decay (every 60 ticks ≈ 1 hour in-game)
         if self.ticks_lived % 60 == 0:
             self.memory.decay_memories()
-
-        # OLD AGE - Natural death between 70-100 years
-        if self.age > 70:
-            # Probability of death increases with age
-            death_chance = (self.age - 70) / 300  # 0% at 70, 10% at 100
-            if random.random() < death_chance * delta_time:
-                self.health = 0  # Die of old age
-                logger.info(f"💀 {self.name} died of old age at {self.age} years")
 
         # Check death conditions
         if self.health <= 0:
             if self.alive:  # Only log death once
                 cause = "starvation" if hunger_need and hunger_need.level > 0.95 else \
                         "dehydration" if thirst_need and thirst_need.level > 0.95 else \
-                        "exhaustion" if self.energy <= 0 else \
-                        "old age" if self.age > 70 else "unknown causes"
+                        "exhaustion" if self.energy <= 0 else "unknown causes"
                 self.death_cause = cause
                 self.death_tick = self.ticks_lived
                 logger.info(f"💀💀💀 {self.name} ({self.age}y) DIED from {cause}!")
