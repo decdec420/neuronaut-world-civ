@@ -10,3 +10,5 @@ python-multipart
 # Utilities
 pydantic
 python-dotenv
+slowapi
+requests
