@@ -27,6 +27,9 @@ from typing import Dict, List, Optional, Set, Tuple
 from datetime import datetime
 import random
 
+# Actions that keep an agent alive but aren't work anyone specializes in
+SELF_MAINTENANCE_ACTIONS = frozenset({'idle', 'wait', 'rest', 'sleep', 'eat', 'drink'})
+
 
 @dataclass
 class BehaviorPattern:
@@ -115,6 +118,12 @@ class RoleEmergence:
 
         Context can include materials used, tools, location, etc.
         """
+        # Looking after yourself isn't a specialization. Counting these made
+        # "specialized_idle" every agent's role (named from the food-gathering
+        # vocabulary, e.g. "Wandering Gatherer").
+        if action in SELF_MAINTENANCE_ACTIONS:
+            return
+
         if agent_id not in self.agent_action_history:
             self.agent_action_history[agent_id] = []
 
@@ -412,6 +421,44 @@ class RoleEmergence:
                 "descriptors": ["Careful", "Precise", "Learned", "Patient", "Dedicated"],
                 "materials": ["Word", "Record", "Document", "Story", "History", "Mark"],
                 "compounds": ["Word-Marker", "Story-Recorder", "History-Keeper", "Mark-Maker", "Document-Writer"]
+            },
+            # Common work that used to fall back to the food-gathering words
+            # (gather_materials agents were called "Food-Harvester").
+            "gather_materials": {
+                "nouns": ["Quarrier", "Woodcutter", "Hauler", "Gatherer", "Provisioner", "Digger"],
+                "descriptors": ["Strong", "Tireless", "Steady", "Hardy", "Skilled"],
+                "materials": ["Stone", "Wood", "Clay", "Fiber", "Timber"],
+                "compounds": ["Stone-Hauler", "Wood-Cutter", "Clay-Digger", "Timber-Bringer", "Fiber-Twister"]
+            },
+            "gather_water": {
+                "nouns": ["Water-Carrier", "Bearer", "Well-Keeper", "Drawer"],
+                "descriptors": ["Steady", "Faithful", "Tireless", "Patient"],
+                "materials": ["Water", "Spring", "River", "Well"],
+                "compounds": ["Water-Bearer", "Spring-Finder", "River-Walker", "Well-Tender"]
+            },
+            "explore": {
+                "nouns": ["Scout", "Explorer", "Pathfinder", "Wanderer", "Ranger"],
+                "descriptors": ["Far-roaming", "Bold", "Restless", "Keen-eyed"],
+                "materials": ["Trail", "Horizon", "Land", "Path"],
+                "compounds": ["Path-Finder", "Land-Walker", "Trail-Blazer", "Horizon-Seeker"]
+            },
+            "tell_story": {
+                "nouns": ["Storyteller", "Bard", "Teller", "Singer", "Entertainer"],
+                "descriptors": ["Lively", "Beloved", "Wise", "Merry", "Spellbinding"],
+                "materials": ["Tale", "Song", "Legend", "Story"],
+                "compounds": ["Tale-Spinner", "Song-Keeper", "Story-Weaver", "Legend-Teller"]
+            },
+            "create_art": {
+                "nouns": ["Artist", "Painter", "Carver", "Artisan", "Sculptor"],
+                "descriptors": ["Inspired", "Gifted", "Dreaming", "Bold"],
+                "materials": ["Color", "Stone", "Image", "Form"],
+                "compounds": ["Image-Maker", "Stone-Carver", "Color-Weaver", "Form-Shaper"]
+            },
+            "heal": {
+                "nouns": ["Healer", "Mender", "Herbalist", "Caregiver"],
+                "descriptors": ["Gentle", "Wise", "Patient", "Kind"],
+                "materials": ["Herb", "Remedy", "Wound", "Life"],
+                "compounds": ["Wound-Mender", "Herb-Healer", "Life-Keeper", "Fever-Breaker"]
             }
         }
 
