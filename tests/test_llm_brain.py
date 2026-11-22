@@ -289,3 +289,11 @@ def test_decisions_ask_ollama_for_an_answer_from_the_menu():
     assert set(body["format"]["properties"]["action"]["enum"]) == brain.action_menu.names
     # The menu opens the prompt (the same for every agent, so it can be cached)
     assert body["prompt"].startswith(brain.decision_preamble())
+
+
+def test_env_example_placeholder_keys_count_as_no_key():
+    brain = _brain(GROQ_API_KEY="your_groq_api_key_here", GEMINI_API_KEY="your_gemini_api_key_here",
+                   HUGGINGFACE_API_KEY="your_huggingface_api_key_here", TOGETHER_API_KEY="your_together_key_here")
+    from agents.llm_brain import LLMProvider
+    assert brain.api_keys == {} and brain.providers_to_try() == [LLMProvider.OLLAMA_LOCAL]
+    assert _brain(GROQ_API_KEY="gsk_realLookingKey123").api_keys == {"groq": "gsk_realLookingKey123"}

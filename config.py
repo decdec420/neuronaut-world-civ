@@ -17,15 +17,27 @@ except ImportError:
     print("   Install with: pip install python-dotenv")
 
 
+def _api_key(name: str) -> str:
+    """An API key from the environment, or '' if unset or still the
+    .env.example placeholder ("your_groq_api_key_here"). Copying the example
+    used to leave four fake keys, so every AI decision first tried four cloud
+    providers that could only fail before reaching the local model."""
+    value = os.getenv(name, '').strip()
+    lowered = value.lower()
+    if lowered.startswith('your_') or lowered.endswith('_here'):
+        return ''
+    return value
+
+
 class Config:
     """Configuration for Neuronaut World"""
 
     def __init__(self):
-        # LLM API Keys
-        self.groq_api_key = os.getenv('GROQ_API_KEY', '')
-        self.gemini_api_key = os.getenv('GEMINI_API_KEY', '')
-        self.huggingface_api_key = os.getenv('HUGGINGFACE_API_KEY', '')
-        self.together_api_key = os.getenv('TOGETHER_API_KEY', '')
+        # LLM API Keys (the .env.example placeholders count as no key)
+        self.groq_api_key = _api_key('GROQ_API_KEY')
+        self.gemini_api_key = _api_key('GEMINI_API_KEY')
+        self.huggingface_api_key = _api_key('HUGGINGFACE_API_KEY')
+        self.together_api_key = _api_key('TOGETHER_API_KEY')
 
         # Ollama settings (a local model; no API key). OLLAMA_BASE_URL is the
         # documented name; OLLAMA_HOST still works.
