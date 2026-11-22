@@ -99,6 +99,13 @@ class GovernanceHandler(ActionHandler):
                 return False, "Not part of any government"
             if not gm._can_make_law(agent.id, gov):
                 return False, "No authority to make laws here"
+            params = action.parameters or {}
+            if not self._wants_tax(agent, gov, params):
+                ban = self._proposed_ban(agent, params)
+                if ban in self._bans_in_force(gm, gov):
+                    # Proposing it again changes nothing (agents used to pass
+                    # "No gamble" three and four times over)
+                    return False, f"No {ban.replace('_', ' ')} is already the law"
         if action.action_type == ActionType.VOTE:
             params = action.parameters or {}
             if not params.get('vote_target') and self._vote_target(agent) is None:
@@ -174,8 +181,7 @@ class GovernanceHandler(ActionHandler):
             gov = gm.get_agent_government(agent.id)
             if self._wants_tax(agent, gov, params):
                 return self._propose_tax(agent, gov, tick)
-            banned = params.get('prohibition') or self._ban_from_details(params.get('details', '')) \
-                or self._grievance(agent)
+            banned = self._proposed_ban(agent, params)
             name = params.get('law_name') or f"No {banned.replace('_', ' ')}"
             description = params.get('description') or params.get('details') or f"Nobody may {banned.replace('_', ' ')}."
             law = gm.agent_creates_law(creator_id=agent.id, government_id=gov.id, name=name[:60],
@@ -282,10 +288,24 @@ class GovernanceHandler(ActionHandler):
         return self._liking(agent.id, law.created_by) - (0.5 if banned_habit else 0.0) \
             + (agent.personality.agreeableness - 0.5) * 0.4 >= 0.0
 
+    def _proposed_ban(self, agent, params) -> str:
+        """What a proposed law would ban: what the proposal names, else what
+        bothers the agent most."""
+        return params.get('prohibition') or self._ban_from_details(params.get('details', '')) \
+            or self._grievance(agent)
+
     @staticmethod
-    def _ban_from_details(details: str):
+    def _bans_in_force(gm, gov) -> set:
+        return {gm.laws[l].prohibition for l in gov.laws if l in gm.laws and gm.laws[l].active}
+
+    # Words that name each thing a law can ban ("no gambling" bans gamble)
+    BAN_WORDS = {"fight": ("fight", "violence", "brawl"), "gamble": ("gambl", "betting"),
+                 "trade": ("trade", "trading", "barter"), "claim_territory": ("claim", "territor", "land grab")}
+
+    @classmethod
+    def _ban_from_details(cls, details: str):
         lowered = (details or '').lower()
-        return next((b for b in BANNABLE if b.replace('_', ' ') in lowered or b in lowered), None)
+        return next((b for b in BANNABLE if any(w in lowered for w in cls.BAN_WORDS.get(b, (b,)))), None)
 
     def _grievance(self, agent) -> str:
         """The thing others have done to this agent most (fights by default)."""

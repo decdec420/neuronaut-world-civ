@@ -81,6 +81,19 @@ def test_governance_found_join_law_vote_elect_enforce_repeal():
     assert not law.active
 
 
+def test_a_ban_already_in_force_is_not_proposed_again():
+    from agents.agent import Action, ActionType
+    sim, roles = make_world()
+    a = roles["actor"]
+    a.personality.aggression, a.personality.ambition = 0.1, 0.1
+    act(sim, a, "govern")
+    act(sim, a, "make_law", details="no fighting")
+    handler = sim._handler_registry.get_handler(ActionType.MAKE_LAW)
+    ok, why = handler.validate(a, Action(ActionType.MAKE_LAW, parameters={"details": "no fighting ever"}))
+    assert not ok and why == "No fight is already the law"
+    assert act(sim, a, "make_law", details="no gambling").metadata["prohibition"] == "gamble"
+
+
 def test_nothing_to_vote_on_is_rejected_up_front():
     from agents.agent import Action, ActionType
     sim, roles = make_world()
