@@ -763,6 +763,23 @@ class SimulationEngine:
 
         return result.to_dict()
 
+    def ensure_newer_systems(self) -> None:
+        """A world saved by an older version lacks systems added since; give it
+        fresh ones (as a new world would have) so it can carry on."""
+        import collections as _c
+        if not hasattr(self, 'products'):
+            self.products = _c.Counter()
+        if not hasattr(self, 'news'):
+            from world.news import NewsNetwork
+            self.news = NewsNetwork()
+        if not hasattr(self, 'gatherings'):
+            from world.gatherings import Gatherings
+            self.gatherings = Gatherings(self)
+        if not hasattr(self, 'infrastructure'):
+            from world.infrastructure import Infrastructure
+            self.infrastructure = Infrastructure(self.world.map.width, self.world.map.height)
+            self.pathfinder.road_tiles = self.infrastructure.roads
+
     EVENT_MEMORY_IMPORTANCE = {0: 0.1, 1: 0.3, 2: 0.5, 3: 0.8, 4: 1.0}
 
     def _remember_event(self, event) -> None:

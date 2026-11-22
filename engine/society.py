@@ -53,6 +53,35 @@ def society_snapshot(sim) -> Dict:
         "families": family_tree(sim),
         "economy": economy_view,
         "inventions": inventions,
+        "village_life": village_life(sim),
+    }
+
+
+def village_life(sim) -> Dict:
+    """Gatherings (upcoming and recent), the news most people know, and the
+    village's public works."""
+    now = sim.world.time.current_tick
+    alive = [a.id for a in sim.world.agents if a.alive]
+    gatherings, news = sim.gatherings, sim.news
+
+    def when(tick):
+        return f"day {tick // 144 + 1}, {tick // 6 % 24:02d}:00"
+    upcoming = [{"host": g.organizer_name, "kind": g.kind, "place": g.place, "when": when(g.start),
+                 "on": g.is_on(now), "heard": sum(1 for a in alive if g.news_id and news.knows(a, g.news_id)),
+                 "here": len(g.attendees)}
+                for g in sorted(gatherings.upcoming.values(), key=lambda g: g.start)]
+    recent = [{"host": g.organizer_name, "kind": g.kind, "place": g.place, "when": when(g.start),
+               "heard": g.heard_before_start, "came": len(g.attendees)}
+              for g in reversed(gatherings.history[-8:])]
+    talked_about = sorted(((news.reach(n.id, alive), n.text) for n in news.items.values()), reverse=True)[:6]
+    works = sim.infrastructure
+    return {
+        "upcoming": upcoming,
+        "recent": recent,
+        "news": [{"text": text, "reach": round(reach, 2)} for reach, text in talked_about],
+        "works": {"road_tiles": len(works.roads), "wells": len(works.wells), "street_lights": len(works.lights),
+                  "lit": sum(1 for l in works.lights.values() if l.lit)},
+        "conversations": news.conversations,
     }
 
 

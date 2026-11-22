@@ -2658,6 +2658,7 @@
                     <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border: 2px solid #ec4899; border-radius: 12px; padding: 20px; margin-bottom: 20px;"><h3 style="margin: 0 0 12px 0; color: #ec4899;">👪 Families</h3><div id="society-families-tree"></div></div>
                     <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border: 2px solid #10b981; border-radius: 12px; padding: 20px; margin-bottom: 20px;"><h3 style="margin: 0 0 12px 0; color: #10b981;">💰 Economy</h3><div id="society-economy"></div></div>
                     <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border: 2px solid #eab308; border-radius: 12px; padding: 20px; margin-bottom: 20px;"><h3 style="margin: 0 0 12px 0; color: #eab308;">💡 Inventions</h3><div id="society-inventions-list"></div></div>
+                    <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border: 2px solid #38bdf8; border-radius: 12px; padding: 20px; margin-bottom: 20px;"><h3 style="margin: 0 0 12px 0; color: #38bdf8;">🎉 Village Life</h3><div id="society-village-life"></div></div>
                 </div>
             </div>
 
@@ -8665,6 +8666,18 @@
                 $safe('society-inventions-list').innerHTML = inventions.length === 0 ? emptyNote('Nothing invented yet')
                     : inventions.slice(-30).reverse().map(i => `
                         <div style="font-size: 12px; color: #e2e8f0; margin-bottom: 4px;">💡 ${escHtml(i.name)} <span style="color: #64748b;">(${escHtml(i.type)}) by ${escHtml(i.inventor || '?')}, known by ${escHtml(i.known_by)}</span></div>`).join('');
+                const life = data.village_life || {};
+                const works = life.works || {};
+                const gatheringLine = (g, done) => `<div style="font-size: 12px; color: #e2e8f0; margin-bottom: 4px;">${done ? '🎉' : (g.on ? '🔴' : '📅')} ${escHtml(g.host)}'s ${escHtml(g.kind)} at ${escHtml(g.place)}, ${escHtml(g.when)}`
+                    + `<span style="color: #64748b;"> · ${escHtml(g.heard)} heard${done ? `, ${escHtml(g.came)} came` : (g.on ? `, ${escHtml(g.here)} there now` : '')}</span></div>`;
+                $safe('society-village-life').innerHTML = `
+                    <div style="font-size: 13px; color: #e2e8f0; margin-bottom: 8px;">🛣️ ${escHtml(works.road_tiles || 0)} road tiles · 💧 ${escHtml(works.wells || 0)} wells · 🏮 ${escHtml(works.street_lights || 0)} street lights (${escHtml(works.lit || 0)} lit) · 💬 ${escHtml(life.conversations || 0)} conversations</div>
+                    <div style="font-size: 12px; color: #94a3b8; margin: 8px 0 4px;">Coming up</div>
+                    ${(life.upcoming || []).map(g => gatheringLine(g, false)).join('') || emptyNote('No gatherings planned')}
+                    <div style="font-size: 12px; color: #94a3b8; margin: 8px 0 4px;">Recently</div>
+                    ${(life.recent || []).map(g => gatheringLine(g, true)).join('') || emptyNote('None yet')}
+                    <div style="font-size: 12px; color: #94a3b8; margin: 8px 0 4px;">What everyone's talking about</div>
+                    ${(life.news || []).map(n => `<div style="font-size: 12px; color: #e2e8f0; margin-bottom: 3px;">${escHtml(Math.round(n.reach * 100))}% know: ${escHtml(n.text)}</div>`).join('') || emptyNote('No news yet')}`;
             } catch (error) {
                 console.warn('Society view unavailable:', error);
             }

@@ -73,6 +73,7 @@ def load_full_state(path: str):
     random.setstate(state["random"])
     Agent.reset_names(state["used_names"])
     simulation = state["simulation"]
+    simulation.ensure_newer_systems()
     simulation.running = False
     simulation.persistence.simulation = simulation
     return simulation

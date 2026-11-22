@@ -93,3 +93,7 @@ def test_society_snapshot_shows_governments_faiths_families_economy_inventions()
     assert {tree[0]["name"], tree[0]["partner"]} == {a.name, b.name}
     assert snap["economy"]["trades"] == 2 and snap["economy"]["money"] > 0
     assert isinstance(snap["inventions"], list)
+    act(sim, a, "organize_event", details="a picnic at 18:00")
+    life = society_snapshot(sim)["village_life"]
+    assert life["upcoming"][0]["kind"] == "picnic" and life["upcoming"][0]["heard"] >= 1
+    assert any("picnic" in n["text"] for n in life["news"])

@@ -131,3 +131,15 @@ def test_saves_list_load_and_delete_through_the_save_manager(tmp_path):
     assert path is not None
     assert fingerprint(load_full_state(str(path))) == fingerprint(sim)
     assert manager.delete_save(save_id) and not path.exists()
+
+
+def test_a_world_saved_before_newer_systems_still_loads(tmp_path):
+    from test_reachability import make_world
+    from engine.persistence import save_full_state, load_full_state
+    sim, _ = make_world()
+    del sim.news, sim.gatherings  # as if saved by an older version
+    path = str(tmp_path / "old.state.gz")
+    save_full_state(sim, path)
+    loaded = load_full_state(path)
+    assert loaded.news is not None and loaded.gatherings.sim is loaded
+    run(loaded, 3)
