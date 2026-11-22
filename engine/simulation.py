@@ -234,6 +234,10 @@ class SimulationEngine:
         self.death_causes = {}
         # Partnerships formed, separations, births... (engine/handlers/family.py)
         self.life_events = collections.Counter()
+        # Successful actions by kind, and the village's history (engine/chronicle.py)
+        self.action_successes = collections.Counter()
+        from engine.chronicle import Chronicle
+        self.chronicle = Chronicle()
         self.last_tracked_day = 0
         print("📊 Population tracking enabled - track births/deaths over time!")
 
@@ -567,6 +571,9 @@ class SimulationEngine:
         # Birthdays, life stages, old age; then every new death, once
         self.lifecycle_manager.update_aging(current_tick)
         self.lifecycle_manager.handle_deaths()
+
+        # Write down any firsts and milestones (engine/chronicle.py)
+        self.chronicle.observe(self, current_tick)
 
         # Check civilization milestones (DELEGATED)
         self.system_coordinator.check_civilization_milestones(current_tick)

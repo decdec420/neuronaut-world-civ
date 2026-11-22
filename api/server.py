@@ -522,6 +522,14 @@ from engine.save_manager import SaveManager
 save_manager = SaveManager()
 
 
+@app.get("/chronicle")
+async def get_chronicle(limit: int = 100):
+    """The village's history: firsts, milestones, and agents' own words (engine/chronicle.py)."""
+    if not simulation:
+        raise HTTPException(status_code=503, detail="Simulation not running")
+    return simulation.chronicle.to_dict(limit=max(1, min(limit, 300)))
+
+
 @app.get("/saves")
 async def list_saves():
     """Get list of all saves"""

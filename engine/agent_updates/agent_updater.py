@@ -122,8 +122,11 @@ class AgentUpdater:
             stream.set_plan(self.sim.world.time.day, current_tick, plan)
             self.thinking.stats["plans" if plan else "unreadable_plans"] += 1
         elif kind == "reflect":
-            added = stream.reflected(current_tick, parse_insights(answer))
+            insights = parse_insights(answer)
+            added = stream.reflected(current_tick, insights)
             self.thinking.stats["reflections"] += added
+            for insight in insights:
+                self.sim.chronicle.voice(current_tick, agent.name, insight)
 
     async def _update_single_agent(self, agent, current_tick: int, world_state: Dict) -> None:
         """
@@ -378,6 +381,8 @@ class AgentUpdater:
             # Until it thinks again, the rule-based brain leans toward this
             agent.ai_intent = (self._resolved_name(action), current_tick + self.thinking.think_every)
             self.thinking.stats["used"] += 1
+            self.sim.chronicle.on_choice(current_tick, agent, self._resolved_name(action),
+                                         action.parameters.get('reason', ''))
         else:
             # Rule-based brain: survival first, then every runnable action
             # weighed by the agent's needs, personality, memory, people and day plan
@@ -699,6 +704,11 @@ class AgentUpdater:
 
         # 6a. ...and remembers it (agents/memory_stream.py)
         self._remember_action(agent, action, outcome, current_tick)
+
+        # 6b. The village's record: counts, and any first (engine/chronicle.py)
+        if outcome.get('success', False):
+            self.sim.action_successes[self._resolved_name(action)] += 1
+            self.sim.chronicle.on_action(self.sim, agent, self._resolved_name(action), outcome, current_tick)
 
         # 7. TRACK ACTION FOR ROLE EMERGENCE - Pure behavioral observation!
         # Record what agent actually did (not what they're "supposed" to do)
