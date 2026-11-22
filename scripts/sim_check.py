@@ -13,7 +13,11 @@ can gate any change.
 
 PASS means, for every seed:
   - zero exceptions raised from tick()
-  - at least MIN_ALIVE of 12 agents alive (earthquakes can legitimately kill one)
+  - at most NUM_AGENTS - MIN_ALIVE (2) deaths the agents could have prevented
+    (hunger, thirst, exhaustion, illness, fights...), and somebody still alive.
+    Natural disasters and old age are printed with every death but don't
+    count: a catastrophic earthquake (5% of quakes) kills ~17% of a village
+    whatever the code does (tests/test_disasters.py checks that shelter works)
   - average health of living agents >= MIN_HEALTH
   - at least one finished building
 
@@ -34,6 +38,13 @@ import sys
 import time
 
 MIN_ALIVE = 10
+
+
+def natural_causes() -> set:
+    """Causes of death no way of living prevents (old age, natural disasters,
+    whose death_cause is the disaster type): reported, never a survival failure."""
+    from world.disasters import DisasterType
+    return {"old age"} | {d.value for d in DisasterType}
 MIN_HEALTH = 70.0
 NUM_AGENTS = 12
 
@@ -141,6 +152,7 @@ def run_seed(ticks: int, seed: int, use_llm: bool) -> dict:
         # Agents record why they died in `death_cause` (this used to read a field
         # that doesn't exist, so every cause printed as None)
         "deaths": [(a.name, getattr(a, "death_cause", None)) for a in agents if not a.alive],
+        "preventable_deaths": sum(1 for a in agents if not a.alive and a.death_cause not in natural_causes()),
         "actions": actions,
         "failures": failures,
         "errors": errors,
@@ -172,8 +184,10 @@ def main() -> int:
         problems = []
         if r["errors"]:
             problems.append(f"{sum(r['errors'].values())} exceptions")
-        if r["alive"] < MIN_ALIVE:
-            problems.append(f"only {r['alive']}/{NUM_AGENTS} alive")
+        if r["preventable_deaths"] > NUM_AGENTS - MIN_ALIVE:
+            problems.append(f"{r['preventable_deaths']} preventable deaths")
+        if r["alive"] == 0:
+            problems.append("nobody alive")
         if r["health"] < MIN_HEALTH:
             problems.append(f"avg health {r['health']:.0f} < {MIN_HEALTH:.0f}")
         if r["buildings"] < 1:
@@ -182,7 +196,7 @@ def main() -> int:
         all_ok &= ok
 
         print(f"[{'PASS' if ok else 'FAIL'}] seed {seed}: {args.ticks} ticks in {r['seconds']:.0f}s | "
-              f"alive {r['alive']}/{NUM_AGENTS} | health {r['health']:.0f} | "
+              f"alive {r['alive']}/{NUM_AGENTS} | preventable deaths {r['preventable_deaths']} | health {r['health']:.0f} | "
               f"hunger {r['hunger']:.2f} thirst {r['thirst']:.2f} | buildings {r['buildings']}"
               + (f" | {'; '.join(problems)}" if problems else ""))
         if r["deaths"]:
