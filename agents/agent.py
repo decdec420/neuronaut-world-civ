@@ -503,6 +503,13 @@ class Agent:
         self.current_action: Optional[Action] = None
         self.active_construction_id: Optional[str] = None  # Building being constructed
 
+        # Daily life: when they sleep and work, and the job that emerges from
+        # the work they do (agents/daily_life.py)
+        from agents.daily_life import DailyRoutine, WorkLife
+        self.routine = DailyRoutine.for_personality(self.personality)
+        self.work_life = WorkLife()
+        self.shift_job: Optional[str] = None
+
         # PURPOSEFUL ACTION TRACKING - Creates empire builders!
         self.current_action_purpose: Optional[Dict] = None  # Why they're doing this
         self.recent_action_outcomes: List[Dict] = []  # Last 10 action results
@@ -1316,6 +1323,8 @@ class Agent:
             'status': self.status,
             'current_action': self.current_action.action_type.value if self.current_action else None,
             'active_construction_id': self.active_construction_id,
+            **self.work_life.to_dict(),
+            'routine': self.routine.to_dict(),
             'dominant_emotion': self.emotions.get_dominant_emotion()[0].value,
             'mood': self.emotions.mood,
             'life_satisfaction': self.needs.get_overall_satisfaction(),

@@ -819,8 +819,10 @@ class ActionHandlers:
             # Successful hunt!
             amount = random.randint(8, 15)  # Hunting gives more food than gathering
 
-            # Add to inventory
-            agent.inventory.add_item('food', amount)
+            # Add what fits to inventory (add_item is all-or-nothing)
+            space = agent.inventory.capacity - agent.inventory.get_total_items()
+            if min(amount, space) > 0:
+                agent.inventory.add_item('food', min(amount, space))
 
             # Learn hunting skill
             agent.skills.learn_skill('hunting', 0.1)

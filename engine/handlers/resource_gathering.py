@@ -165,8 +165,9 @@ class ResourceGatheringHandler(ActionHandler):
         if action.action_type.value in ('gather_food', 'gather_water', 'hunt'):
             energy_valid = (True, "")
             # A sated agent with a full inventory can neither eat nor carry food;
-            # harvesting would only take it away from hungry agents.
-            if action.action_type == ActionType.GATHER_FOOD and usable_food(agent) < 1:
+            # harvesting would only take it away from hungry agents, and a hunt
+            # would be wasted.
+            if action.action_type in (ActionType.GATHER_FOOD, ActionType.HUNT) and usable_food(agent) < 1:
                 return combine_validations(alive_valid, (False, "Not hungry and no room to carry food"))
         else:
             energy_valid = validate_agent_energy(agent, self.MIN_ENERGY_FOR_GATHERING)

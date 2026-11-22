@@ -16,6 +16,7 @@ import logging
 import random
 from typing import Dict, Any, Optional
 from agents.agent import Action, ActionType
+from agents.daily_life import JOBS, SLEEP, WORK, FREE_TIME, choose_work
 
 logger = logging.getLogger(__name__)
 
@@ -382,9 +383,17 @@ class AgentUpdater:
             # Check if agent should pursue strategic goal
             current_goal = self.sim.strategy_manager.get_current_goal(agent.id)
             survival_action = self._survival_override(agent)
+            part_of_day = agent.routine.block(self.sim.world.time.hour)
+            work_action = self._work_action(agent) if survival_action is None and part_of_day == WORK else None
             if survival_action is not None:
                 # Urgent physical needs always beat long-term goals
                 action = survival_action
+            elif part_of_day == SLEEP:
+                # Night: asleep (survival above still wakes them for water or food)
+                action = Action(ActionType.REST)
+            elif work_action is not None:
+                # Work hours: do their job (or try out work until a job emerges)
+                action = work_action
             elif current_goal:
                 # Try to advance goal
                 goal_action = self.sim.strategy_manager.evaluate_goal_action(agent, current_goal)
@@ -411,8 +420,53 @@ class AgentUpdater:
                 # Agent decides action normally, among actions that can run now
                 action = agent.decide(perceptions, can_run=lambda a: self._can_run(agent, a))
 
+            if part_of_day == FREE_TIME and action.action_type == ActionType.IDLE:
+                # Evening with nothing they want to do: go and spend it with someone
+                company = Action(ActionType.SOCIALIZE)
+                if self._can_run(agent, company):
+                    action = company
+
         agent.current_action = action
         return action, current_goal
+
+    def _work_action(self, agent):
+        """The work this agent does this shift, or None if there's nothing it can do."""
+        targets = {}
+
+        def runnable(action_name: str) -> bool:
+            target = None
+            if action_name == 'heal':
+                # Healers treat someone who is actually sick, not whoever is nearest
+                sick = [a for a in self.sim.world.agents
+                        if a.alive and a.id != agent.id and self.sim.health.is_agent_sick(a.id)]
+                if not sick:
+                    return False
+                target = min(sick, key=lambda a: agent.location.distance_to(a.location)).id
+                targets[action_name] = target
+            return self._can_run(agent, Action(ActionType(action_name), target_agent=target))
+
+        choice = choose_work(agent, agent.work_life, runnable)
+        if choice is None:
+            return None
+        job_key, action_name = choice
+        agent.shift_job = job_key  # credited to this job after the action runs
+        return Action(ActionType(action_name), target_agent=targets.get(action_name))
+
+    def _announce_job(self, agent, job_key: str, current_tick: int) -> None:
+        """Log an agent settling into (or changing) its job."""
+        from engine.events import EventCategory, EventImportance
+        title = JOBS[job_key].title
+        shifts = sum(1 for j in agent.work_life.recent_shifts if j == job_key)
+        logger.info(f"🧰 {agent.name} now works as a {title}")
+        self.sim.event_logger.log_event(
+            EventCategory.CULTURAL,
+            EventImportance.MODERATE,
+            f"{agent.name} works as a {title}",
+            f"After {shifts} of their last {len(agent.work_life.recent_shifts)} work shifts "
+            f"were {title.lower()} work, {agent.name} has made it their job.",
+            current_tick,
+            [agent.id]
+        )
 
     def _can_run(self, agent, action) -> bool:
         """True if the handler that will actually run this action accepts it now."""
@@ -579,6 +633,15 @@ class AgentUpdater:
         if outcome.get('success', False):
             action_name = action.action_type.value if hasattr(action.action_type, 'value') else str(action.action_type)
             self.sim.role_emergence.record_action(agent.id, action_name)
+
+        # 7b. A work shift counts toward the agent's job (the action passed
+        # validation before it was chosen, so this was real work)
+        shift_job = getattr(agent, 'shift_job', None)
+        agent.shift_job = None
+        if shift_job:
+            new_job = agent.work_life.record_shift(shift_job)
+            if new_job:
+                self._announce_job(agent, new_job, current_tick)
 
         # 8. Update goal progress if relevant
         if current_goal:
