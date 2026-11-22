@@ -362,11 +362,13 @@ class WarfareManager:
             # Check for casualties
             if attacker.health <= 0:
                 attacker.alive = False
+                attacker.death_cause = "killed in a fight"
                 conflict.casualties_a.add(attacker.id)
                 results['casualties'].append(attacker.id)
 
             if defender.health <= 0:
                 defender.alive = False
+                defender.death_cause = "killed in a fight"
                 conflict.casualties_b.add(defender.id)
                 results['casualties'].append(defender.id)
 

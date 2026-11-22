@@ -16,7 +16,8 @@ import logging
 import random
 from typing import Dict, Any, Optional
 from agents.agent import Action, ActionType
-from agents.daily_life import JOBS, SLEEP, WORK, FREE_TIME, choose_work
+from agents.daily_life import JOBS, WORK, job_for
+from agents.utility_brain import UtilityBrain
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,14 @@ class AgentUpdater:
             simulation: The SimulationEngine instance that contains all subsystems
         """
         self.sim = simulation
+
+        # The rule-based brain weighs every action the engine can run (the same
+        # list the AI brain's menu is built from)
+        from agents.action_menu import build_menu
+        from engine.simulation import UNHANDLED_ACTION_FALLBACKS
+        menu = build_menu(simulation._handler_registry, UNHANDLED_ACTION_FALLBACKS)
+        self.utility_brain = UtilityBrain(
+            simulation, [e.action for entries in menu.by_category.values() for e in entries])
 
     async def update_all_agents(self, current_tick: int) -> None:
         """
@@ -382,78 +391,33 @@ class AgentUpdater:
             action = llm_action
             current_goal = self.sim.strategy_manager.get_current_goal(agent.id)
         else:
-            # Original rule-based decision making
-            # Check if agent should pursue strategic goal
+            # Rule-based brain: survival first, then every runnable action
+            # weighed by the agent's needs, personality, memory, people and day plan
             current_goal = self.sim.strategy_manager.get_current_goal(agent.id)
             survival_action = self._survival_override(agent)
             part_of_day = agent.routine.block(self.sim.world.time.hour)
-            work_action = self._work_action(agent) if survival_action is None and part_of_day == WORK else None
             if survival_action is not None:
-                # Urgent physical needs always beat long-term goals
+                # Urgent physical needs always come first
                 action = survival_action
-            elif part_of_day == SLEEP:
-                # Night: asleep (survival above still wakes them for water or food)
-                action = Action(ActionType.REST)
-            elif work_action is not None:
-                # Work hours: do their job (or try out work until a job emerges)
-                action = work_action
-            elif current_goal:
-                # Try to advance goal
-                goal_action = self.sim.strategy_manager.evaluate_goal_action(agent, current_goal)
-                action = None
-                if goal_action:
-                    try:
-                        from engine.simulation import UNHANDLED_ACTION_FALLBACKS
-                        candidate = Action(ActionType(goal_action))
-                        # Validate against the handler that will actually run it
-                        resolved = UNHANDLED_ACTION_FALLBACKS.get(goal_action, goal_action)
-                        handler = self.sim._handler_registry.get_handler(ActionType(resolved))
-                        if handler is not None and handler.validate(agent, Action(ActionType(resolved)))[0]:
-                            action = candidate
-                        elif resolved == 'build' and self._can_run(agent, Action(ActionType.GATHER_MATERIALS)):
-                            # Wants to build but lacks materials: go get them
-                            action = Action(ActionType.GATHER_MATERIALS)
-                    except (ValueError, KeyError, AttributeError):
-                        action = None
-                if action is None:
-                    # Goal step not possible right now (no seeds, no energy...):
-                    # let the agent decide for itself instead of failing every tick
-                    action = agent.decide(perceptions, can_run=lambda a: self._can_run(agent, a))
             else:
-                # Agent decides action normally, among actions that can run now
-                action = agent.decide(perceptions, can_run=lambda a: self._can_run(agent, a))
-
-            if part_of_day == FREE_TIME and action.action_type == ActionType.IDLE:
-                # Evening with nothing they want to do: go and spend it with someone
-                company = Action(ActionType.SOCIALIZE)
-                if self._can_run(agent, company):
-                    action = company
-
+                goal_action = None
+                if current_goal:
+                    from engine.simulation import UNHANDLED_ACTION_FALLBACKS
+                    step = self.sim.strategy_manager.evaluate_goal_action(agent, current_goal)
+                    goal_action = UNHANDLED_ACTION_FALLBACKS.get(step, step) if step else None
+                action = self.utility_brain.choose(
+                    agent, perceptions, lambda a: self._can_run(agent, a), part_of_day, goal_action)
+            # Work done in work hours counts toward the agent's job
+            agent.shift_job = job_for(self._resolved_name(action), agent.work_life.job) if part_of_day == WORK else None
         agent.current_action = action
         return action, current_goal
 
-    def _work_action(self, agent):
-        """The work this agent does this shift, or None if there's nothing it can do."""
-        targets = {}
-
-        def runnable(action_name: str) -> bool:
-            target = None
-            if action_name == 'heal':
-                # Healers treat someone who is actually sick, not whoever is nearest
-                sick = [a for a in self.sim.world.agents
-                        if a.alive and a.id != agent.id and self.sim.health.is_agent_sick(a.id)]
-                if not sick:
-                    return False
-                target = min(sick, key=lambda a: agent.location.distance_to(a.location)).id
-                targets[action_name] = target
-            return self._can_run(agent, Action(ActionType(action_name), target_agent=target))
-
-        choice = choose_work(agent, agent.work_life, runnable)
-        if choice is None:
-            return None
-        job_key, action_name = choice
-        agent.shift_job = job_key  # credited to this job after the action runs
-        return Action(ActionType(action_name), target_agent=targets.get(action_name))
+    @staticmethod
+    def _resolved_name(action) -> str:
+        """The action that will actually run (aliases resolve to their action)."""
+        from engine.simulation import UNHANDLED_ACTION_FALLBACKS
+        name = action.action_type.value
+        return UNHANDLED_ACTION_FALLBACKS.get(name, name)
 
     def _announce_job(self, agent, job_key: str, current_tick: int) -> None:
         """Log an agent settling into (or changing) its job."""
@@ -636,6 +600,10 @@ class AgentUpdater:
         if outcome.get('success', False):
             action_name = action.action_type.value if hasattr(action.action_type, 'value') else str(action.action_type)
             self.sim.role_emergence.record_action(agent.id, action_name)
+
+        # 7a. Remember whether it worked (shapes the rule-based brain's next choices)
+        if hasattr(agent, 'action_memory'):
+            agent.action_memory.record(self._resolved_name(action), bool(outcome.get('success', False)))
 
         # 7b. A work shift counts toward the agent's job (the action passed
         # validation before it was chosen, so this was real work)

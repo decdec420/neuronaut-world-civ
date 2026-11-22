@@ -7,18 +7,18 @@ and has an occupation. There is no language model in this loop, so:
 
 - the plan is a simple schedule shaped by personality (early risers,
   night owls), and
-- jobs are not handed out. During work hours an agent without a job tries the
-  kinds of work its personality draws it to; whatever work it ends up doing
-  most becomes its job. Jobs can drift if the agent keeps doing other work.
+- jobs are not handed out. The rule-based brain (agents/utility_brain.py)
+  leans toward work in work hours and toward the agent's own job most; the
+  work an agent ends up doing most in work hours becomes its job. Jobs can
+  drift if the agent keeps doing other work.
 
 Survival always comes first: the agent updater handles urgent hunger, thirst
 and exhaustion before it consults the plan.
 """
 
-import random
 from collections import Counter, deque
 from dataclasses import dataclass, field
-from typing import Callable, Deque, Dict, Optional, Tuple
+from typing import Deque, Dict, Optional, Tuple
 
 
 # ---------------------------------------------------------------------------
@@ -122,35 +122,9 @@ class WorkLife:
         }
 
 
-def _aptitude(personality, job: Job) -> float:
-    return sum(personality.get_trait(t) for t in job.traits) / len(job.traits)
-
-
-def choose_work(agent, work_life: WorkLife,
-                runnable: Callable[[str], bool]) -> Optional[Tuple[str, str]]:
-    """Pick the work an agent does this shift.
-
-    runnable(action_name) says whether that action can run right now.
-    Returns (job_key, action_name), or None if no work is possible.
-
-    An agent with a job does it when it can. Otherwise (no job yet, or nothing
-    in its job can run right now) it tries other work, preferring the kinds
-    its personality is drawn to; doing that work often enough is how a job
-    emerges or changes.
-    """
-    if work_life.job:
-        for action in JOBS[work_life.job].actions:
-            if runnable(action):
-                return work_life.job, action
-
-    options = []
-    for key, job in JOBS.items():
-        if key == work_life.job:
-            continue
-        action = next((a for a in job.actions if runnable(a)), None)
-        if action:
-            options.append((key, action, _aptitude(agent.personality, job) ** 2))
-    if not options:
-        return None
-    key, action, _ = random.choices(options, weights=[w for _, _, w in options])[0]
-    return key, action
+def job_for(action: str, current_job: Optional[str] = None) -> Optional[str]:
+    """Which job a piece of work counts toward: the agent's own job if the
+    action is part of it, otherwise the first job that does this work."""
+    if current_job and action in JOBS[current_job].actions:
+        return current_job
+    return next((key for key, job in JOBS.items() if action in job.actions), None)

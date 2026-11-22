@@ -234,45 +234,35 @@ def try_to_succeed(name: str):
 # (b) What the rule-based brain can produce
 # ---------------------------------------------------------------------------
 
-def rule_brain_actions(samples: int = 80):
-    """Every action name the rule-based decision path can come up with,
-    sampled over many random agents, needs and inventories."""
+def rule_brain_actions(samples: int = 40):
+    """Every action the rule-based decision path can come up with.
+
+    The rule-based brain (agents/utility_brain.py) weighs every action it
+    considers and samples among the ones that can run, so any considered
+    action has a chance whenever it's possible. This also samples its
+    choices over random agents to check that it really returns them, and
+    adds the survival override that runs before it."""
     from agents.agent import NeedType
-    from agents.strategy import StrategicPlanner, GoalType, StrategyManager
     produced = set()
     sim, roles = make_world()
     agent = roles["actor"]
+    brain = sim._agent_updater.utility_brain
+    produced |= set(brain.considered_actions())
+
     perceptions = sim._perception_builder.build_perceptions(agent, sim.world.get_state())
     rng = random.Random(1)
     traits = [t for t in vars(agent.personality) if isinstance(getattr(agent.personality, t), float)]
-    all_items = list(agent.inventory.items)
-
+    sampled = set()
     for _ in range(samples):
         for t in traits:
             setattr(agent.personality, t, rng.random())
         for need in agent.needs.needs.values():
             need.level = rng.random()
-        agent.inventory.items = {k: rng.randint(0, 40) for k in all_items if rng.random() < 0.6}
-        agent.inventory.capacity = rng.choice([150, 1000])
-        for urgent in NeedType:
-            if urgent in agent.needs.needs:
-                produced |= {a.action_type.value for a in agent._generate_possible_actions(urgent, perceptions)}
+        with quiet():
+            choice = brain.choose(agent, perceptions, lambda a: sim._agent_updater._can_run(agent, a))
+        sampled.add(choice.action_type.value)
+    assert sampled <= produced, sampled - produced  # it only picks what it considers
 
-    # Goal plans
-    manager = StrategyManager()
-    for goal_type in GoalType:
-        steps = StrategicPlanner._generate_plan(goal_type, agent, {})
-
-        class _Goal:
-            planned_actions = steps
-            current_step = 0
-        for i in range(len(steps)):
-            _Goal.current_step = i
-            step = manager.evaluate_goal_action(agent, _Goal)
-            if step:
-                produced.add(step)
-
-    # Survival override and the day plan (agent_updater)
     updater = sim._agent_updater
     for thirst, hunger, energy, food in [(0.9, 0.1, 80, 0), (0.1, 0.9, 80, 0), (0.1, 0.9, 80, 5),
                                          (0.1, 0.1, 5, 0), (0.1, 0.1, 80, 0)]:
@@ -283,12 +273,6 @@ def rule_brain_actions(samples: int = 80):
         override = updater._survival_override(agent)
         if override is not None:
             produced.add(override.action_type.value)
-    try:
-        from agents.daily_life import JOBS
-        produced |= {a for job in JOBS.values() for a in job.actions}
-        produced |= {"rest", "socialize"}  # asleep at night; free-time company
-    except ImportError:
-        pass
     return produced
 
 

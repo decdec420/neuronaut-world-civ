@@ -457,6 +457,7 @@ class SimulationEngine:
             if agent and agent.alive:
                 agent.alive = False
                 agent.health = 0
+                agent.death_cause = "disease"
                 logger.warning(f"💀 {agent.name} died from disease!")
 
                 self.event_logger.log_event(

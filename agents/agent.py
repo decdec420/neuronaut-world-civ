@@ -509,6 +509,8 @@ class Agent:
         self.routine = DailyRoutine.for_personality(self.personality)
         self.work_life = WorkLife()
         self.shift_job: Optional[str] = None
+        from agents.utility_brain import ActionMemory
+        self.action_memory = ActionMemory()  # what has worked for this agent
 
         # PURPOSEFUL ACTION TRACKING - Creates empire builders!
         self.current_action_purpose: Optional[Dict] = None  # Why they're doing this
