@@ -241,7 +241,7 @@ class DynamicBuildingSystem:
         agent_skill: float = 0.0,
         civilization_era: str = "Stone Age",
         agent_inventory: Optional[Dict[str, int]] = None
-    ) -> BuildingDesign:
+    ) -> Optional[BuildingDesign]:
         """
         Agent creates a custom building design.
 
@@ -266,6 +266,10 @@ class DynamicBuildingSystem:
             civilization_era,
             agent_inventory  # NEW: Agent's actual inventory
         )
+        if not materials_needed:
+            # Not enough suitable materials for a viable building. Don't store a
+            # design with no materials: start_construction can only reject it.
+            return None
 
         # Choose construction method
         method = self._choose_construction_method(materials_needed, agent_skill)
