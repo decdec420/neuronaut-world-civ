@@ -22,6 +22,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Agents within this distance of a standing building count as sheltered
+# (the same radius AgentUpdater._apply_weather_effects uses for weather).
+SHELTER_RADIUS = 6.0
+
 
 class SystemCoordinator:
     """
@@ -78,14 +82,58 @@ class SystemCoordinator:
                         buildings_damaged += 1
                         logger.info(f"{effects.emoji} Building {building.building_type.value} damaged by {disaster.disaster_type.value}!")
 
+        # The buildings agents actually build live in dynamic_building_system; the
+        # loop above only covers the legacy manager, so disasters never touched
+        # them. Sturdier buildings (durability comes from their materials) are
+        # less likely to be destroyed.
+        dbs = getattr(self.sim, 'dynamic_building_system', None)
+        durability_before = {}  # building id -> durability when the disaster hit
+        if dbs is not None:
+            for building in list(dbs.buildings.values()):
+                if not building.is_complete or building.collapsed:
+                    continue
+                bx, by = building.location
+                if not self.sim.disasters.is_location_affected(bx, by, disaster):
+                    continue
+                durability = max(0.0, min(1.0, building.durability))
+                durability_before[building.id] = durability
+                if random.random() < effects.building_destroy_chance * (1.0 - durability):
+                    dbs.collapse_building(building.id, f"Destroyed by {disaster.disaster_type.value}")
+                    buildings_destroyed += 1
+                    self._release_building_purpose(dbs, building)
+                    self.sim.event_logger.log_event(
+                        EventCategory.ENVIRONMENTAL,
+                        EventImportance.MODERATE,
+                        f"{effects.emoji} {building.name} destroyed",
+                        f"{building.name} collapsed in the {disaster.disaster_type.value}.",
+                        self.sim.world.time.current_tick,
+                        list(building.builder_ids),
+                        {'x': bx, 'y': by}
+                    )
+                elif random.random() < effects.building_damage_chance:
+                    # Same hit as the legacy buildings above: half of full strength
+                    building.durability = max(0.0, building.durability - 0.5)
+                    building.maintenance_needed = True
+                    buildings_damaged += 1
+
         # Apply effects to agents
         for agent in self.sim.world.agents:
             if not agent.alive:
                 continue
 
             if self.sim.disasters.is_location_affected(agent.location.x, agent.location.y, disaster):
+                # Agents at a building that is still standing shelter in it: their
+                # risk shrinks with the building's durability when the disaster hit.
+                # Before, shelter made no difference, so one catastrophic quake
+                # could kill 40% of a town standing next to stone houses.
+                death_chance = effects.agent_death_chance
+                shelter = dbs.standing_building_near(agent.location.x, agent.location.y, SHELTER_RADIUS) if dbs is not None else None
+                if shelter is not None:
+                    protection = durability_before.get(shelter.id, max(0.0, min(1.0, shelter.durability)))
+                    death_chance *= 1.0 - protection
+
                 # Death check
-                if random.random() < effects.agent_death_chance:
+                if random.random() < death_chance:
                     agent.alive = False
                     agent.death_tick = self.sim.world.time.current_tick
                     agent.death_cause = f"{disaster.disaster_type.value}"
@@ -146,6 +194,22 @@ class SystemCoordinator:
             [],
             {'x': disaster.location_x, 'y': disaster.location_y}
         )
+
+    def _release_building_purpose(self, dbs, building):
+        """Let the builders of a destroyed building build that kind again.
+
+        ConstructionHandler allows one building per purpose per agent
+        (agent.built_purposes); without this, an agent whose home was destroyed
+        could never rebuild it.
+        """
+        design = dbs.designs.get(building.design_id)
+        if not design or not design.intended_purposes:
+            return
+        purpose = design.intended_purposes[0]
+        for builder_id in building.builder_ids:
+            builder = self.sim.get_agent_by_id(builder_id)
+            if builder is not None and hasattr(builder, 'built_purposes'):
+                builder.built_purposes.discard(purpose)
 
     def check_civilization_milestones(self, current_tick: int):
         """

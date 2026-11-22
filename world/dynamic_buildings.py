@@ -703,6 +703,25 @@ class DynamicBuildingSystem:
             else:
                 building.events.append("Rocket design incomplete - missing components")
 
+    def standing_building_near(self, x: float, y: float, radius: float) -> Optional[Building]:
+        """The sturdiest finished, standing building within radius of (x, y), if any."""
+        best = None
+        for b in self.buildings.values():
+            if b.is_complete and not b.collapsed:
+                bx, by = b.location
+                if ((x - bx) ** 2 + (y - by) ** 2) ** 0.5 < radius:
+                    if best is None or b.durability > best.durability:
+                        best = b
+        return best
+
+    def collapse_building(self, building_id: str, reason: str):
+        """Mark a building as collapsed (it stays in the record but no longer stands)."""
+        building = self.buildings.get(building_id)
+        if building and not building.collapsed:
+            building.collapsed = True
+            building.durability = 0.0
+            building.events.append(reason)
+
     def use_building(self, building_id: str, agent_id: str, purpose: str) -> Dict:
         """
         Agent uses building for a purpose.
