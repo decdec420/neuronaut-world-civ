@@ -197,21 +197,77 @@ def _action_name(value: str, valid: Set[str]) -> Optional[str]:
     return max(found, key=len) if found else None
 
 
+def decision_schema(valid: Set[str]) -> Dict:
+    """JSON schema for an answer, for models that can be held to one (Ollama's
+    `format`): the action must be one of the listed names."""
+    return {
+        "type": "object",
+        "properties": {
+            "action": {"type": "string", "enum": sorted(valid)},
+            "target": {"type": "string"},
+            "details": {"type": "string"},
+            "reason": {"type": "string"},
+        },
+        "required": ["action", "target", "reason"],
+    }
+
+
+def _json_answer(text: str) -> Optional[Dict]:
+    import json
+    stripped = text.strip().strip("`")
+    if stripped.lower().startswith("json"):
+        stripped = stripped[4:]
+    start, end = stripped.find("{"), stripped.rfind("}")
+    if start < 0 or end <= start:
+        return None
+    try:
+        value = json.loads(stripped[start:end + 1])
+    except ValueError:
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _person(name: Optional[str], people_by_name: Dict[str, str]) -> Optional[str]:
+    if not name or name.lower() in ("none", "nobody", "no one", "-", "n/a", "myself", "self"):
+        return None
+    lowered = name.lower().strip(" .")
+    return people_by_name.get(lowered) or (people_by_name.get(lowered.split()[0]) if lowered.split() else None)
+
+
 def parse_decision(text: str, valid: Set[str], people_by_name: Dict[str, str]) -> Optional[Decision]:
-    """Read an answer in RESPONSE_FORMAT. Returns None if no listed action is named."""
+    """Read an answer: RESPONSE_FORMAT lines, or JSON with the same fields, or
+    a first line that starts with a listed action name ("explore: near").
+    Returns None if no listed action is named."""
     if not text:
         return None
+    answer = _json_answer(text)
+    if answer is not None and isinstance(answer.get("action"), str):
+        action = _action_name(answer["action"], valid)
+        if action is None:
+            return None
+        return Decision(action=action, target_id=_person(str(answer.get("target") or ""), people_by_name),
+                        details=str(answer.get("details") or ""), reason=str(answer.get("reason") or ""))
+
     value = _field(text, "ACTION")
+    target = _field(text, "TARGET")
     if value is None:
-        return None
+        # Small models often write the action itself as the label:
+        # "EAT: None", "Explore - follow". Accept it only if the first word is
+        # exactly a listed name (never a guess from somewhere in the text).
+        first = text.strip().splitlines()[0]
+        match = re.match(r"^[\s*_#>`-]*([A-Za-z_ ]+?)\s*(?:[:\-]\s*(.*))?$", first)
+        if not match:
+            return None
+        name = re.sub(r"[\s\-]+", "_", match.group(1).strip().lower())
+        if name not in valid:
+            return None
+        rest = (match.group(2) or "").strip()
+        if target is None and _person(rest, people_by_name):
+            target = rest
+        return Decision(action=name, target_id=_person(target, people_by_name),
+                        details=_field(text, "DETAILS") or "", reason=_field(text, "REASON") or "")
     action = _action_name(value, valid)
     if action is None:
         return None
-
-    target_id = None
-    target = _field(text, "TARGET")
-    if target and target.lower() not in ("none", "nobody", "no one", "-", "n/a", "myself", "self"):
-        lowered = target.lower()
-        target_id = people_by_name.get(lowered) or people_by_name.get(lowered.split()[0])
-    return Decision(action=action, target_id=target_id,
+    return Decision(action=action, target_id=_person(target, people_by_name),
                     details=_field(text, "DETAILS") or "", reason=_field(text, "REASON") or "")

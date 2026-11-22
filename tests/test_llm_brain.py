@@ -49,7 +49,7 @@ class FakeLLM:
         self.answers = list(answers)
         self.prompts = []
 
-    def __call__(self, provider, prompt, temperature=0.7, max_tokens=200):
+    def __call__(self, provider, prompt, temperature=0.7, max_tokens=200, json_schema=None):
         from agents.llm_brain import LLMResponse
         self.prompts.append(prompt)
         text = self.answers.pop(0) if self.answers else None
@@ -105,7 +105,7 @@ def test_prompt_contains_menu_format_and_people():
 # ---------------------------------------------------------------------------
 
 VALID = {"eat", "create_art", "build", "build_temple", "make_law", "gather_food", "gather_materials",
-         "vote", "seek_romance", "tell_story", "rest"}
+         "vote", "seek_romance", "tell_story", "rest", "gather_water", "explore"}
 PEOPLE = {"brian": "id-brian", "mary": "id-mary"}
 
 
@@ -116,6 +116,10 @@ PEOPLE = {"brian": "id-brian", "mary": "id-mary"}
     ("ACTION: build_temple for our gods", "build_temple"),                     # longest name wins
     ("ACTION: [build]", "build"),
     ("I think I'll rest.\nACTION: rest", "rest"),
+    ('{"action": "gather_water", "target": "none", "reason": "thirsty"}', "gather_water"),   # JSON
+    ('```json\n{"action": "make law", "details": "no theft"}\n```', "make_law"),
+    ("EAT: None", "eat"),                                                       # action as the label
+    ("Explore - follow\nREASON: curious", "explore"),
 ])
 def test_parse_reads_the_action(answer, expected):
     from agents.action_menu import parse_decision
@@ -124,10 +128,18 @@ def test_parse_reads_the_action(answer, expected):
 
 @pytest.mark.parametrize("answer", [
     "ACTION: daydream", "I will gather some food", "", "ACTION:", "REASON: no action line",
+    '{"action": "daydream", "reason": "bored"}', "Maybe: eat", "I think eat: yes",
 ])
 def test_parse_refuses_to_guess(answer):
     from agents.action_menu import parse_decision
     assert parse_decision(answer, VALID, PEOPLE) is None
+
+
+def test_parse_target_from_json_and_from_a_leading_action():
+    from agents.action_menu import parse_decision
+    d = parse_decision('{"action": "seek_romance", "target": "Mary", "reason": "I like her"}', VALID, PEOPLE)
+    assert d.target_id == "id-mary" and d.reason == "I like her"
+    assert parse_decision("Tell_story: Mary", VALID, PEOPLE).target_id == "id-mary"
 
 
 def test_parse_target_and_details():
@@ -261,3 +273,19 @@ def test_a_down_ollama_is_skipped_for_a_while():
     assert brain.complete("What now?") is None
     assert LLMProvider.OLLAMA_LOCAL not in brain.providers_to_try()
     assert brain.complete("What now?") is None and brain.calls == 1  # not asked again
+
+
+def test_decisions_ask_ollama_for_an_answer_from_the_menu():
+    sim = make_world()
+    agent = sim.world.agents[0]
+    fake = _FakeOllama('{"action": "rest", "target": "none", "reason": "tired"}')
+    try:
+        brain = sim.llm_brain
+        brain.ollama_url, brain.api_keys = fake.url, {}
+        assert decide(sim, agent).action_type.value == "rest"
+    finally:
+        fake.close()
+    _, body = fake.requests[0]
+    assert set(body["format"]["properties"]["action"]["enum"]) == brain.action_menu.names
+    # The menu opens the prompt (the same for every agent, so it can be cached)
+    assert body["prompt"].startswith(brain.decision_preamble())

@@ -171,6 +171,7 @@ class MultiLLMBrain:
         self.ollama_model = getattr(config, 'ollama_model', None) or 'llama3.2:3b'
         self.ollama_num_ctx = getattr(config, 'ollama_num_ctx', 4096)
         self.timeout = getattr(config, 'llm_timeout', 60.0)
+        self.context_chars = getattr(config, 'llm_context_chars', 1800)
         self._ollama_retry_at = 0.0
 
         # Calls, failures and time spent (model calls can run in threads)
@@ -248,7 +249,8 @@ class MultiLLMBrain:
         provider: LLMProvider,
         prompt: str,
         temperature: float = 0.7,
-        max_tokens: int = 200
+        max_tokens: int = 200,
+        json_schema: Optional[Dict] = None
     ) -> Optional[LLMResponse]:
         """
         Make LLM call to specified provider
@@ -261,7 +263,7 @@ class MultiLLMBrain:
         try:
             # Route to appropriate provider
             if provider == LLMProvider.OLLAMA_LOCAL:
-                response_text = self._call_ollama(prompt, temperature, max_tokens)
+                response_text = self._call_ollama(prompt, temperature, max_tokens, json_schema)
             elif provider == LLMProvider.GROQ:
                 response_text = self._call_groq(prompt, temperature, max_tokens)
             elif provider == LLMProvider.GEMINI_FLASH:
@@ -300,26 +302,29 @@ class MultiLLMBrain:
                 self.call_failures += 1
             return None
 
-    def _call_ollama(self, prompt: str, temperature: float, max_tokens: int) -> Optional[str]:
+    def _call_ollama(self, prompt: str, temperature: float, max_tokens: int,
+                     json_schema: Optional[Dict] = None) -> Optional[str]:
         """Call the local Ollama model set in .env (it used to ignore the
         settings: always localhost and llama3.2:3b, with Ollama's default
         context window, which can cut a decision prompt short)."""
+        body = {
+            "model": self.ollama_model,
+            "prompt": prompt,
+            "stream": False,
+            "keep_alive": "30m",  # stay loaded between ticks
+            "options": {
+                "temperature": temperature,
+                "num_predict": max_tokens,
+                "num_ctx": self.ollama_num_ctx,
+            }
+        }
+        if json_schema is not None:
+            # Structured output: the model can only answer with a listed action.
+            # Without it, small models write "EAT: None" or "Explore - follow"
+            # about half the time.
+            body["format"] = json_schema
         try:
-            response = requests.post(
-                f'{self.ollama_url}/api/generate',
-                json={
-                    "model": self.ollama_model,
-                    "prompt": prompt,
-                    "stream": False,
-                    "keep_alive": "30m",  # stay loaded between ticks
-                    "options": {
-                        "temperature": temperature,
-                        "num_predict": max_tokens,
-                        "num_ctx": self.ollama_num_ctx,
-                    }
-                },
-                timeout=self.timeout
-            )
+            response = requests.post(f'{self.ollama_url}/api/generate', json=body, timeout=self.timeout)
 
             if response.status_code == 200:
                 return response.json().get('response', '')
@@ -486,20 +491,41 @@ class MultiLLMBrain:
 
         # Build prompt based on thinking mode
         prompt = self._build_thinking_prompt(agent, perceptions, thinking_mode)
-        return self.complete(prompt, complexity, label=f"{agent.name}: {thinking_mode}")
+        schema = self.decision_schema() if thinking_mode == "decide_action" else None
+        return self.complete(prompt, complexity, label=f"{agent.name}: {thinking_mode}", json_schema=schema)
 
     def complete(self, prompt: str, complexity: str = "simple", label: str = "",
-                 temperature: float = 0.8, max_tokens: int = 300) -> Optional[str]:
+                 temperature: float = 0.8, max_tokens: int = 300,
+                 json_schema: Optional[Dict] = None) -> Optional[str]:
         """Ask each configured provider in turn; the first answer wins.
+        json_schema: hold the answer to this shape where the provider can
+        (Ollama); others get the prompt's own format instructions.
         Safe to call from worker threads."""
         for provider in self.providers_to_try(complexity):
-            response = self.call_llm(provider, prompt, temperature=temperature, max_tokens=max_tokens)
+            if json_schema is not None and provider == LLMProvider.OLLAMA_LOCAL:
+                response = self.call_llm(provider, prompt, temperature=temperature, max_tokens=max_tokens,
+                                         json_schema=json_schema)
+            else:
+                response = self.call_llm(provider, prompt, temperature=temperature, max_tokens=max_tokens)
             if response:
                 with self._stats_lock:
                     self.total_decisions += 1
                 logger.info(f"🧠 {label} via {provider.value} ({response.response_time:.1f}s)")
                 return response.text
         return None
+
+    def decision_preamble(self) -> str:
+        """The fixed opening of every decision prompt: the menu and the answer format."""
+        from agents.action_menu import RESPONSE_FORMAT
+        menu_text = self.action_menu.text if self.action_menu else "(no actions available)"
+        return ("You are a person living in a small village. Each turn you decide what to do next.\n\n"
+                "What you can do (write the action name exactly as listed):\n"
+                f"{menu_text}\n\n{RESPONSE_FORMAT}\n\n")
+
+    def decision_schema(self) -> Optional[Dict]:
+        """JSON schema holding a model's answer to the menu (where supported)."""
+        from agents.action_menu import decision_schema
+        return decision_schema(self.action_menu.names) if self.action_menu else None
 
     def _assess_complexity(self, agent, perceptions: Dict, thinking_mode: str) -> str:
         """Determine if this requires simple or complex reasoning"""
@@ -599,20 +625,20 @@ class MultiLLMBrain:
             # Add consequences context
             consequences_context = self._get_consequences_context(agent)
 
-            from agents.action_menu import RESPONSE_FORMAT
-            menu_text = self.action_menu.text if self.action_menu else "(no actions available)"
-            sections = [goal_context, memory_context, risk_warnings, combat_context, governance_context,
-                        scarcity_context, tech_context, weather_context, buildings_context, knowledge_context,
-                        disaster_context, experimentation_context, roles_context, innovations_context,
-                        fun_context, consequences_context]
-            prompt = context + "".join(self._compact(section) for section in sections) + f"""
+            # Most useful to a decision first: what the agent remembers and is
+            # aiming for, then dangers and its surroundings, then the rest
+            sections = [memory_context, goal_context, risk_warnings, disaster_context, scarcity_context,
+                        governance_context, buildings_context, weather_context, combat_context,
+                        roles_context, knowledge_context, experimentation_context, innovations_context,
+                        tech_context, fun_context, consequences_context]
+            # The same text opens every decision prompt, so a local model can
+            # reuse its work on it from one call to the next (Ollama caches a
+            # shared prompt prefix); what's particular to this agent follows.
+            prompt = self.decision_preamble() + "About you, right now:\n" + context + \
+                self._fit_sections(sections) + """
 What do you want to do right now? You decide: weigh your needs, your
 personality, the people in your life and what you're working toward.
-
-What you can do (write the action name exactly as listed):
-{menu_text}
-
-{RESPONSE_FORMAT}
+Answer in the format above.
 """
 
         elif thinking_mode == "long_term_planning":
@@ -690,6 +716,21 @@ Be bold! Think of something interesting to try.
             prompt = context + "\n\nWhat are you thinking about right now? What matters to you?"
 
         return prompt
+
+    def _fit_sections(self, sections: List[str]) -> str:
+        """As many context sections as fit in context_chars (LLM_CONTEXT_CHARS),
+        in order, each compacted. Prompt length is most of a local model's time
+        per decision: ~1,000 tokens take ~10 s on a 4-core CPU."""
+        out, used = [], 0
+        for section in sections:
+            text = self._compact(section)
+            if not text.strip():
+                continue
+            if used + len(text) > self.context_chars:
+                break
+            out.append(text)
+            used += len(text)
+        return "".join(out)
 
     @staticmethod
     def _compact(section: str, max_chars: int = 450) -> str:

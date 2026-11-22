@@ -38,9 +38,12 @@ class Config:
             # Ollama versions default to 2,048 and silently cut the prompt.
             self.ollama_num_ctx = int(os.getenv('OLLAMA_NUM_CTX', '4096'))
             self.llm_timeout = float(os.getenv('LLM_TIMEOUT', '60'))  # seconds per model call
+            # Room for optional context (laws, buildings, discoveries...) in a
+            # decision prompt, in characters; the agent's own state always goes in
+            self.llm_context_chars = int(os.getenv('LLM_CONTEXT_CHARS', '1800'))
         except ValueError:
-            print("⚠️  Invalid OLLAMA_NUM_CTX or LLM_TIMEOUT, using 4096 and 60")
-            self.ollama_num_ctx, self.llm_timeout = 4096, 60.0
+            print("⚠️  Invalid OLLAMA_NUM_CTX, LLM_TIMEOUT or LLM_CONTEXT_CHARS, using 4096, 60 and 1800")
+            self.ollama_num_ctx, self.llm_timeout, self.llm_context_chars = 4096, 60.0, 1800
 
         # Feature flags with validation
         self.use_llm_decisions = os.getenv('USE_LLM_DECISIONS', 'true').lower() == 'true'
