@@ -530,6 +530,15 @@ async def get_chronicle(limit: int = 100):
     return simulation.chronicle.to_dict(limit=max(1, min(limit, 300)))
 
 
+@app.get("/society")
+async def get_society():
+    """Governments and laws, faiths, families, economy and inventions (engine/society.py)."""
+    if not simulation:
+        raise HTTPException(status_code=503, detail="Simulation not running")
+    from engine.society import society_snapshot
+    return society_snapshot(simulation)
+
+
 @app.get("/saves")
 async def list_saves():
     """Get list of all saves"""

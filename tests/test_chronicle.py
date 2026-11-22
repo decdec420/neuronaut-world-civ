@@ -1,5 +1,6 @@
 """
-The chronicle writes down firsts as agents make them (engine/chronicle.py).
+The chronicle writes down firsts as agents make them, and the society view
+shows what they built (engine/chronicle.py, engine/society.py).
 
     python3 -m pytest tests/test_chronicle.py -q
 """
@@ -65,3 +66,30 @@ def test_agents_words_are_kept_and_bounded():
         chronicle.voice(3 + i, "Yara", f"insight {i}")
     texts = [v.text for v in chronicle.voices]
     assert "tired" not in texts and len(texts) == 5 and texts[-1] == "insight 9"
+
+
+def test_society_snapshot_shows_governments_faiths_families_economy_inventions():
+    from engine.society import society_snapshot
+    sim, roles = make_world()
+    a, b, d = roles["actor"], roles["partner"], roles["neighbour"]
+    a.personality.aggression = 0.1
+    act(sim, a, "govern")
+    befriend(sim, d, a)
+    act(sim, d, "govern")
+    act(sim, a, "make_law", details="a tax for the well")
+    act(sim, d, "worship")
+    mother = a if a.gender.value == "female" else b
+    mother.is_pregnant, mother.pregnancy_partner_id = True, (b if mother is a else a).id
+    with quiet():
+        child = sim.lifecycle_manager.deliver_baby(mother, 10)
+    sim.action_successes["trade"] += 2
+
+    snap = society_snapshot(sim)
+    gov = snap["governments"][0]
+    assert gov["leader"] == a.name and gov["citizens"] == 2 and gov["laws"][0]["proposed_by"] == a.name
+    assert snap["religions"][0]["prophet"] == d.name
+    tree = snap["families"]
+    assert len(tree) == 1 and tree[0]["children"][0]["name"] == child.name  # one tree for the couple
+    assert {tree[0]["name"], tree[0]["partner"]} == {a.name, b.name}
+    assert snap["economy"]["trades"] == 2 and snap["economy"]["money"] > 0
+    assert isinstance(snap["inventions"], list)

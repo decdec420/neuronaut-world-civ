@@ -1127,6 +1127,7 @@
         <div class="nav-tabs" style="position: relative;">
             <div class="nav-tab active" data-tab="world-view">🌍 World View</div>
             <div class="nav-tab" data-tab="chronicle">🗓️ Chronicle</div>
+            <div class="nav-tab" data-tab="society">🏘️ Society</div>
             <div class="nav-tab" data-tab="agents">👥 Agents</div>
             <div class="nav-tab" data-tab="experimentation">⚗️ Experimentation</div>
             <div class="nav-tab" data-tab="buildings">🏛️ Infrastructure</div>
@@ -2614,6 +2615,49 @@
                 <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border: 2px solid #8b5cf6; border-radius: 12px; padding: 20px; margin-bottom: 20px;">
                     <h3 style="margin: 0 0 16px 0; color: #8b5cf6; font-size: 18px;">💬 In Their Own Words</h3>
                     <div id="chronicle-voices"><div style="text-align: center; color: #64748b; padding: 40px;">Agents with an AI mind write reflections and give reasons for their choices; none yet</div></div>
+                </div>
+            </div>
+
+            <!-- SOCIETY TAB: governments, laws, faiths, families, economy, inventions (GET /society) -->
+            <div class="tab-panel" id="society">
+                <h2 style="margin-bottom: 15px;">🏘️ Society - What They Built Together</h2>
+                <p style="color: #94a3b8; margin-bottom: 20px;">Governments, laws, faiths, families, money and inventions, as the agents made them.</p>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; margin-bottom: 20px; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 15px; border-radius: 12px; border: 2px solid #334155;">
+                    <div style="text-align: center;">
+                        <div style="font-size: 28px; font-weight: 700; color: #8b5cf6;" id="society-governments">0</div>
+                        <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">🏛️ Governments</div>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 28px; font-weight: 700; color: #3b82f6;" id="society-laws">0</div>
+                        <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">📜 Laws in force</div>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 28px; font-weight: 700; color: #f59e0b;" id="society-faiths">0</div>
+                        <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">🙏 Faiths</div>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 28px; font-weight: 700; color: #ec4899;" id="society-families">0</div>
+                        <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">👪 Families</div>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 28px; font-weight: 700; color: #10b981;" id="society-money">0</div>
+                        <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">💰 Money</div>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 28px; font-weight: 700; color: #14b8a6;" id="society-trades">0</div>
+                        <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">🤝 Trades</div>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 28px; font-weight: 700; color: #eab308;" id="society-inventions">0</div>
+                        <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">💡 Inventions</div>
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px;">
+                    <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border: 2px solid #8b5cf6; border-radius: 12px; padding: 20px; margin-bottom: 20px;"><h3 style="margin: 0 0 12px 0; color: #8b5cf6;">🏛️ Governments &amp; Laws</h3><div id="society-governments-list"></div></div>
+                    <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border: 2px solid #f59e0b; border-radius: 12px; padding: 20px; margin-bottom: 20px;"><h3 style="margin: 0 0 12px 0; color: #f59e0b;">🙏 Faiths</h3><div id="society-faiths-list"></div></div>
+                    <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border: 2px solid #ec4899; border-radius: 12px; padding: 20px; margin-bottom: 20px;"><h3 style="margin: 0 0 12px 0; color: #ec4899;">👪 Families</h3><div id="society-families-tree"></div></div>
+                    <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border: 2px solid #10b981; border-radius: 12px; padding: 20px; margin-bottom: 20px;"><h3 style="margin: 0 0 12px 0; color: #10b981;">💰 Economy</h3><div id="society-economy"></div></div>
+                    <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border: 2px solid #eab308; border-radius: 12px; padding: 20px; margin-bottom: 20px;"><h3 style="margin: 0 0 12px 0; color: #eab308;">💡 Inventions</h3><div id="society-inventions-list"></div></div>
                 </div>
             </div>
 
@@ -8486,7 +8530,7 @@
         console.log('✅ Auto-save enabled - saving every 5 minutes');
 
 
-        // ===== CHRONICLE (GET /chronicle) =====
+        // ===== CHRONICLE & SOCIETY (GET /chronicle, GET /society) =====
         // Text here can come from agents' AI minds: always escape it.
         function escHtml(value) {
             return String(value ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
@@ -8524,11 +8568,67 @@
             }
         }
 
+        function renderFamily(person) {
+            const life = person.alive ? `${escHtml(person.age)}, ${escHtml(person.stage)}` : `died at ${escHtml(person.age)}`;
+            const partner = person.partner ? ` ♥ ${escHtml(person.partner)}` : '';
+            const children = (person.children || []).map(renderFamily).join('');
+            return `<li style="margin: 4px 0;"><span style="color: ${person.alive ? '#f8fafc' : '#64748b'};">${escHtml(person.name)}</span>`
+                + `<span style="color: #94a3b8; font-size: 11px;"> (${life})</span>${partner}`
+                + (children ? `<ul style="margin: 2px 0 2px 16px; padding-left: 10px; border-left: 1px dashed #475569; list-style: none;">${children}</ul>` : '')
+                + '</li>';
+        }
+
+        async function fetchSociety() {
+            try {
+                const response = await fetch('/society');
+                if (!response.ok) return;
+                const data = await response.json();
+                const governments = data.governments || [], faiths = data.religions || [];
+                const families = data.families || [], economy = data.economy || {}, inventions = data.inventions || [];
+                const lawsInForce = governments.reduce((n, g) => n + (g.laws || []).filter(l => l.active).length, 0);
+                setTextSafe('society-governments', governments.length);
+                setTextSafe('society-laws', lawsInForce);
+                setTextSafe('society-faiths', faiths.length);
+                setTextSafe('society-families', families.length);
+                setTextSafe('society-money', Math.round(economy.money || 0));
+                setTextSafe('society-trades', economy.trades || 0);
+                setTextSafe('society-inventions', inventions.length);
+
+                $safe('society-governments-list').innerHTML = governments.length === 0 ? emptyNote('No one has founded a government')
+                    : governments.map(g => `
+                        <div style="background: #0f172a; border-radius: 6px; padding: 10px 12px; margin-bottom: 8px; opacity: ${g.active ? 1 : 0.5};">
+                            <div style="font-weight: 700; color: #c4b5fd;">${escHtml(g.name)}</div>
+                            <div style="font-size: 12px; color: #94a3b8;">${escHtml(g.type)} · led by ${escHtml(g.leader || 'nobody')} · ${escHtml(g.citizens)} citizens</div>
+                            ${(g.laws || []).map(l => `<div style="font-size: 12px; margin-top: 4px; color: ${l.active ? '#e2e8f0' : '#64748b'};">📜 ${escHtml(l.name)}${l.active ? '' : ' (repealed)'}<span style="color: #64748b;"> · by ${escHtml(l.proposed_by || '?')} · ${escHtml(l.supporters)} for, ${escHtml(l.opposers)} against, broken ${escHtml(l.broken)}×</span></div>`).join('')}
+                        </div>`).join('');
+                $safe('society-faiths-list').innerHTML = faiths.length === 0 ? emptyNote('No one has founded a faith')
+                    : faiths.map(f => `
+                        <div style="background: #0f172a; border-radius: 6px; padding: 10px 12px; margin-bottom: 8px;">
+                            <div style="font-weight: 700; color: #fcd34d;">${escHtml(f.name)}</div>
+                            <div style="font-size: 12px; color: #94a3b8;">prophet ${escHtml(f.prophet || '?')} · ${escHtml(f.followers)} followers · ${escHtml(f.temples)} temples</div>
+                        </div>`).join('');
+                $safe('society-families-tree').innerHTML = families.length === 0 ? emptyNote('No children born yet')
+                    : `<ul style="list-style: none; padding-left: 0; margin: 0;">${families.map(renderFamily).join('')}</ul>`;
+                $safe('society-economy').innerHTML = `
+                    <div style="font-size: 13px; color: #e2e8f0;">💰 ${escHtml(Math.round(economy.money || 0))} coins among the living · 🤝 ${escHtml(economy.trades || 0)} trades</div>
+                    <div style="font-size: 13px; color: #e2e8f0; margin-top: 4px;">🪙 ${escHtml(economy.coins_minted || 0)} minting runs · 🏦 ${escHtml(economy.banks || 0)} banks</div>
+                    ${(economy.richest || []).length ? `<div style="font-size: 12px; color: #94a3b8; margin-top: 8px;">Richest: ${economy.richest.map(r => `${escHtml(r.name)} (${escHtml(r.wealth)})`).join(', ')}</div>` : ''}`;
+                $safe('society-inventions-list').innerHTML = inventions.length === 0 ? emptyNote('Nothing invented yet')
+                    : inventions.slice(-30).reverse().map(i => `
+                        <div style="font-size: 12px; color: #e2e8f0; margin-bottom: 4px;">💡 ${escHtml(i.name)} <span style="color: #64748b;">(${escHtml(i.type)}) by ${escHtml(i.inventor || '?')}, known by ${escHtml(i.known_by)}</span></div>`).join('');
+            } catch (error) {
+                console.warn('Society view unavailable:', error);
+            }
+        }
+
         fetchChronicle();
-        // Live while its tab is open (and every 15 s otherwise, so it's fresh when opened)
+        fetchSociety();
+        // Live while their tab is open (and every 15 s otherwise, so they're fresh when opened)
         setInterval(() => { if ($safe('chronicle').classList.contains('active')) fetchChronicle(); }, 3000);
-        setInterval(fetchChronicle, 15000);
+        setInterval(() => { if ($safe('society').classList.contains('active')) fetchSociety(); }, 3000);
+        setInterval(() => { fetchChronicle(); fetchSociety(); }, 15000);
         document.querySelector('.nav-tab[data-tab="chronicle"]')?.addEventListener('click', fetchChronicle);
+        document.querySelector('.nav-tab[data-tab="society"]')?.addEventListener('click', fetchSociety);
     </script>
 
     <!-- Experiment Modal -->
