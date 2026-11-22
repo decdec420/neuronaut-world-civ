@@ -625,8 +625,9 @@ class SimulationEngine:
             self.death_wipe_detected = True
             self._log_extinction_event(current_tick)
 
-        # Auto-save every 1000 ticks
-        elif alive_count > 0 and current_tick - self.last_auto_save_tick >= 1000:
+        # Auto-save every AUTOSAVE_EVERY ticks (0 = off)
+        elif alive_count > 0 and self.config.autosave_every > 0 \
+                and current_tick - self.last_auto_save_tick >= self.config.autosave_every:
             try:
                 snapshot = self.persistence.save_simulation_state(self)
                 self.last_auto_save_tick = current_tick

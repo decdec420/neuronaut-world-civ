@@ -47,10 +47,12 @@ class PathNode:
 class Pathfinder:
     """A* pathfinding implementation"""
 
+    MAX_CACHED_PATHS = 2000
+
     def __init__(self, world_width: int = 100, world_height: int = 100):
         self.world_width = world_width
         self.world_height = world_height
-        self.path_cache = {}  # Cache paths for performance
+        self.path_cache = {}  # Cache paths for performance (up to MAX_CACHED_PATHS)
         self.cache_max_age = 50  # Clear cache after 50 ticks
 
     def find_path(
@@ -96,6 +98,8 @@ class Pathfinder:
             # Found goal
             if (current.x, current.y) == end:
                 path = self._reconstruct_path(current)
+                if len(self.path_cache) >= self.MAX_CACHED_PATHS:
+                    self.path_cache.clear()  # bounded; paths are cheap to find again
                 self.path_cache[cache_key] = path
                 return path
 

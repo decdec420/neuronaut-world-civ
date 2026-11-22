@@ -133,6 +133,8 @@ class Market:
                 currency=CurrencyType.COINS
             )
             self.transaction_history.append(transaction)
+            if len(self.transaction_history) > 1200:
+                del self.transaction_history[:-1000]  # prices read the last 500
 
         # Update market prices based on trade
         self._update_prices_from_trade(offer)

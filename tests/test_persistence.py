@@ -77,7 +77,9 @@ def test_save_load_and_carry_on(tmp_path):
     assert fingerprint(loaded) == saved
     assert set(loaded.dynamic_building_system.buildings) == saved_building_ids
     run(loaded, 30)
-    assert fingerprint(loaded) == carried_on  # same world, same dice: same 30 ticks
+    after = fingerprint(loaded)
+    differ = {k: (carried_on[k], after[k]) for k in after if after[k] != carried_on[k]}
+    assert not differ, f"diverged after loading: {list(differ)}"  # same world, same dice: same 30 ticks
 
 
 def test_a_world_with_ai_minds_saves_and_thinks_after_loading(tmp_path):

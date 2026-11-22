@@ -69,6 +69,13 @@ class Config:
             print("⚠️  Invalid TICKS_PER_LIFE_YEAR value, using default 144")
             self.ticks_per_life_year = 144
 
+        # Auto-save a summary snapshot every N ticks (0 = off); the newest 10 are kept
+        try:
+            self.autosave_every = max(0, int(os.getenv('AUTOSAVE_EVERY', '1000')))
+        except ValueError:
+            print("⚠️  Invalid AUTOSAVE_EVERY value, using default 1000")
+            self.autosave_every = 1000
+
         # Population cap: a technical limit for performance (each agent costs
         # tick time, and AI-brain calls when those are on), not a design rule.
         # At the cap no new pregnancy starts; nothing else changes.

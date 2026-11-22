@@ -147,6 +147,9 @@ class SmartMemorySystem:
     - "Memory in the Age of AI Agents" research (2026)
     """
 
+    MAX_EPISODIC = 300
+    MAX_PERSISTENT = 100
+
     def __init__(
         self,
         agent_id: str,
@@ -215,11 +218,17 @@ class SmartMemorySystem:
 
         # Route to appropriate long-term storage
         if importance.value >= EventImportance.MAJOR.value:
-            # Major+ events: Never forget (persistent)
+            # Major+ events: kept (the most recent MAX_PERSISTENT of them)
             self.persistent_memories.append(memory)
+            del self.persistent_memories[:-self.MAX_PERSISTENT]
         elif importance.value >= EventImportance.MINOR.value:
             # Minor/Significant: Store but allow decay
             self.episodic_memory.append(memory)
+            # Decay runs on wall-clock hours, so in a fast-running world it
+            # never pruned anything: keep the most important, then newest
+            if len(self.episodic_memory) > self.MAX_EPISODIC * 1.2:
+                keep = sorted(self.episodic_memory, key=lambda m: (m.importance.value, m.timestamp))[-self.MAX_EPISODIC:]
+                self.episodic_memory = sorted(keep, key=lambda m: m.timestamp)
         # MUNDANE events only live in working memory, naturally drop off
 
         self.total_memories_added += 1

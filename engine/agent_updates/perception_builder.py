@@ -683,6 +683,19 @@ class PerceptionBuilder:
         perceptions['buildings_info'] = buildings_info
         return perceptions
 
+    def _knowledge_by_agent(self) -> Dict:
+        """agent id -> knowledge records it knows, rebuilt once per tick."""
+        tick = self.sim.world.time.current_tick
+        records = self.sim.knowledge_system.knowledge_records
+        cached = getattr(self, '_knowledge_index', None)
+        if cached is None or cached[0] != tick or cached[1] != len(records):
+            index = {}
+            for record in records.values():
+                for agent_id in record.known_by:
+                    index.setdefault(agent_id, []).append(record)
+            self._knowledge_index = cached = (tick, len(records), index)
+        return cached[2]
+
     def _add_knowledge_info(self, agent, perceptions: Dict) -> Dict:
         """
         Add knowledge system information to perceptions.
@@ -693,31 +706,21 @@ class PerceptionBuilder:
         - Learning opportunities (what others can teach me)
         """
         knowledge_info = {}
+        # Who knows what, built once per tick (this rescanned every record for
+        # every agent, and again for every pair of nearby agents, every tick)
+        known = self._knowledge_by_agent()
+        mine = known.get(agent.id, [])
 
-        # What knowledge does this agent know?
-        agent_knowledge = []
-        unknown_knowledge = []
+        knowledge_info['known_knowledge'] = [{
+            'id': k.id,
+            'name': k.name,
+            'type': k.knowledge_type,
+            'accuracy': k.accuracy,
+            'mastery': 'expert' if k.original_author == agent.id else 'learned'
+        } for k in mine]
+        knowledge_info['knowledge_count'] = len(mine)
 
-        for k_id, knowledge in self.sim.knowledge_system.knowledge_records.items():
-            if agent.id in knowledge.known_by:
-                agent_knowledge.append({
-                    'id': k_id,
-                    'name': knowledge.name,
-                    'type': knowledge.knowledge_type,
-                    'accuracy': knowledge.accuracy,
-                    'mastery': 'expert' if knowledge.original_author == agent.id else 'learned'
-                })
-            else:
-                unknown_knowledge.append({
-                    'id': k_id,
-                    'name': knowledge.name,
-                    'type': knowledge.knowledge_type
-                })
-
-        knowledge_info['known_knowledge'] = agent_knowledge
-        knowledge_info['knowledge_count'] = len(agent_knowledge)
-
-        # Find teaching opportunities (nearby agents who don't know what I know)
+        # Teaching and learning opportunities with agents nearby
         teaching_opportunities = []
         learning_opportunities = []
 
@@ -725,32 +728,21 @@ class PerceptionBuilder:
             if other_agent.id != agent.id and other_agent.alive:
                 dist = agent.location.distance_to(other_agent.location)
                 if dist < 30:  # Within teaching range
-                    # What can I teach them?
-                    can_teach = []
-                    for knowledge in self.sim.knowledge_system.knowledge_records.values():
-                        if agent.id in knowledge.known_by and other_agent.id not in knowledge.known_by:
-                            can_teach.append(knowledge.name)
-
+                    can_teach = [k.name for k in mine if other_agent.id not in k.known_by][:3]
                     if can_teach:
                         teaching_opportunities.append({
                             'agent_id': other_agent.id,
                             'agent_name': other_agent.name,
                             'distance': round(dist, 1),
-                            'can_teach': can_teach[:3]  # Top 3 things they could learn
+                            'can_teach': can_teach  # Top 3 things they could learn
                         })
-
-                    # What can they teach me?
-                    can_learn = []
-                    for knowledge in self.sim.knowledge_system.knowledge_records.values():
-                        if other_agent.id in knowledge.known_by and agent.id not in knowledge.known_by:
-                            can_learn.append(knowledge.name)
-
+                    can_learn = [k.name for k in known.get(other_agent.id, []) if agent.id not in k.known_by][:3]
                     if can_learn:
                         learning_opportunities.append({
                             'agent_id': other_agent.id,
                             'agent_name': other_agent.name,
                             'distance': round(dist, 1),
-                            'can_learn': can_learn[:3]  # Top 3 things I could learn
+                            'can_learn': can_learn  # Top 3 things I could learn
                         })
 
         knowledge_info['teaching_opportunities'] = teaching_opportunities[:5]
@@ -1183,10 +1175,10 @@ class PerceptionBuilder:
 
         fun_info['nearby_games'] = nearby_games[:5]
 
-        # Nearby art to view
+        # The best art this agent hasn't seen yet (walking the pieces in order of
+        # quality, so this doesn't build a record for every piece ever made)
         nearby_art = []
-        for art_piece in self.sim.fun_system.art_pieces.values():
-            # Show art that hasn't been viewed yet
+        for art_piece in self.sim.fun_system.art_by_quality():
             if agent.id not in art_piece.viewers:
                 nearby_art.append({
                     'id': art_piece.id,
@@ -1196,10 +1188,9 @@ class PerceptionBuilder:
                     'viewers_count': len(art_piece.viewers),
                     'cultural_value': round(art_piece.cultural_value, 2)
                 })
-
-        # Sort by quality
-        nearby_art.sort(key=lambda a: a['quality'], reverse=True)
-        fun_info['art_to_view'] = nearby_art[:5]
+                if len(nearby_art) == 5:
+                    break
+        fun_info['art_to_view'] = nearby_art
 
         # Can agent create art?
         can_create_art = False

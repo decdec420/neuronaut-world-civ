@@ -103,10 +103,12 @@ class TerritoryManager:
     - Resource control drives territorial expansion
     """
 
+    MAX_TRESPASS_EVENTS = 500
+
     def __init__(self):
         self.territories: Dict[str, Territory] = {}
         self.borders: Dict[str, Border] = {}
-        self.trespass_events: Dict[str, TrespassEvent] = {}
+        self.trespass_events: Dict[str, TrespassEvent] = {}  # recent ones (MAX_TRESPASS_EVENTS)
 
         # Statistics
         self.total_claims: int = 0
@@ -261,6 +263,11 @@ class TerritoryManager:
 
         self.trespass_events[event_id] = event
         self.total_trespasses += 1
+        # Keep the recent incidents (the totals keep counting); this grew by
+        # ~7 a tick, 35,000 in a 6,000-tick run
+        if len(self.trespass_events) > self.MAX_TRESPASS_EVENTS * 1.2:
+            for old_id in list(self.trespass_events)[:len(self.trespass_events) - self.MAX_TRESPASS_EVENTS]:
+                del self.trespass_events[old_id]
 
         return territory
 

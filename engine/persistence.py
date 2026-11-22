@@ -183,15 +183,20 @@ class PersistenceEngine:
         )
 
         self.snapshots.append(snapshot)
-
-        # Clean old snapshots
-        if len(self.snapshots) > self.keep_last_n_snapshots:
-            old_snapshot = self.snapshots.pop(0)
-            # Delete old file
-            if os.path.exists(old_snapshot.full_state_path):
-                os.remove(old_snapshot.full_state_path)
+        del self.snapshots[:-self.keep_last_n_snapshots]
+        self._prune_snapshot_files()
 
         return snapshot
+
+    def _prune_snapshot_files(self) -> None:
+        """Keep the newest keep_last_n_snapshots auto-save files on disk. (This
+        used to remember only the files written by the current process, so
+        every run left its auto-saves behind: hundreds piled up.)"""
+        files = [os.path.join(self.save_dir, name) for name in os.listdir(self.save_dir)
+                 if name.startswith("snapshot_tick_") and name.endswith(".json.gz")]
+        files.sort(key=os.path.getmtime)
+        for old in files[:-self.keep_last_n_snapshots]:
+            os.remove(old)
 
     def _serialize_experimentation(self, exp_engine) -> Dict:
         """Serialize experimentation engine state"""
