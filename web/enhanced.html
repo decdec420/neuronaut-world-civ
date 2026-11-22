@@ -3156,6 +3156,11 @@
                     'eat': { icon: '🍖', color: '#10b981', label: 'Eating', needs: '🍖 Hunger' },
                     'drink': { icon: '💧', color: '#06b6d4', label: 'Drinking', needs: '💧 Thirst' },
                     'celebrate': { icon: '🎉', color: '#ec4899', label: 'Celebrating', needs: '😊 Joy' },
+                    'gather_food': { icon: '🌾', color: '#84cc16', label: 'Foraging', needs: '🍖 Hunger' },
+                    'tell_story': { icon: '📖', color: '#f472b6', label: 'Telling Stories', needs: '👥 Belonging' },
+                    'create_art': { icon: '🎨', color: '#f472b6', label: 'Making Art', needs: '🌟 Creativity' },
+                    'play_game': { icon: '🎲', color: '#3b82f6', label: 'Playing', needs: '😊 Joy' },
+                    'heal': { icon: '🩹', color: '#10b981', label: 'Healing', needs: '⭐ Esteem' },
                     'idle': { icon: '🕐', color: '#64748b', label: 'Idle', needs: '' }
                 };
                 const action = actionIcons[agent.current_action] || { icon: '⚙️', color: '#94a3b8', label: agent.current_action || 'Unknown', needs: '' };
@@ -3193,6 +3198,9 @@
                                     ${agent.age}y ${emotionIcon} ${agent.gender || 'unknown'}
                                 </div>
                                 ${agent.status ? `<div style="font-size: 10px; color: #fbbf24; font-weight: 600; text-transform: capitalize;">👑 ${(agent.status * 100).toFixed(0)}% Status</div>` : ''}
+                                ${agent.job_title
+                                    ? `<div class="agent-job" style="font-size: 11px; color: #6ee7b7; font-weight: 600;">🧰 ${agent.job_title}</div>`
+                                    : `<div class="agent-job" style="font-size: 10px; color: #64748b;">🧰 Still finding their work</div>`}
                             </div>
                             <div style="text-align: right;">
                                 <div style="font-size: 11px; padding: 4px 8px; background: ${action.color}33; color: ${action.color}; border-radius: 6px; border: 1px solid ${action.color}; font-weight: 600; margin-bottom: 4px;">
