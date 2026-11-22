@@ -21,6 +21,17 @@ from engine.events import EventGenerator, EventCategory, EventImportance
 from engine.psychology import NeedType, EmotionType
 from engine.storytelling import StoryGenerator, StoryType
 
+# A gathered harvest is eaten on the spot: hunger drops by amount / FOOD_PER_HUNGER.
+FOOD_PER_HUNGER = 8.0
+FOOD_PER_HARVEST = 12.0
+
+
+def usable_food(agent) -> float:
+    """Food an agent can use from one harvest: what it eats now plus what it can carry."""
+    hunger = agent.needs.needs.get(NeedType.HUNGER)
+    space = agent.inventory.capacity - agent.inventory.get_total_items()
+    return (hunger.level if hunger else 0.0) * FOOD_PER_HUNGER + max(0, space)
+
 
 class ActionHandlers:
     """
@@ -423,15 +434,20 @@ class ActionHandlers:
                 }
 
         # Close enough to harvest!
-        # Harvest food - INCREASED YIELD for survival!
-        amount = self.sim.world.harvest_resource(resource.id, 12.0)  # Was 5.0, now 12.0
+        # Take only what the agent will eat now or can carry. Taking a full 12
+        # every time destroyed food: most harvests were by sated agents with full
+        # inventories (69% of all food taken from the pool in a 1200-tick run).
+        amount = self.sim.world.harvest_resource(
+            resource.id, min(FOOD_PER_HARVEST, usable_food(agent)))
 
         if amount > 0:
-            # Add to inventory
-            agent.inventory.add_item('food', int(amount))
+            # Add what fits to inventory (add_item is all-or-nothing)
+            space = agent.inventory.capacity - agent.inventory.get_total_items()
+            if min(int(amount), space) > 0:
+                agent.inventory.add_item('food', min(int(amount), space))
 
             # Immediately eat to survive - satisfy hunger MORE
-            agent.needs.satisfy_need(NeedType.HUNGER, amount / 8.0)  # Was /10, now /8 - more satisfying
+            agent.needs.satisfy_need(NeedType.HUNGER, amount / FOOD_PER_HUNGER)
             # Restore energy from eating
             agent.energy = min(100.0, agent.energy + 8.0)  # Was +5, now +8
 
@@ -479,8 +495,13 @@ class ActionHandlers:
         - Trade with others
         """
         # Determine what material to gather based on availability and need
-        # Priority: stone > wood > clay > metal_ore (if unlocked)
         material_priority = ['stone', 'wood', 'clay', 'plant_fiber', 'metal_ore', 'iron_ore']
+        # Gather what the agent holds least of first (ties keep the order above).
+        # Buildings need a mix (a shelter is wood, stone, fiber and clay); always
+        # taking stone first filled every inventory with stone, after which no
+        # building could be designed and every gather failed on a full inventory.
+        held = agent.inventory.items
+        material_priority.sort(key=lambda m: held.get(m, 0))
 
         gathered_material = None
         gathered_amount = 0
@@ -683,6 +704,10 @@ class ActionHandlers:
         skill_bonus = 1.0 + (gathering_skill * 0.5)
 
         amount_to_gather = base_amount * efficiency_multiplier * skill_bonus
+        # Only take what the agent can carry; otherwise add_item fails silently
+        # and the wood is lost from the world while the chop reports success.
+        space = agent.inventory.capacity - agent.inventory.get_total_items()
+        amount_to_gather = min(amount_to_gather, float(max(0, space)))
         actual_amount = self.sim.world.harvest_from_pool('wood', amount_to_gather)
 
         if actual_amount > 0:
@@ -794,8 +819,10 @@ class ActionHandlers:
             # Successful hunt!
             amount = random.randint(8, 15)  # Hunting gives more food than gathering
 
-            # Add to inventory
-            agent.inventory.add_item('food', amount)
+            # Add what fits to inventory (add_item is all-or-nothing)
+            space = agent.inventory.capacity - agent.inventory.get_total_items()
+            if min(amount, space) > 0:
+                agent.inventory.add_item('food', min(amount, space))
 
             # Learn hunting skill
             agent.skills.learn_skill('hunting', 0.1)

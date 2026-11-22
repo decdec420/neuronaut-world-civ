@@ -26,6 +26,7 @@ from engine.action_handlers import (
     combine_validations,
 )
 from agents.agent import ActionType, Action
+from engine.agent_updates.action_handlers import usable_food
 
 if TYPE_CHECKING:
     from agents.agent import Agent
@@ -163,8 +164,18 @@ class ResourceGatheringHandler(ActionHandler):
         # Food and water must always be reachable, even when exhausted
         if action.action_type.value in ('gather_food', 'gather_water', 'hunt'):
             energy_valid = (True, "")
+            # A sated agent with a full inventory can neither eat nor carry food;
+            # harvesting would only take it away from hungry agents, and a hunt
+            # would be wasted.
+            if action.action_type in (ActionType.GATHER_FOOD, ActionType.HUNT) and usable_food(agent) < 1:
+                return combine_validations(alive_valid, (False, "Not hungry and no room to carry food"))
         else:
             energy_valid = validate_agent_energy(agent, self.MIN_ENERGY_FOR_GATHERING)
+            # Materials can't be carried once the inventory is full. Reject here so
+            # the agent picks something else instead of failing every tick (food and
+            # water are eaten/drunk on the spot, so they are never blocked).
+            if agent.inventory.get_total_items() >= agent.inventory.capacity:
+                return combine_validations(alive_valid, (False, "Inventory full"))
 
         # Combine validations - returns first failure or (True, "") if all pass
         return combine_validations(alive_valid, energy_valid)

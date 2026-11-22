@@ -143,16 +143,20 @@ class ConstructionHandler(ActionHandler):
                 return False, "No building need"
             dbs = self.context.get_system('dynamic_building_system') if getattr(self, 'context', None) else None
             if dbs is not None and hasattr(dbs, '_estimate_materials'):
-                try:
-                    needed = dbs._estimate_materials([purpose], available_materials,
-                                                     agent.skills.get_skill('construction'),
-                                                     agent_inventory=available_materials)
-                    short = {m: q - available_materials.get(m, 0) for m, q in needed.items()
-                             if available_materials.get(m, 0) < q}
-                    if short:
-                        return False, "Missing materials: " + ", ".join(f"{q} {m}" for m, q in short.items())
-                except Exception:
-                    pass
+                # Same estimate (and era) that execute() will use. It returns None
+                # when the agent's materials can't make a viable building; that used
+                # to raise here, get swallowed, and let a doomed build run every tick.
+                civilization = self.context.get_system('civilization')
+                era = civilization.current_era.value if civilization else 'Stone Age'
+                needed = dbs._estimate_materials([purpose], available_materials,
+                                                 agent.skills.get_skill('construction'),
+                                                 era, agent_inventory=available_materials)
+                if not needed:
+                    return False, f"Not enough of the right materials for a {purpose}"
+                short = {m: q - available_materials.get(m, 0) for m, q in needed.items()
+                         if available_materials.get(m, 0) < q}
+                if short:
+                    return False, "Missing materials: " + ", ".join(f"{q} {m}" for m, q in short.items())
 
         return True, ""
 
@@ -428,7 +432,7 @@ class ConstructionHandler(ActionHandler):
             materials_list = ", ".join([f"{amt} {mat}" for mat, amt in building.materials_used.items()])
             purpose_descriptions = {
                 'shelter': 'protection from elements and safe resting place',
-                'defense': 'security against threats and territorial control',
+                'protection': 'security against threats and territorial control',
                 'storage': 'preserving resources and organizing inventory',
                 'workshop': 'enabling crafting and creative work',
                 'gathering_space': 'fostering community and social bonds'
@@ -463,7 +467,7 @@ class ConstructionHandler(ActionHandler):
         # Satisfy needs
         need_mapping = {
             'shelter': NeedType.SHELTER,
-            'defense': NeedType.SECURITY,
+            'protection': NeedType.SECURITY,
             'storage': NeedType.RESOURCES,
             'workshop': [NeedType.CREATIVITY, NeedType.ACHIEVEMENT],
             'gathering_space': NeedType.BELONGING
@@ -569,7 +573,9 @@ class ConstructionHandler(ActionHandler):
         if level(NeedType.SHELTER) > 0.7:
             return 'shelter'
         elif level(NeedType.SECURITY) > 0.7:
-            return 'defense'
+            # The building system calls this purpose 'protection' (BuildingPurpose);
+            # 'defense' had no material recipe, so every defense build failed.
+            return 'protection'
         elif level(NeedType.RESOURCES) > 0.6:
             return 'storage'
         elif level(NeedType.CREATIVITY) > 0.6:
