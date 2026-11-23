@@ -39,10 +39,20 @@ USE_LLM_DECISIONS=false python3 main.py      # then open http://localhost:8000/a
 ## Verify every change (non-negotiable)
 
 ```bash
+pip3 install -r requirements-dev.txt          # once: pytest + httpx
+pytest                                        # the test suite (tests/), must pass
 python3 scripts/sim_check.py                  # 1200 ticks x 3 seeds, must print OVERALL: PASS
 python3 scripts/sim_check.py --verbose        # also shows top actions and top failures
 python3 scripts/sim_check.py --llm            # LLM decision path
+python3 scripts/sim_check.py --seeds 8        # for changes to the world itself: 3 seeds is too few
 ```
+
+- `sim_check.py` is reproducible: the same code and seed give the same numbers
+  (it pins the hash seed and seeds uuid4), so a difference is your change.
+  A change to the world's shape or the order choices are made in moves every
+  number; compare medians over 8 seeds then, not seed by seed.
+- CI (`.github/workflows/ci.yml`) runs pytest, sim_check and a Docker smoke test
+  on every push.
 
 - Run `sim_check.py` before you change anything (baseline) and after every fix.
 - A change is done only when it passes AND you've compared the numbers to the
@@ -85,22 +95,37 @@ python3 scripts/sim_check.py --llm            # LLM decision path
 - **Survival before goals.** Urgent needs are handled in `_survival_override`
   for both the rule-based and LLM paths. Keep it that way.
 - Default agent inventory capacity is 150; a basic shelter needs ~55 materials.
+- **Never let a choice depend on a set's order.** Sets of ids come back from a save
+  in a different order, so a loaded world chose differently from the one saved.
+  Iterate `sorted(...)` wherever order can change an outcome.
+- **Water isn't walkable.** Move agents with `infrastructure.step_toward` (paths)
+  or `world.map.walk_line` (straight, stops at the shore), never by setting
+  `agent.location` directly.
+- **Requests that change the world** need the `X-Neuronaut-Control: 1` header
+  (and the admin token if `NEURONAUT_ADMIN_TOKEN` is set). In the dashboard use
+  `controlFetch()`.
 
 ## Known open issues (good places to start)
 
-1. `build_house` / `build` still fail a lot with "Construction failed to start".
-   The up-front material check in `construction.py` doesn't match the design that
-   `world/dynamic_buildings.py` actually produces. Make them agree.
-2. Stone/clay pools drain with 12 builders → thousands of
-   "No materials available to gather". Rebalance or make agents stop trying.
-3. `gather_food` "Failed to gather food" ~500 per 600 ticks. Find out why.
-4. Governance, religion and inventions never happen because agents can't
-   choose them (AUDIT.md #5). Make them reachable, without scripting them.
-   The LLM brain's prompt lists only 21 of ~200 actions
-   (`agents/llm_brain.py`, "Available actions:"); pray/worship/ritual,
-   mint_coins, invent, propose/marry and more are missing.
-5. LLM path untested against a real model (Ollama). Test and tune prompts.
-6. Roughly 100 status `.md` files in the repo root and `docs/` are stale; leave
+Measured on 8 seeds at the end of the production-readiness work. Of the old
+list, construction failures, drained material pools and gather_food failures no
+longer appear among the top failures; governance, religion and inventions are
+reachable and the LLM brain has the full menu (PR #4); the model path was tested
+with llama3.2:3b. Today's top failures are research attempts that find nothing,
+which is a legitimate outcome.
+
+1. `engine/smart_memory.py` decays memories by wall-clock hours (`time.time()`),
+   not sim time, so decay depends on how fast the server runs. Make it tick-based.
+2. The rule-based brain ignores disaster warnings (`perceptions['disaster_info']['warnings']`);
+   only the LLM brain sees them. Shelter matters, so weigh it, without scripting.
+3. `tell_story` is ~22% of all rule-brain actions and `rest` ~35%. Find out why.
+4. Faiths get founded but their followers lapse; practice is rarely chosen.
+5. Few who hear of a gathering come (~1 in 6), and hosts pick the same evening.
+6. A live run isn't reproducible from its seed: ids come from uuid4. sim_check
+   works around it; the world's own RNG should make the ids.
+7. `agents/swarm_intelligence.py` is built at startup but never called;
+   `agents/semantic_memory.py` is never used (and needs chromadb + PyTorch).
+8. Roughly 100 status `.md` files in the repo root and `docs/` are stale; leave
    them unless asked, and never add more.
 
 ## How to work
