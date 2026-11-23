@@ -86,7 +86,7 @@
         play_game: ['🎲', 'playing a game'], gamble: ['🎲', 'gambling'], mint_coins: ['🪙', 'minting coins'],
         fight: ['⚔️', 'fighting'], steal: ['🫳', 'stealing'], meditate: ['🧘', 'meditating'],
         write: ['✍️', 'writing'], discover_material: ['🔍', 'researching'], invent: ['💡', 'inventing'],
-        idle: ['🤔', 'thinking'],
+        hide: ['🛖', 'taking shelter'], idle: ['🤔', 'thinking'],
     };
     function actionInfo(name) {
         if (!name) return ACTIONS.idle;

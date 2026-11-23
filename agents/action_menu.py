@@ -40,6 +40,8 @@ ACTION_INFO = {
     "eat": ("survival", "eat food you carry"),
     "drink": ("survival", "drink water you carry"),
     "rest": ("survival", "rest or sleep"),
+    "hide": ("survival", "take shelter in your home or the nearest standing building; "
+                         "when a disaster hits, a sturdy building protects you"),
     "gather_food": ("survival", "pick wild food"),
     "gather_water": ("survival", "fetch water"),
     "hunt": ("survival", "hunt animals for food"),

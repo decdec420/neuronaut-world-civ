@@ -80,6 +80,10 @@ ACTION_NEEDS: Dict[str, Dict[N, float]] = {
     "care_for_child": {N.MEANING: 0.5, N.BELONGING: 0.5},
     "celebrate": {N.BELONGING: 0.6, N.MEANING: 0.4},
     "organize_event": {N.BELONGING: 0.4, N.STATUS: 0.3, N.FRIENDSHIP: 0.3},
+    # Mostly a response to a warned disaster (_warning_pull): with a full
+    # security+shelter weight, agents hid in calm times too (550-1190 times a
+    # 3000-tick run) at some cost to their health
+    "hide": {N.SECURITY: 0.3},
     "attend_event": {N.BELONGING: 0.5, N.FRIENDSHIP: 0.3, N.MEANING: 0.2},
     "tell_story": {N.BELONGING: 0.4, N.RECOGNITION: 0.3, N.CREATIVITY: 0.3},
     "play_game": {N.BELONGING: 0.5, N.FRIENDSHIP: 0.3, N.ACHIEVEMENT: 0.2},
@@ -146,6 +150,7 @@ ACTION_TRAITS: Dict[str, Dict[str, float]] = {
     "care_for_child": {"empathy": 0.6, "agreeableness": 0.3, "conscientiousness": 0.2},
     "celebrate": {"extraversion": 0.6, "openness": 0.2},
     "organize_event": {"extraversion": 0.5, "agreeableness": 0.2, "ambition": 0.2},
+    "hide": {"neuroticism": 0.4, "risk_taking": -0.3},
     "attend_event": {"extraversion": 0.4, "agreeableness": 0.3},
     "tell_story": {"extraversion": 0.5, "creativity": 0.5},
     "play_game": {"extraversion": 0.5, "risk_taking": 0.2},
@@ -194,6 +199,8 @@ CARE_WEIGHT = 1.5        # a child who needs looking after
 OTHERS_CHILD_BOND = 0.3  # someone else's child pulls less than your own
 WALKING_PULL = 1.0       # an agent who walks a lot is drawn to pave and dig wells
 GATHERING_PULL = 1.0     # a gathering one has heard of, by a host one likes
+WARNING_PULL = 2.5       # a warned disaster that will reach where one stands: take shelter
+SEVERITY = {"minor": 0.25, "moderate": 0.5, "major": 0.75, "catastrophic": 1.0}
 NIGHT_REST_PULL = 2.5
 WORK_PULL = 0.3
 OWN_JOB_PULL = 0.6
@@ -287,7 +294,10 @@ class UtilityBrain:
 
     def _state_pull(self, agent, action: str) -> float:
         """What the agent's own life adds: one who has been walking a lot feels
-        the need for roads (and for water closer by)."""
+        the need for roads (and for water closer by); one who has heard a
+        disaster is coming its way feels the pull of shelter."""
+        if action == "hide":
+            return self._warning_pull(agent)
         if action == "attend_event":
             # A gathering it has heard of: more so if it likes the host
             gatherings = getattr(self.sim, "gatherings", None)
@@ -307,6 +317,25 @@ class UtilityBrain:
             return 0.0
         burden = works.walking_burden(agent.id, self.sim.world.time.current_tick)
         return WALKING_PULL * burden * (1.0 if action == "build_road" else 0.5)
+
+    def _warning_pull(self, agent) -> float:
+        """The worst warned disaster that will reach where the agent is: more
+        the worse it is and the sooner it comes, and more for a careful agent
+        than a reckless one. (The same warnings are in its perception.)"""
+        disasters = getattr(self.sim, "disasters", None)
+        if disasters is None:
+            return 0.0
+        now = self.sim.world.time.current_tick
+        caution = 1.0 - agent.personality.get_trait("risk_taking")
+        best = 0.0
+        for warning in getattr(disasters, "pending_warnings", []):
+            d = warning["disaster"]
+            if math.hypot(agent.location.x - d.location_x, agent.location.y - d.location_y) >= d.radius:
+                continue
+            ticks = max(0, warning["impact_tick"] - now)
+            urgency = 1.0 if ticks <= 6 else max(0.3, 1.0 - (ticks - 6) / 30.0)
+            best = max(best, WARNING_PULL * SEVERITY.get(d.severity.value, 0.5) * urgency * (0.5 + caution))
+        return best
 
     # -- targets -------------------------------------------------------------
 

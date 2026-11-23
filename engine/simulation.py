@@ -66,6 +66,7 @@ from engine.handlers import (
     FamilyHandler,
     InfrastructureHandler,
     GatheringHandler,
+    ShelterHandler,
 )
 
 # UTILITIES
@@ -84,7 +85,7 @@ UNHANDLED_ACTION_FALLBACKS = {
     # Movement / exploration
     'scout': 'explore', 'map_area': 'explore', 'search': 'explore', 'wander': 'explore',
     'explore_unknown': 'explore', 'chart_map': 'explore', 'survey_land': 'explore',
-    'find_resources': 'explore', 'follow': 'move', 'chase': 'move', 'hide': 'rest',
+    'find_resources': 'explore', 'follow': 'move', 'chase': 'move',
     'flee': 'move',
     # Food
     'fish': 'hunt', 'forage': 'gather_food', 'cook': 'eat', 'brew': 'drink',
@@ -378,6 +379,7 @@ class SimulationEngine:
 
             # Gatherings people are invited to by word of mouth
             GatheringHandler(self._action_context),
+            ShelterHandler(self._action_context),
         ]
 
         self._handler_registry.register_multiple(handlers)
@@ -434,10 +436,9 @@ class SimulationEngine:
             if not self.paused:
                 try:
                     await self.tick()
-                except Exception as e:
-                    print(f"❌ ERROR in tick(): {e}")
-                    import traceback
-                    traceback.print_exc()
+                except Exception:
+                    # Logged with its traceback; the world carries on with the next tick
+                    logger.exception("Tick %d failed", self.world.time.current_tick)
 
             # Sleep until next tick
             await asyncio.sleep(self.tick_rate)
