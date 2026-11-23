@@ -17,7 +17,6 @@ and recall relevant experiences just like humans do.
 """
 
 import logging
-import numpy as np
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, field, asdict
 from datetime import datetime

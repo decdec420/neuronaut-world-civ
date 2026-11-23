@@ -1,14 +1,13 @@
-# Minimal dependencies to run Neuronaut World
-# Using latest versions for Python 3.14 compatibility
+# What Neuronaut World needs to run: the simulation, the API and the dashboard.
+# Pinned to the versions it is tested with (CI and the Docker image use these).
+# Python 3.11 or newer; tested on 3.13.
 
-# Web Framework & API
-fastapi
-uvicorn[standard]
-websockets
-python-multipart
-
-# Utilities
-pydantic
-python-dotenv
-slowapi
-requests
+fastapi==0.165.0
+starlette==1.7.0
+uvicorn[standard]==0.54.0
+websockets==17.4
+python-multipart==0.0.32
+pydantic==2.13.5
+python-dotenv==1.2.3
+slowapi==0.1.10
+requests==2.34.2

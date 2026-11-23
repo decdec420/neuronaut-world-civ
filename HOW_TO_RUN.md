@@ -47,7 +47,7 @@ The `venv` is already set up with all dependencies:
 
 If you need to reinstall:
 ```bash
-pip3 install -r requirements.txt
+pip3 install -r requirements-minimal.txt
 ```
 
 ## **All New Autonomous Systems Are Live!**

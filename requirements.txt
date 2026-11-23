@@ -1,45 +1,12 @@
-# Neuronaut World Dependencies
-
-# Core
-# Requires Python 3.10+
-
-# Web Framework & API
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-websockets==12.0
-python-multipart==0.0.6
-
-# Database
-sqlalchemy==2.0.23
-aiosqlite==0.19.0
-
-# Data & Scientific
-numpy==1.26.2
-scipy==1.11.4
-pandas==2.1.4
-
-# Async & Performance
-aiohttp==3.9.1
-asyncio==3.4.3
-redis==5.0.1
-requests==2.31.0
-
-# Utilities
-pydantic==2.5.2
-python-dotenv==1.0.0
-ujson==5.9.0
-python-dateutil==2.8.2
-
-# Payments (Optional)
-stripe==7.7.0
-
-# Testing
-pytest==7.4.3
-pytest-asyncio==0.21.1
-
-# Visualization (for generating charts/graphs)
-matplotlib==3.8.2
-plotly==5.18.0
-
-# Frontend Build
-jinja2==3.1.2
+# Everything needed to run Neuronaut World. The pinned list lives in
+# requirements-minimal.txt; this file includes it so either works.
+#
+# Optional extras, not installed by default:
+#   groq, google-genai          cloud AI providers, if you set GROQ_API_KEY or
+#                               GEMINI_API_KEY (a local Ollama needs no package)
+#   chromadb, sentence-transformers
+#                               semantic long-term memory (large: pulls in PyTorch)
+#
+# This file used to list ~25 packages, most unused, including `asyncio==3.4.3`:
+# an old PyPI package that shadows Python's own asyncio and breaks it.
+-r requirements-minimal.txt
