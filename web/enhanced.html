@@ -2763,12 +2763,31 @@
 
     <script src="/app/town_map.js"></script>
     <script>
+        // Requests that change the world carry X-Neuronaut-Control (another
+        // site's page can't send it), plus the admin token if this server
+        // has one: asked for once and kept for this tab only.
+        async function controlFetch(url, options = {}) {
+            const headers = Object.assign({}, options.headers, { 'X-Neuronaut-Control': '1' });
+            let token = null;
+            try { token = sessionStorage.getItem('neuronautAdminToken'); } catch (e) { token = null; }
+            if (token) headers['Authorization'] = 'Bearer ' + token;
+            let response = await fetch(url, Object.assign({}, options, { headers }));
+            if (response.status === 401) {
+                const entered = prompt('This server needs its admin token to change the world:');
+                if (!entered) return response;
+                try { sessionStorage.setItem('neuronautAdminToken', entered.trim()); } catch (e) { /* tab-only storage blocked: use it just this once */ }
+                headers['Authorization'] = 'Bearer ' + entered.trim();
+                response = await fetch(url, Object.assign({}, options, { headers }));
+            }
+            return response;
+        }
+
         // SIMULATION SPEED CONTROLS
         let currentSpeed = 'normal';
 
         async function setSimSpeed(speed) {
             try {
-                const response = await fetch('/simulation/speed', {
+                const response = await controlFetch('/simulation/speed', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ speed: speed })
@@ -5079,7 +5098,7 @@
             const saveName = nameInput.value.trim() || `World ${new Date().toLocaleDateString()}`;
 
             try {
-                const response = await fetch('/saves', {
+                const response = await controlFetch('/saves', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ name: saveName })
@@ -5177,7 +5196,7 @@
             if (!confirm('Load this save? Current world will be replaced.')) return;
 
             try {
-                const response = await fetch(`/saves/${saveId}/load`, { method: 'POST' });
+                const response = await controlFetch(`/saves/${saveId}/load`, { method: 'POST' });
                 const result = await response.json();
 
                 if (result.success) {
@@ -5197,7 +5216,7 @@
             if (!confirm(`Delete "${saveName}"? This cannot be undone.`)) return;
 
             try {
-                const response = await fetch(`/saves/${saveId}`, { method: 'DELETE' });
+                const response = await controlFetch(`/saves/${saveId}`, { method: 'DELETE' });
                 const result = await response.json();
 
                 if (result.success) {
@@ -5216,7 +5235,7 @@
             if (!confirm('⚠️ Reset world to a fresh start? All unsaved progress will be lost!')) return;
 
             try {
-                const response = await fetch('/reset', { method: 'POST' });
+                const response = await controlFetch('/reset', { method: 'POST' });
                 const result = await response.json();
 
                 if (result.success) {
@@ -7900,7 +7919,7 @@
                     const timestamp = new Date().toLocaleTimeString();
                     const saveName = `AutoSave - Day ${world.world.current_day} ${timestamp}`;
 
-                    const saveResponse = await fetch('/saves', {
+                    const saveResponse = await controlFetch('/saves', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ name: saveName })

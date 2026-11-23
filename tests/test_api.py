@@ -83,3 +83,40 @@ def test_a_closed_viewer_is_forgotten(client):
         time.sleep(0.05)
     assert server.active_websockets == []
     server._drop_websocket(ws)  # already gone: no error
+
+
+# ---------------------------------------------------------------- controls
+
+def test_another_site_cannot_change_the_world(client):
+    sim = server.simulation
+    paused = sim.paused
+    # a bare POST, as any web page could send it: refused, nothing changes
+    r = client.post("/simulation/pause", headers={"Origin": "https://elsewhere.example"})
+    assert r.status_code == 403 and sim.paused == paused
+    # and the browser's preflight for the header is not granted to other sites
+    pre = client.options("/simulation/pause", headers={
+        "Origin": "https://elsewhere.example", "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "x-neuronaut-control"})
+    assert "access-control-allow-origin" not in {k.lower() for k in pre.headers}
+    # reading the world stays open
+    assert client.get("/simulation/status").status_code == 200
+
+
+def test_the_dashboard_can_change_the_world(client):
+    sim = server.simulation
+    paused = sim.paused
+    r = client.post("/simulation/pause", headers={"X-Neuronaut-Control": "1"})
+    assert r.status_code == 200 and sim.paused != paused
+    r = client.post("/simulation/speed", json={"speed": "fast"}, headers={"X-Neuronaut-Control": "1"})
+    assert r.status_code == 200 and sim.tick_rate == 0.5
+
+
+def test_an_admin_token_when_the_server_has_one(client, monkeypatch):
+    monkeypatch.setenv("NEURONAUT_ADMIN_TOKEN", "s3cret-token")
+    control = {"X-Neuronaut-Control": "1"}
+    assert client.post("/simulation/pause", headers=control).status_code == 401
+    wrong = dict(control, Authorization="Bearer nope")
+    assert client.post("/simulation/pause", headers=wrong).status_code == 401
+    right = dict(control, Authorization="Bearer s3cret-token")
+    assert client.post("/simulation/pause", headers=right).status_code == 200
+    assert client.get("/simulation/status").status_code == 200   # reading needs no token

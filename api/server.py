@@ -9,6 +9,7 @@ Provides:
 """
 
 import asyncio
+import hmac
 import json
 import logging
 from typing import List, Dict, Optional
@@ -16,7 +17,7 @@ from functools import lru_cache
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from pydantic import BaseModel, Field, constr, validator
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -99,14 +100,50 @@ limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Controls: anything that changes the world (pause, speed, reset, saves,
+# disasters, new characters) must carry the X-Neuronaut-Control header. A
+# browser can't send a custom header to another site without asking first
+# (a CORS preflight), and other sites aren't allowed, so a page on another
+# site can't reset or pause your world. Before, CORS allowed every origin
+# with credentials, and a bare POST to /reset from any website worked.
+# If NEURONAUT_ADMIN_TOKEN is set, controls also need
+# "Authorization: Bearer <token>" (the dashboard asks for it once per tab).
+CONTROL_HEADER = "x-neuronaut-control"
+CONTROL_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+
+def _admin_token() -> str:
+    return os.getenv("NEURONAUT_ADMIN_TOKEN", "").strip()
+
+
+async def guard_controls(request: Request, call_next):
+    if request.method in CONTROL_METHODS:
+        if request.headers.get(CONTROL_HEADER) != "1":
+            return JSONResponse(status_code=403, content={
+                "detail": "Requests that change the world need the header 'X-Neuronaut-Control: 1'"})
+        token = _admin_token()
+        if token:
+            supplied = request.headers.get("authorization", "")
+            given = supplied[7:].strip() if supplied.lower().startswith("bearer ") else ""
+            if not hmac.compare_digest(given.encode(), token.encode()):
+                return JSONResponse(status_code=401, headers={"WWW-Authenticate": "Bearer"}, content={
+                    "detail": "This server needs its admin token (Authorization: Bearer <token>) to change the world"})
+    return await call_next(request)
+
+
+app.middleware("http")(guard_controls)
+
+# Cross-origin access only for the origins listed in CORS_ORIGINS (comma
+# separated); the dashboard itself is same-origin and needs none
+CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
+if CORS_ORIGINS:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=CORS_ORIGINS,
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "DELETE"],
+        allow_headers=["Content-Type", "Authorization", "X-Neuronaut-Control"],
+    )
 
 # Global simulation instance
 simulation: Optional[SimulationEngine] = None
