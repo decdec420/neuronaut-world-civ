@@ -71,3 +71,30 @@ def test_one_gathering_per_host_at_a_time():
     act(sim, host, "organize_event")
     ok, why = sim._handler_registry.get_handler(ActionType.ORGANIZE_EVENT).validate(host, Action(ActionType.ORGANIZE_EVENT))
     assert not ok and "already hosting" in why
+
+
+def test_a_host_who_names_no_time_avoids_one_it_has_heard_of():
+    from agents.daily_life import DailyRoutine
+    from world.gatherings import parse_when_and_what, free_evening_hours
+    noon = 12 * 6
+    night_owl = DailyRoutine(wake_hour=8, work_start=9, work_end=17, sleep_hour=23)
+    assert free_evening_hours(night_owl) == [18, 19, 20, 21, 17]
+    assert parse_when_and_what("", noon, busy=[], routine=night_owl)[0] == 18 * 6
+    # it heard of one at 18:00; 19:00 would overlap it (two hours), so 20:00
+    assert parse_when_and_what("", noon, busy=[18 * 6], routine=night_owl)[0] == 20 * 6
+    # a time it names is kept, clash or not
+    assert parse_when_and_what("a dance at 18:00", noon, busy=[18 * 6], routine=night_owl)[0] == 18 * 6
+    # every evening hour taken today: tomorrow
+    early_bird = DailyRoutine(wake_hour=6, work_start=7, work_end=15, sleep_hour=21)
+    busy = [15 * 6, 17 * 6, 19 * 6]
+    assert parse_when_and_what("", noon, busy=busy, routine=early_bird)[0] == (24 + 18) * 6
+
+    # in the world: the second host had heard of the first's gathering
+    sim, roles = make_world()
+    first, second = roles["actor"], roles["partner"]
+    sim.world.time.current_tick = noon
+    g1 = sim.gatherings.upcoming[act(sim, first, "organize_event").metadata["gathering_id"]]
+    assert sim.news.knows(second.id, g1.news_id)
+    g2 = sim.gatherings.upcoming[act(sim, second, "organize_event").metadata["gathering_id"]]
+    assert abs(g2.start - g1.start) >= 12
+

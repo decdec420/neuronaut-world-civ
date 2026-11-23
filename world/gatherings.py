@@ -7,12 +7,19 @@ agents who heard about it turn up. Here:
 
 - organize_event: an agent announces a gathering (a feast, a dance, a
   meeting... whatever it says, or "a gathering") at the place it stands, at
-  an hour it names or else this evening (EVENING_HOUR). The announcement is
-  news (world/news.py): the organizer and anyone nearby know it, and it
-  spreads only by people telling each other.
+  an hour it names. If it names none, it picks one itself: in its own free
+  evening (from EVENING_HOUR until it's two hours before its bedtime, then
+  earlier after work), the first that doesn't clash with a gathering it has
+  heard of. (Every host used to default to 18:00 tonight, so on most evenings
+  two or three gatherings started at once and split the village between them.)
+  The announcement is news (world/news.py): the organizer and anyone nearby
+  know it, and it spreads only by people telling each other.
 - attend_event: possible only for someone who has heard of a gathering that
   is on, or starts within LEAD_TICKS. It walks there (roads help) and joins
-  once within JOIN_RADIUS while it's on.
+  once within JOIN_RADIUS while it's on. (Someone more than ~20 tiles away
+  can't make it in time. Letting them set off earlier made fewer people come,
+  not more: the rule-based brain chooses afresh every tick, so it gave up long
+  walks halfway. See CLAUDE.md's open issues.)
 - When it ends, who came is logged (and so becomes news, and history).
 
 Nobody is made to organize or attend; the world only lets invitations
@@ -50,15 +57,18 @@ class Gathering:
     news_id: Optional[str] = None
     attendees: Set[str] = field(default_factory=set)
     heard_before_start: int = 0     # how many living people knew of it when it began
+    heard: Set[str] = field(default_factory=set)   # and who they were
     finished: bool = False
 
     def is_on(self, tick: int) -> bool:
         return self.start <= tick < self.end
 
 
-def parse_when_and_what(details: str, now: int):
+def parse_when_and_what(details: str, now: int, busy=(), routine=None):
     """(start tick, kind) from free text like "a feast at 19:00" or "dance
-    at 8pm"; else this evening (or tomorrow's, if it's too late today)."""
+    at 8pm". With no hour in it, the host's own pick: the first hour of its
+    free evening, today or tomorrow, that gives an hour's notice and doesn't
+    overlap a gathering it knows of (`busy`: their start ticks)."""
     text = (details or "").lower()
     kind = next((k for k in KINDS if k in text), "gathering")
     hour = None
@@ -71,12 +81,32 @@ def parse_when_and_what(details: str, now: int):
             h = 0
         if 0 <= h <= 23:
             hour = h
-    hour = EVENING_HOUR if hour is None else hour
     day_start = now - now % (24 * TICKS_PER_HOUR)
-    start = day_start + hour * TICKS_PER_HOUR
-    if start < now + TICKS_PER_HOUR:   # at least an hour's notice
+    if hour is not None:
+        return _with_notice(day_start + hour * TICKS_PER_HOUR, now), kind
+    hours = free_evening_hours(routine)
+    options = [day_start + day * 24 * TICKS_PER_HOUR + h * TICKS_PER_HOUR for day in (0, 1) for h in hours]
+    options = [t for t in options if t >= now + TICKS_PER_HOUR]
+    clear = [t for t in options if all(abs(t - b) >= DURATION_TICKS for b in busy)]
+    return (clear or options)[0], kind
+
+
+def _with_notice(start: int, now: int) -> int:
+    if start < now + TICKS_PER_HOUR:   # at least an hour's notice, else tomorrow
         start += 24 * TICKS_PER_HOUR
-    return start, kind
+    return start
+
+
+def free_evening_hours(routine=None) -> List[int]:
+    """The hours a host would start a gathering, in the order it would think
+    of them: EVENING_HOUR and later until it would end at its bedtime, then
+    earlier, back to when its work ends."""
+    if routine is None:
+        return [EVENING_HOUR]
+    last = max(routine.sleep_hour - DURATION_TICKS // TICKS_PER_HOUR, routine.work_end)
+    later = [h for h in range(EVENING_HOUR, last + 1)]
+    earlier = [h for h in range(min(EVENING_HOUR, last + 1) - 1, routine.work_end - 1, -1)]
+    return later + earlier or [EVENING_HOUR]
 
 
 class Gatherings:
@@ -107,7 +137,9 @@ class Gatherings:
 
     def announce(self, agent, details: str, tick: int) -> Gathering:
         sim = self.sim
-        start, kind = parse_when_and_what(details, tick)
+        # what the host itself knows is already planned
+        busy = [g.start for g in self.known_to(agent.id, tick, everything=True)]
+        start, kind = parse_when_and_what(details, tick, busy, getattr(agent, "routine", None))
         x, y = agent.location.x, agent.location.y
         self._next += 1
         g = Gathering(f"gathering_{self._next}", agent.id, agent.name, kind, self.place_name(x, y),
@@ -120,12 +152,13 @@ class Gatherings:
         self.upcoming[g.id] = g
         return g
 
-    def known_to(self, agent_id: str, tick: int) -> List[Gathering]:
-        """Gatherings this agent has heard of that are on or start soon."""
+    def known_to(self, agent_id: str, tick: int, everything: bool = False) -> List[Gathering]:
+        """Gatherings this agent has heard of that are on or start soon; with
+        `everything`, all it has heard of that haven't ended."""
         sim = self.sim
         found = []
         for g in self.upcoming.values():
-            if not (g.start - LEAD_TICKS <= tick < g.end):
+            if tick >= g.end or (not everything and tick < g.start - LEAD_TICKS):
                 continue
             if g.organizer == agent_id or (g.news_id and sim.news.knows(agent_id, g.news_id)):
                 found.append(g)
@@ -138,7 +171,8 @@ class Gatherings:
         alive = [a for a in sim.world.agents if a.alive]
         for g in list(self.upcoming.values()):
             if tick == g.start:
-                g.heard_before_start = sum(1 for a in alive if g.news_id and sim.news.knows(a.id, g.news_id))
+                g.heard = {a.id for a in alive if g.news_id and sim.news.knows(a.id, g.news_id)}
+                g.heard_before_start = len(g.heard)
                 organizer = sim._get_agent_by_id(g.organizer)
                 if organizer is not None and organizer.alive and \
                         math.hypot(organizer.location.x - g.x, organizer.location.y - g.y) <= JOIN_RADIUS * 3:

@@ -125,11 +125,28 @@ def news_metrics(sim) -> dict:
         "gatherings_held": len(held),
         "gathering_heard_vs_came": f"{sum(g.heard_before_start for g in held)}/{sum(len(g.attendees) for g in held)}"
                                    if held else None,
+        # The line above counts someone once per gathering they heard of, and an
+        # evening can have several: this counts each person once a day.
+        "gathering_days_heard_vs_came": _heard_vs_came_by_day(held),
         "conversations": news.conversations,
         "news_passed_on": news.told,
         "major_news_reach": round(sum(r for r, _ in reach) / len(reach), 2) if reach else None,
         "widest_news": f"{reach[0][0]:.0%}: {reach[0][1][:60]}" if reach else None,
     }
+
+
+def _heard_vs_came_by_day(held):
+    """(person, day) pairs where the person had heard of a gathering that day
+    (not their own), and how many of those went to one."""
+    by_day = collections.defaultdict(list)
+    for g in held:
+        by_day[g.start // 144].append(g)
+    heard = came = 0
+    for gs in by_day.values():
+        guests = set().union(*(getattr(g, "heard", set()) - {g.organizer} for g in gs))
+        heard += len(guests)
+        came += sum(1 for p in guests if any(p in g.attendees for g in gs))
+    return f"{heard}/{came}" if heard else None
 
 
 def run_seed(ticks: int, seed: int, use_llm: bool) -> dict:
