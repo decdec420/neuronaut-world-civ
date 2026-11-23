@@ -337,7 +337,7 @@ class UtilityBrain:
             pool = set(alive)
         if not pool:
             return None, 0.0
-        people = list(pool)
+        people = sorted(pool)   # a set's order isn't stable; the dice must pick from a fixed order
         sign = -1.0 if action == "fight" else 1.0
         weights = [math.exp(2.0 * sign * liking.get(p, 0.0)) for p in people]
         chosen = random.choices(people, weights=weights)[0]

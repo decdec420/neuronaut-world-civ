@@ -64,7 +64,7 @@ class GovernanceHandler(ActionHandler):
         for gov in gm.governments.values():
             if not gov.active:
                 continue
-            for citizen in gov.citizens:
+            for citizen in sorted(gov.citizens):   # ties go the same way every time
                 liking = self._liking(agent.id, citizen)
                 if liking > best_liking:
                     best, best_liking = gov, liking

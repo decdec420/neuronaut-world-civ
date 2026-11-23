@@ -90,7 +90,7 @@ class GatheringHandler(ActionHandler):
         agent.needs.satisfy_need(NeedType.FRIENDSHIP, 0.3)
         agent.emotions.trigger_emotion(EmotionType.JOY, 0.4)
         rm = self.context.get_system('relationship_manager')
-        for other_id in g.attendees:
+        for other_id in sorted(g.attendees):
             if other_id != agent.id:
                 rm.update_relationship(agent.id, other_id, 'gathering', True)
         if new:

@@ -148,11 +148,11 @@ class Gatherings:
                 del self.upcoming[g.id]
                 self.history.append(g)
                 del self.history[:-MAX_HISTORY]
-                came = [sim._get_agent_by_id(i) for i in g.attendees]
+                came = [sim._get_agent_by_id(i) for i in sorted(g.attendees)]
                 names = [a.name for a in came if a is not None]
                 importance = EventImportance.MAJOR if len(names) >= 4 else EventImportance.MODERATE if names else EventImportance.MINOR
                 sim.event_logger.log_event(
                     EventCategory.SOCIAL, importance,
                     f"🎉 {g.organizer_name}'s {g.kind} at {g.place}: {len(names)} came",
                     f"{g.heard_before_start} had heard of it. " + (f"There: {', '.join(names)}." if names else "Nobody came."),
-                    tick, list(g.attendees) or [g.organizer], {"x": g.x, "y": g.y})
+                    tick, sorted(g.attendees) or [g.organizer], {"x": g.x, "y": g.y})

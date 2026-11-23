@@ -404,7 +404,7 @@ class EnergyManager:
         for grid in self.energy_grids.values():
             # Calculate total generation
             total_gen = 0.0
-            for plant_id in grid.power_plants:
+            for plant_id in sorted(grid.power_plants):
                 plant = self.power_plants.get(plant_id)
                 if plant and plant.operational:
                     total_gen += plant.current_output

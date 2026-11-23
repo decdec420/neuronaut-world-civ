@@ -510,7 +510,7 @@ class ReligionManager:
         last = getattr(self, 'last_practice', {})
         lapsed = []
         for religion in self.religions.values():
-            for agent_id in list(religion.followers):
+            for agent_id in sorted(religion.followers):
                 if current_tick - last.get(agent_id, current_tick) >= self.LAPSE_TICKS:
                     religion.followers.discard(agent_id)
                     religion.priests.discard(agent_id)

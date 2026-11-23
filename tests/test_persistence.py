@@ -145,3 +145,22 @@ def test_a_world_saved_before_newer_systems_still_loads(tmp_path):
     loaded = load_full_state(path)
     assert loaded.news is not None and loaded.gatherings.sim is loaded
     run(loaded, 3)
+
+
+def test_relationships_come_in_the_same_order_however_their_set_was_built():
+    """The cause of a loaded world sometimes choosing differently from the one
+    it was saved from: an agent's relationship ids live in a set, and a set
+    rebuilt from a save can iterate in a different order. Who an agent
+    socialized with came from that order."""
+    import pickle
+    from social.relationships import RelationshipManager
+    rm = RelationshipManager()
+    for i in range(40):
+        rm.update_relationship("me", f"other_{i:02d}", "conversation", True)
+    order = [r.id for r in rm.get_agent_relationships("me")]
+    # the same ids, inserted in a different order, and through a pickle
+    rm.agent_relationships["me"] = set(reversed(list(rm.agent_relationships["me"])))
+    again = pickle.loads(pickle.dumps(rm))
+    assert [r.id for r in rm.get_agent_relationships("me")] == order
+    assert [r.id for r in again.get_agent_relationships("me")] == order
+    assert order == sorted(order)

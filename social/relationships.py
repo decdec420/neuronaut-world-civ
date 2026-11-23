@@ -140,7 +140,10 @@ class RelationshipManager:
         relationship_type: Optional[RelationshipType] = None
     ) -> List[Relationship]:
         """Get all relationships for an agent"""
-        rel_ids = self.agent_relationships.get(agent_id, set())
+        # In id order: the ids are kept in a set, and a set can come back from
+        # a save in a different order, which made a loaded world choose
+        # differently from the one it was saved from
+        rel_ids = sorted(self.agent_relationships.get(agent_id, ()))
         relationships = [self.relationships[rid] for rid in rel_ids
                         if rid in self.relationships]
 
