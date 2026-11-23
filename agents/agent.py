@@ -715,7 +715,8 @@ class Agent:
         # Age tracking (birthdays, life stages and old age: LifecycleManager.update_aging)
         self.ticks_lived += 1
 
-        # Memory decay (every 60 ticks ≈ 1 hour in-game)
+        # Memory runs on the agent's own clock; decay every 60 ticks (10 sim hours)
+        self.memory.clock = self.ticks_lived
         if self.ticks_lived % 60 == 0:
             self.memory.decay_memories()
 
