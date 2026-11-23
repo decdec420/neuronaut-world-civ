@@ -34,80 +34,87 @@ from typing import Dict, List, Optional, Tuple
 
 from engine.psychology import NeedType as N
 
-# What an action tends to satisfy (weights add up to ~1)
+# What an action actually relieves when it runs, weighted by how much (weights
+# add up to 1). Measured with scripts/need_effects.py, which runs every action and
+# diffs the agent's needs; tests/test_need_effects.py keeps this table and the
+# world in step. (It used to be written by hand, and 52 of 61 actions were
+# credited with needs they never relieve: tell_story with recognition and
+# creativity, which nothing relieved, so those needs stayed urgent and kept
+# pulling agents to tell stories: 22% of everything they did.)
+# Actions whose effect comes later than their first step, or only on success, or
+# only rarely: one run can't see it, so their entries are read from the handlers,
+# each with a note on why.
+EFFECT_LATER = {"attend_event", "hide", "build", "gather_water", "discover_element", "discover_material",
+                "discover_energy", "make_law", "fight", "separate", "experiment"}
+
 ACTION_NEEDS: Dict[str, Dict[N, float]] = {
-    "eat": {N.HUNGER: 1.0},
-    "drink": {N.THIRST: 1.0},
-    "rest": {N.SLEEP: 1.0},
-    "gather_food": {N.HUNGER: 0.7, N.RESOURCES: 0.3},
-    "gather_water": {N.THIRST: 0.8, N.RESOURCES: 0.2},
-    "hunt": {N.HUNGER: 0.6, N.ACHIEVEMENT: 0.2, N.RESOURCES: 0.2},
-    "plant_crops": {N.HUNGER: 0.3, N.RESOURCES: 0.4, N.SECURITY: 0.3},
-    "tend_crops": {N.HUNGER: 0.3, N.RESOURCES: 0.4, N.SECURITY: 0.3},
-    "harvest": {N.HUNGER: 0.5, N.RESOURCES: 0.5},
-    "raise_animals": {N.RESOURCES: 0.5, N.SECURITY: 0.3, N.HUNGER: 0.2},
-    "explore": {N.GROWTH: 0.6, N.RESOURCES: 0.2, N.ACHIEVEMENT: 0.2},
-    "move": {N.GROWTH: 0.3},
-    "heal": {N.MEANING: 0.4, N.BELONGING: 0.3, N.RECOGNITION: 0.3},
-    "cure": {N.MEANING: 0.4, N.BELONGING: 0.3, N.RECOGNITION: 0.3},
-    "diagnose": {N.MEANING: 0.4, N.GROWTH: 0.3, N.RECOGNITION: 0.3},
-    "gather_materials": {N.RESOURCES: 0.7, N.SECURITY: 0.3},
-    "chop_wood": {N.RESOURCES: 0.8, N.SECURITY: 0.2},
-    "mine": {N.RESOURCES: 0.8, N.SECURITY: 0.2},
-    "build": {N.SHELTER: 0.5, N.SECURITY: 0.2, N.ACHIEVEMENT: 0.3},
-    # Public works (world/infrastructure.py); see also _state_pull
-    "build_road": {N.ACHIEVEMENT: 0.4, N.BELONGING: 0.3, N.STATUS: 0.3},
-    "dig_well": {N.THIRST: 0.4, N.SECURITY: 0.3, N.ACHIEVEMENT: 0.3},
-    "build_streetlight": {N.SECURITY: 0.4, N.BELONGING: 0.3, N.CREATIVITY: 0.3},
-    "experiment": {N.CREATIVITY: 0.4, N.ACHIEVEMENT: 0.3, N.GROWTH: 0.3},
-    "smelt_ore": {N.ACHIEVEMENT: 0.4, N.GROWTH: 0.3, N.RESOURCES: 0.3},
-    "refine_material": {N.ACHIEVEMENT: 0.4, N.GROWTH: 0.3, N.RESOURCES: 0.3},
-    "create_alloy": {N.ACHIEVEMENT: 0.4, N.GROWTH: 0.3, N.CREATIVITY: 0.3},
-    "perform_chemistry": {N.ACHIEVEMENT: 0.4, N.GROWTH: 0.3, N.CREATIVITY: 0.3},
-    "discover_element": {N.GROWTH: 0.5, N.ACHIEVEMENT: 0.3, N.RECOGNITION: 0.2},
-    "discover_material": {N.GROWTH: 0.5, N.ACHIEVEMENT: 0.3, N.RECOGNITION: 0.2},
-    "discover_energy": {N.GROWTH: 0.5, N.ACHIEVEMENT: 0.3, N.RECOGNITION: 0.2},
-    "build_power_plant": {N.ACHIEVEMENT: 0.5, N.STATUS: 0.3, N.RESOURCES: 0.2},
-    "operate_power_plant": {N.ACHIEVEMENT: 0.4, N.STATUS: 0.3, N.RESOURCES: 0.3},
-    "teach": {N.MEANING: 0.4, N.RECOGNITION: 0.3, N.BELONGING: 0.3},
-    "write": {N.MEANING: 0.4, N.GROWTH: 0.3, N.RECOGNITION: 0.3},
-    "socialize": {N.FRIENDSHIP: 0.5, N.BELONGING: 0.5},
-    "seek_romance": {N.ROMANCE: 0.5, N.SEX: 0.5},
-    # Unmet longing inside a partnership; weighed by how little the agent
-    # still likes its partner (see utility)
-    "separate": {N.ROMANCE: 1.0},
-    "try_for_child": {N.MEANING: 0.4, N.ROMANCE: 0.3, N.BELONGING: 0.3},
-    "care_for_child": {N.MEANING: 0.5, N.BELONGING: 0.5},
-    "celebrate": {N.BELONGING: 0.6, N.MEANING: 0.4},
-    "organize_event": {N.BELONGING: 0.4, N.STATUS: 0.3, N.FRIENDSHIP: 0.3},
-    # Mostly a response to a warned disaster (_warning_pull): with a full
-    # security+shelter weight, agents hid in calm times too (550-1190 times a
-    # 3000-tick run) at some cost to their health
-    "hide": {N.SECURITY: 0.3},
-    "attend_event": {N.BELONGING: 0.5, N.FRIENDSHIP: 0.3, N.MEANING: 0.2},
-    "tell_story": {N.BELONGING: 0.4, N.RECOGNITION: 0.3, N.CREATIVITY: 0.3},
-    "play_game": {N.BELONGING: 0.5, N.FRIENDSHIP: 0.3, N.ACHIEVEMENT: 0.2},
-    "create_art": {N.CREATIVITY: 0.6, N.MEANING: 0.4},
-    "gamble": {N.STATUS: 0.4, N.RESOURCES: 0.3, N.ACHIEVEMENT: 0.3},
-    "trade": {N.RESOURCES: 0.6, N.FRIENDSHIP: 0.2, N.STATUS: 0.2},
-    "mint_coins": {N.RESOURCES: 0.5, N.STATUS: 0.5},
-    "open_bank": {N.STATUS: 0.5, N.RESOURCES: 0.5},
-    "apply_for_loan": {N.RESOURCES: 1.0},
-    "send_caravan": {N.RESOURCES: 0.5, N.STATUS: 0.3, N.GROWTH: 0.2},
-    "join_tax_revolt": {N.STATUS: 0.5, N.SECURITY: 0.5},
-    "govern": {N.STATUS: 0.5, N.RECOGNITION: 0.3, N.SECURITY: 0.2},
-    "make_law": {N.STATUS: 0.3, N.SECURITY: 0.4, N.MEANING: 0.3},
-    "vote": {N.BELONGING: 0.5, N.STATUS: 0.2, N.SECURITY: 0.3},
-    "claim_territory": {N.SECURITY: 0.5, N.STATUS: 0.3, N.RESOURCES: 0.2},
-    "guard": {N.SECURITY: 0.8, N.STATUS: 0.2},
-    "patrol": {N.SECURITY: 0.8, N.STATUS: 0.2},
-    "pray": {N.MEANING: 0.7, N.SECURITY: 0.3},
-    "worship": {N.MEANING: 0.6, N.BELONGING: 0.4},
-    "perform_ritual": {N.MEANING: 0.5, N.BELONGING: 0.3, N.STATUS: 0.2},
-    "build_temple": {N.MEANING: 0.5, N.ACHIEVEMENT: 0.3, N.STATUS: 0.2},
-    # Fighting puts you in danger rather than making you safe; what draws
-    # people to it is standing and taking what others have (see DANGER below)
-    "fight": {N.STATUS: 0.5, N.RESOURCES: 0.5},
+    "apply_for_loan": {N.SECURITY: 1},
+    "attend_event": {N.BELONGING: 0.55, N.FRIENDSHIP: 0.45},  # on arriving (engine/handlers/gatherings.py)
+    "build": {N.SHELTER: 0.5, N.ACHIEVEMENT: 0.3, N.SECURITY: 0.2},  # when it is finished: a home
+    "build_power_plant": {N.ACHIEVEMENT: 1},
+    "build_road": {N.ACHIEVEMENT: 0.75, N.BELONGING: 0.25},
+    "build_streetlight": {N.ACHIEVEMENT: 0.5, N.SECURITY: 0.25, N.CREATIVITY: 0.25},
+    "build_temple": {N.MEANING: 0.55, N.ACHIEVEMENT: 0.45},
+    "care_for_child": {N.MEANING: 0.6, N.BELONGING: 0.4},
+    "celebrate": {N.BELONGING: 0.55, N.MEANING: 0.45},
+    "chop_wood": {N.RESOURCES: 1},
+    "claim_territory": {N.SECURITY: 0.6, N.ACHIEVEMENT: 0.4},
+    "create_alloy": {N.ACHIEVEMENT: 1},
+    "create_art": {N.CREATIVITY: 0.45, N.ACHIEVEMENT: 0.35, N.MEANING: 0.2},
+    "cure": {N.ACHIEVEMENT: 0.55, N.MEANING: 0.45},
+    "diagnose": {N.ACHIEVEMENT: 1},
+    "dig_well": {N.ACHIEVEMENT: 0.65, N.SECURITY: 0.35},
+    "discover_element": {N.GROWTH: 0.6, N.ACHIEVEMENT: 0.4},  # when something is found (chemistry handler)
+    "discover_energy": {N.GROWTH: 0.6, N.ACHIEVEMENT: 0.4},  # when something is found (chemistry handler)
+    "discover_material": {N.GROWTH: 0.6, N.ACHIEVEMENT: 0.4},  # when something is found (chemistry handler)
+    "drink": {N.THIRST: 1},
+    "eat": {N.HUNGER: 1},
+    # when it makes something (engine/handlers/knowledge.py); a civilization
+    # milestone (the first fire...) also meets recognition and meaning, but
+    # there are only a handful per world, so the brain doesn't count on one
+    "experiment": {N.CREATIVITY: 0.6, N.ACHIEVEMENT: 0.4},
+    "explore": {},  # moving to new places relieves no need; traits and jobs draw people to it
+    "fight": {N.STATUS: 1},  # for the winner (combat handler); see DANGER
+    "gamble": {N.BELONGING: 1},
+    "gather_food": {N.HUNGER: 1},
+    "gather_materials": {N.RESOURCES: 1},
+    "gather_water": {N.THIRST: 0.8, N.RESOURCES: 0.2},  # the water it brings is drunk
+    "govern": {N.STATUS: 1},
+    "guard": {N.SECURITY: 0.65, N.MEANING: 0.35},
+    "harvest": {N.ACHIEVEMENT: 0.6, N.RESOURCES: 0.4},
+    "heal": {N.ACHIEVEMENT: 0.55, N.MEANING: 0.45},
+    "hide": {N.SECURITY: 0.3},  # on arriving; kept low on purpose, see _warning_pull
+    "hunt": {N.HUNGER: 0.8, N.ACHIEVEMENT: 0.2},
+    "join_tax_revolt": {N.STATUS: 1},
+    "make_law": {N.STATUS: 1},  # when the law is proposed (governance handler)
+    "mine": {N.RESOURCES: 1},
+    "mint_coins": {N.ACHIEVEMENT: 0.6, N.RESOURCES: 0.4},
+    "move": {},  # relieves no need
+    "open_bank": {N.ACHIEVEMENT: 0.65, N.STATUS: 0.35},
+    "operate_power_plant": {N.ACHIEVEMENT: 1},
+    "organize_event": {N.BELONGING: 0.5, N.STATUS: 0.5},
+    "patrol": {N.SECURITY: 1},
+    "perform_chemistry": {N.GROWTH: 0.6, N.ACHIEVEMENT: 0.4},
+    "perform_ritual": {N.MEANING: 0.6, N.STATUS: 0.4},
+    "plant_crops": {N.ACHIEVEMENT: 1},
+    "play_game": {N.BELONGING: 1},
+    "pray": {N.MEANING: 0.65, N.SECURITY: 0.35},
+    "raise_animals": {N.ACHIEVEMENT: 1},
+    "refine_material": {N.ACHIEVEMENT: 1},
+    "rest": {N.SLEEP: 1},
+    "seek_romance": {N.ROMANCE: 0.55, N.SEX: 0.45},
+    "send_caravan": {N.ACHIEVEMENT: 1},
+    "separate": {N.ROMANCE: 1},  # not relieved now: leaving frees one to find love (see utility())
+    "smelt_ore": {N.ACHIEVEMENT: 1},
+    "socialize": {N.FRIENDSHIP: 0.6, N.BELONGING: 0.4},
+    "teach": {},  # the teacher gets nothing (engine/handlers/knowledge.py); traits and jobs draw people to it
+    "tell_story": {N.BELONGING: 0.55, N.MEANING: 0.45},
+    "tend_crops": {N.RESOURCES: 1},
+    "trade": {N.RESOURCES: 1},
+    "try_for_child": {N.SEX: 0.5, N.ROMANCE: 0.5},
+    "vote": {N.BELONGING: 1},
+    "worship": {N.MEANING: 1},
+    "write": {N.GROWTH: 1},
 }
 
 # Who is drawn to an action: trait -> weight (negative: drawn away)

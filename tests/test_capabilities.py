@@ -168,6 +168,18 @@ def test_inventions_are_recorded_once_and_spread_by_teaching():
     assert innovations.agent_knows(c.id, invention.id)
 
 
+def test_each_world_lights_its_own_first_fire():
+    """Milestones belong to one world: lighting the first fire in one doesn't
+    light it in the next world made in the same process (the server's reset
+    did, and so did one test for the ones after it)."""
+    from world.civilization_progression import CivilizationProgressionEngine
+    first = CivilizationProgressionEngine()
+    assert first.check_discovery("fire", "a1", "Ada") is not None
+    second = CivilizationProgressionEngine()
+    assert not second.milestones["first_fire"].is_achieved
+    assert second.check_discovery("fire", "b1", "Bo") is not None
+
+
 def test_economy_barter_mint_bank_loan():
     sim, roles = make_world()
     a, b = roles["actor"], roles["neighbour"]

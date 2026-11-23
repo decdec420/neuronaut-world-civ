@@ -334,6 +334,10 @@ class KnowledgeActionHandler(ActionHandler):
                 agent.inventory.add_item(result.discovered_material.name, 1)
 
             agent.skills.learn_skill('crafting', 0.05)
+            # Making something new is creative work, and an achievement (it used
+            # to meet no need at all unless it was a civilization milestone)
+            agent.needs.satisfy_need(NeedType.CREATIVITY, 0.3)
+            agent.needs.satisfy_need(NeedType.ACHIEVEMENT, 0.2)
 
             # Meta-progression check
             if meta_progression:
