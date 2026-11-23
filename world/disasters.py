@@ -330,7 +330,11 @@ class NaturalDisasterSystem:
         },
     }
 
-    # Base disaster chances (per 1000 ticks)
+    # Base disaster chances (per 1000 ticks; a day is 144). Together about one
+    # disaster every 38 days, more in bad weather, in spring, and with more
+    # people. (They used to be rolled as chances per tick, so a disaster came
+    # within a few ticks of every cooldown ending: one every 1.4 days whatever
+    # the weather, 27 times the rate written here.)
     BASE_DISASTER_CHANCES = {
         DisasterType.EARTHQUAKE: 0.05,
         DisasterType.FLOOD: 0.03,
@@ -395,8 +399,8 @@ class NaturalDisasterSystem:
 
         # Roll for each disaster type
         for disaster_type, base_chance in self.BASE_DISASTER_CHANCES.items():
-            # Adjust chance based on conditions
-            final_chance = base_chance * weather_modifier * season_modifier * population_modifier
+            # Adjust chance based on conditions; this roll is for one tick
+            final_chance = base_chance / 1000.0 * weather_modifier * season_modifier * population_modifier
 
             # Random roll
             if random.random() < final_chance:
@@ -422,7 +426,7 @@ class NaturalDisasterSystem:
         modifiers = {
             'spring': 1.5,  # Spring floods
             'summer': 1.3,  # Summer fires
-            'fall': 1.2,    # Fall storms
+            'autumn': 1.2,  # Autumn storms (the world's name for it; this said 'fall', which never matched)
             'winter': 0.8,  # Winter quieter
         }
         return modifiers.get(season, 1.0)

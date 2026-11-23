@@ -125,3 +125,24 @@ def test_agents_hear_of_a_coming_disaster_and_whether_it_reaches_them():
     assert seen_near[0]["type"] == "wildfire" and seen_near[0]["will_reach_you"] and seen_near[0]["ticks_until_impact"] > 0
     assert not seen_far[0]["will_reach_you"]
     assert builder._add_disaster_info(near, {})["disaster_info"]["active_disasters"] == []   # nothing has hit yet
+
+
+def test_disasters_come_at_the_rates_written_down(monkeypatch):
+    """BASE_DISASTER_CHANCES are per 1000 ticks. They used to be rolled as
+    chances per tick: a disaster came within a few ticks of every cooldown,
+    one every ~1.4 days whatever the weather."""
+    import random
+    from world.disasters import NaturalDisasterSystem
+    d = NaturalDisasterSystem(100, 100)
+    per_tick = sum(d.BASE_DISASTER_CHANCES.values()) / 1000.0
+    rolls = []
+
+    def roll():
+        rolls.append(1)
+        return per_tick * 1.2   # above the base chance per tick, below the old one
+    monkeypatch.setattr(random, "random", roll)
+    for t in range(d.min_disaster_cooldown + 50):
+        d.update(t, "summer", "sunny", 0)
+    assert rolls and d.total_disasters == 0
+    # the season the world calls autumn counts
+    assert d._get_season_modifier("autumn") == 1.2
