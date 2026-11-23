@@ -29,10 +29,43 @@ def _api_key(name: str) -> str:
     return value
 
 
+def _int_env(name: str, default: int, minimum: int = 1) -> int:
+    """An integer setting, or the default (with a warning) if it isn't one."""
+    raw = os.getenv(name, str(default)).strip()
+    try:
+        value = int(raw)
+    except ValueError:
+        print(f"⚠️  Invalid {name}={raw!r}, using default {default}")
+        return default
+    if value < minimum:
+        print(f"⚠️  {name} must be >= {minimum}, using default {default}")
+        return default
+    return value
+
+
+REPO_DIR = Path(__file__).resolve().parent
+
+
 class Config:
     """Configuration for Neuronaut World"""
 
     def __init__(self):
+        # Server (main.py, api/server.py). HOST defaults to this machine only;
+        # set HOST=0.0.0.0 to serve others (the Docker image does), and then
+        # set NEURONAUT_ADMIN_TOKEN so only you can change the world.
+        self.host = os.getenv('HOST', '127.0.0.1').strip() or '127.0.0.1'
+        self.port = _int_env('PORT', 8000)
+        self.num_agents = _int_env('NUM_AGENTS', 12)
+        level = os.getenv('LOG_LEVEL', 'INFO').strip().upper()
+        if level not in ('DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'):
+            print(f"⚠️  Invalid LOG_LEVEL={level!r}, using INFO")
+            level = 'INFO'
+        self.log_level = level
+        # Where saves go; relative paths are taken from the repository, not
+        # from wherever the server was started
+        save_dir = Path(os.getenv('SAVE_DIR', 'save_states'))
+        self.save_dir = save_dir if save_dir.is_absolute() else REPO_DIR / save_dir
+
         # LLM API Keys (the .env.example placeholders count as no key)
         self.groq_api_key = _api_key('GROQ_API_KEY')
         self.gemini_api_key = _api_key('GEMINI_API_KEY')

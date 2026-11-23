@@ -29,10 +29,11 @@ import os
 from pathlib import Path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Setup logging
-logging.basicConfig(level=logging.INFO)
+# Logging when run as `uvicorn api.server:app` (main.py sets its own format)
+logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").strip().upper() or "INFO")
 logger = logging.getLogger(__name__)
 
+from config import load_config
 from engine.simulation import SimulationEngine
 from agents.agent import Gender
 from engine.psychology import PersonalityProfile
@@ -181,8 +182,8 @@ async def startup_event():
     # Create simulation
     simulation = SimulationEngine(world_width=100, world_height=100)
 
-    # Initialize world with 12 agents (6 male, 6 female - balanced)
-    simulation.initialize_world(num_agents=12)
+    # NUM_AGENTS agents (default 12), half of each sex
+    simulation.initialize_world(num_agents=load_config().num_agents)
 
     # Start simulation loop in background
     simulation_task = asyncio.create_task(simulation.run())
@@ -238,6 +239,21 @@ async def broadcast_updates():
 
 
 # REST Endpoints
+
+@app.get("/health")
+async def health():
+    """For load balancers and container health checks: 200 while the world
+    is running (paused counts as running), 503 if its loop has stopped."""
+    running = simulation is not None and simulation_task is not None and not simulation_task.done()
+    body = {
+        "status": "ok" if running else "down",
+        "tick": simulation.world.time.current_tick if simulation else None,
+        "paused": bool(simulation.paused) if simulation else None,
+        "alive_agents": sum(1 for a in simulation.world.agents if a.alive) if simulation else 0,
+        "viewers": len(active_websockets),
+    }
+    return JSONResponse(status_code=200 if running else 503, content=body)
+
 
 @app.get("/")
 async def root():
@@ -661,7 +677,7 @@ async def reset_world(request: Request):
 
     # Create new simulation
     simulation = SimulationEngine(world_width=100, world_height=100)
-    simulation.initialize_world(num_agents=12)
+    simulation.initialize_world(num_agents=load_config().num_agents)
 
     # Start new simulation
     if simulation_task:

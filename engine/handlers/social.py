@@ -212,7 +212,7 @@ class SocialInteractionHandler(ActionHandler):
                 agent, target, current_tick
             )
 
-            logger.info(
+            logger.debug(
                 f"[{agent.name}] EXECUTED SOCIALIZE with {target.name}: "
                 f"success={result_dict.get('success')}, "
                 f"emotional_impact={result_dict.get('emotional_impact', 0.0):.2f}"
@@ -225,7 +225,7 @@ class SocialInteractionHandler(ActionHandler):
                 agent, target, current_tick
             )
 
-            logger.info(
+            logger.debug(
                 f"[{agent.name}] EXECUTED TRADE with {target.name}: "
                 f"success={result_dict.get('success')}, "
                 f"emotional_impact={result_dict.get('emotional_impact', 0.0):.2f}"

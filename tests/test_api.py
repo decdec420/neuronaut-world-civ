@@ -120,3 +120,34 @@ def test_an_admin_token_when_the_server_has_one(client, monkeypatch):
     right = dict(control, Authorization="Bearer s3cret-token")
     assert client.post("/simulation/pause", headers=right).status_code == 200
     assert client.get("/simulation/status").status_code == 200   # reading needs no token
+
+
+# ------------------------------------------------------------------ health
+
+def test_health_reports_whether_the_world_is_running(client):
+    r = client.get("/health")
+    assert r.status_code == 200 and r.json()["status"] == "ok" and r.json()["alive_agents"] > 0
+    server.simulation_task.cancel()             # the world's loop stops
+    for _ in range(100):
+        if server.simulation_task.done():
+            break
+        import time
+        time.sleep(0.02)
+    r = client.get("/health")
+    assert r.status_code == 503 and r.json()["status"] == "down"
+
+
+def test_settings_come_from_the_environment(monkeypatch):
+    import config
+    monkeypatch.setenv("NUM_AGENTS", "7")
+    monkeypatch.setenv("PORT", "not-a-port")
+    monkeypatch.setenv("LOG_LEVEL", "debug")
+    monkeypatch.setenv("SAVE_DIR", "my_saves")
+    config.reset_config()
+    try:
+        cfg = config.load_config()
+        assert cfg.num_agents == 7 and cfg.port == 8000 and cfg.log_level == "DEBUG"
+        assert cfg.host == "127.0.0.1"                       # this machine only, by default
+        assert cfg.save_dir == config.REPO_DIR / "my_saves"  # not the working directory
+    finally:
+        config.reset_config()

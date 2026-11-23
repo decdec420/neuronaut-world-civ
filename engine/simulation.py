@@ -667,9 +667,14 @@ class SimulationEngine:
             except Exception as e:
                 print(f"❌ Auto-save failed: {e}")
 
-        # Warning if population declining
-        if alive_count > 0 and alive_count < 10 and not self.death_wipe_detected:
-            print(f"\n⚠️  WARNING: Only {alive_count} agents remain! Civilization at risk!")
+        # Warn when the population falls below 10, once per new low (this
+        # printed on every tick while it stayed low)
+        if 0 < alive_count < 10 and not self.death_wipe_detected and \
+                alive_count < getattr(self, '_lowest_warned', 10):
+            self._lowest_warned = alive_count
+            logger.warning("Only %d agents remain: the village is at risk", alive_count)
+        elif alive_count >= 10:
+            self._lowest_warned = 10
 
     def _log_extinction_event(self, current_tick: int):
         """Log civilization extinction event."""
