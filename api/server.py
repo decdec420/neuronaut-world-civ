@@ -10,6 +10,7 @@ Provides:
 
 import asyncio
 import hmac
+from contextlib import asynccontextmanager
 import json
 import logging
 from typing import List, Dict, Optional
@@ -18,7 +19,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Requ
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
-from pydantic import BaseModel, Field, constr, validator
+from pydantic import BaseModel, Field, constr, field_validator
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -67,7 +68,8 @@ class CreateCharacterRequest(BaseModel):
         description="Optional personality traits"
     )
 
-    @validator('gender')
+    @field_validator('gender')
+    @classmethod
     def validate_gender(cls, v):
         valid_genders = ['male', 'female', 'non_binary']
         if v not in valid_genders:
@@ -89,11 +91,22 @@ class AgentResponse(BaseModel):
     is_player: bool
 
 
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Start the world and its broadcasts with the server; stop them with it."""
+    await startup_event()
+    try:
+        yield
+    finally:
+        await shutdown_event()
+
+
 # Initialize FastAPI app
 app = FastAPI(
     title="Neuronaut World API",
     description="API for observing and interacting with Neuronaut World",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan,
 )
 
 # Rate limiting
@@ -149,6 +162,7 @@ if CORS_ORIGINS:
 # Global simulation instance
 simulation: Optional[SimulationEngine] = None
 simulation_task: Optional[asyncio.Task] = None
+broadcast_task: Optional[asyncio.Task] = None
 
 # WebSocket connections
 active_websockets: List[WebSocket] = []
@@ -172,10 +186,9 @@ def _drop_websocket(ws: WebSocket) -> None:
         active_websockets.remove(ws)
 
 
-@app.on_event("startup")
 async def startup_event():
     """Initialize simulation on startup"""
-    global simulation, simulation_task
+    global simulation, simulation_task, broadcast_task
 
     print("🌍 Starting Neuronaut World...")
 
@@ -189,21 +202,19 @@ async def startup_event():
     simulation_task = asyncio.create_task(simulation.run())
 
     # Start broadcast task
-    asyncio.create_task(broadcast_updates())
+    broadcast_task = asyncio.create_task(broadcast_updates())
 
     print("✅ Neuronaut World is running!")
 
 
-@app.on_event("shutdown")
 async def shutdown_event():
     """Cleanup on shutdown"""
-    global simulation, simulation_task
-
     if simulation:
         simulation.stop()
 
-    if simulation_task:
-        simulation_task.cancel()
+    for task in (simulation_task, broadcast_task):
+        if task:
+            task.cancel()
 
     print("Neuronaut World stopped")
 
@@ -710,7 +721,8 @@ class SetSpeedRequest(BaseModel):
         description="Simulation speed setting"
     )
 
-    @validator('speed')
+    @field_validator('speed')
+    @classmethod
     def validate_speed(cls, v):
         valid_speeds = ['paused', 'slow', 'normal', 'fast', 'ultra']
         if v not in valid_speeds:
