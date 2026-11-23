@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from test_reachability import make_world, quiet  # noqa: E402
+from test_capabilities import act  # noqa: E402
 
 
 def test_birthdays_and_coming_of_age():
@@ -182,3 +183,20 @@ def test_the_population_cap_stops_new_pregnancies_only():
     sim.config.max_population = 5
     result, _ = _try(sim, a)
     assert result is not None and result.success
+
+
+def test_a_wish_for_a_child_does_not_carry_over_to_a_new_partner():
+    sim, roles = make_world()
+    a, b, d = roles["actor"], roles["partner"], roles["neighbour"]
+    from agents.agent import Gender
+    d.gender = b.gender  # a and d could conceive together
+    _try(sim, a)                                  # a tells b it wants a child
+    b.alive = False
+    sim.lifecycle_manager.handle_deaths()         # b dies; a is free
+    sim.world.time.current_tick += 1
+    act(sim, d, "seek_romance", target=a)
+    act(sim, a, "seek_romance", target=d)         # a and d pair up
+    assert a.partner_id == d.id
+    result, _ = _try(sim, d)                       # d says it wants one...
+    assert "like a child" in result.message        # ...which a never said to d
+    assert not (a.is_pregnant or d.is_pregnant)

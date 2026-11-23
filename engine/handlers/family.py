@@ -205,6 +205,7 @@ class FamilyHandler(ActionHandler):
         from engine.events import EventImportance
         from social.relationships import RelationshipType
         a.partner_id, b.partner_id = b.id, a.id
+        a.child_wish_tick = b.child_wish_tick = None  # wishes belong to a partnership
         a.admirers.pop(b.id, None)
         b.admirers.pop(a.id, None)
         rm = self.relationships

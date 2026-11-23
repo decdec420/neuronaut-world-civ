@@ -155,6 +155,9 @@ class LifecycleManager:
         if partner is None or partner.partner_id != dead.id:
             return
         partner.partner_id = None
+        # A wish for a child was a wish for one with this partner (reported in
+        # review: it could carry over to a new partner who never heard it)
+        partner.child_wish_tick = dead.child_wish_tick = None
         profile = self.sim.life_system.life_profiles.get(partner.id)
         if profile is not None:
             profile.spouse = None

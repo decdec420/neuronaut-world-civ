@@ -207,6 +207,10 @@ class ActionHandlers:
                     break     # the buyer would be overpaying; more of it won't help
                 if target_agent.inventory.get_total_items() - take + give > target_agent.inventory.capacity:
                     break
+                # The buyer must have room too, or add_item refuses and the goods
+                # it bought vanish (reported in review)
+                if agent.inventory.get_total_items() - give + take > agent.inventory.capacity:
+                    break
                 agent.inventory.remove_item(offered, give)
                 target_agent.inventory.remove_item(item, take)
                 target_agent.inventory.add_item(offered, give)

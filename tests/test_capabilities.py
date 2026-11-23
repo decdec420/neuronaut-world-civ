@@ -200,6 +200,22 @@ def test_economy_barter_mint_bank_loan():
     assert loan.status.value == "defaulted"
 
 
+def test_a_barter_never_overfills_the_buyer():
+    sim, roles = make_world()
+    a, b = roles["actor"], roles["neighbour"]
+    a.wealth = 0.0
+    a.inventory.items = {"wood": 149}
+    a.inventory.capacity = 150
+    b.inventory.items["herbs"] = 50
+    before = a.inventory.get_total_items() + b.inventory.get_total_items()
+    for _ in range(10):
+        with quiet():
+            from agents.agent import Action, ActionType
+            sim._handler_registry.get_handler(ActionType.TRADE).execute(a, Action(ActionType.TRADE, target_agent=b.id))
+    assert a.inventory.get_total_items() <= a.inventory.capacity
+    assert a.inventory.get_total_items() + b.inventory.get_total_items() == before  # nothing vanished
+
+
 def test_taxes_collected_resisted_and_repealed():
     sim, roles = make_world()
     leader, a, c = roles["neighbour"], roles["actor"], roles["sick"]
