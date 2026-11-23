@@ -62,6 +62,10 @@ def fake_complete(menu_names):
                                         for h in (9, 12, 16)]})
         if "insights" in props:
             return json.dumps({"insights": ["I work hard but I'm often thirsty"]})
+        if "lines" in props:
+            names = props["lines"]["items"]["properties"]["speaker"]["enum"]
+            return json.dumps({"lines": [{"speaker": names[0], "text": "Good to see you."},
+                                         {"speaker": names[-1], "text": "And you. Heard any news?"}]})
         return json.dumps({"action": rng.choice(everyday), "target": "none", "reason": "it seems sensible"})
     return complete
 
@@ -109,8 +113,9 @@ def main() -> int:
     fake = fake_complete(brain.action_menu.names) if args.fake else None
 
     def recorded(prompt, schema=None):
-        kind = "plan" if "plan" in (schema or {}).get("properties", {}) else \
-            "reflect" if "insights" in (schema or {}).get("properties", {}) else "decide"
+        props = (schema or {}).get("properties", {})
+        kind = "plan" if "plan" in props else "reflect" if "insights" in props else \
+            "talk" if "lines" in props else "decide"
         start = time.perf_counter()
         answer = fake(prompt, schema) if fake else inner(prompt, label="smoke", json_schema=schema)
         calls.append({"kind": kind, "seconds": time.perf_counter() - start, "answer": answer})
@@ -169,7 +174,7 @@ def main() -> int:
              f"max {max(latencies):.1f} s" if latencies else "no latency data"))
     by_kind = collections.Counter(c["kind"] for c in answered)
     print(f"Thoughts: {by_kind.get('decide', 0)} decisions, {by_kind.get('plan', 0)} day plans, "
-          f"{by_kind.get('reflect', 0)} reflections")
+          f"{by_kind.get('reflect', 0)} reflections, {by_kind.get('talk', 0)} conversations written")
     if read + unreadable:
         print(f"Decisions read: {read}/{read + unreadable} (parse failures {100 * unreadable / (read + unreadable):.0f}%)")
     print(f"Scheduler: {dict(thinking.stats)}")
@@ -184,6 +189,13 @@ def main() -> int:
     reflections = [(a.name, r.text) for a in sim.world.agents for r in a.memory_stream.records if r.kind == "reflection"]
     for name, text in reflections[:3]:
         print(f"  {name} reflected: {text}")
+    talks = [e for e in sim.event_logger.events if e.title.startswith("💬")]
+    for e in talks[:2]:
+        print(f"  {e.title}: {e.description[:200]}")
+    works, news = sim.infrastructure, sim.news
+    print(f"Village: {len(works.roads)} road tiles, {len(works.wells)} wells, {len(works.lights)} street lights; "
+          f"{news.conversations} conversations passed news on {news.told} times; "
+          f"{len(sim.gatherings.upcoming) + len(sim.gatherings.history)} gatherings announced")
     if errors:
         print(f"Exceptions from tick(): {dict(errors)}")
     ok = bool(decisions) and read > 0 and not errors
