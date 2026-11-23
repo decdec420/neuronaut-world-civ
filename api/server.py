@@ -1482,6 +1482,21 @@ async def serve_app():
     return FileResponse("web/enhanced.html")
 
 
+@app.get("/app/town_map.js")
+async def serve_town_map():
+    """The map renderer used by /app (web/town_map.js)"""
+    return FileResponse("web/town_map.js", media_type="application/javascript")
+
+
+@app.get("/map")
+async def get_map():
+    """Terrain grid and resource spots, for drawing the map (world/town_view.py)"""
+    if not simulation:
+        raise HTTPException(status_code=503, detail="Simulation not running")
+    from world.town_view import map_layout
+    return map_layout(simulation)
+
+
 @app.get("/materials_example")
 async def serve_materials_example():
     """Serve materials system example"""
