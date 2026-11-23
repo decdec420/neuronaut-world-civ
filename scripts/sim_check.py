@@ -65,6 +65,11 @@ def max_rss_mb() -> float:
     return peak / (1024 * 1024) if sys.platform == "darwin" else peak / 1024  # bytes on macOS, KB on Linux
 
 
+def _wet(sim, x, y) -> bool:
+    tile = sim.world.map.tiles.get((int(x), int(y)))
+    return tile is not None and tile.terrain.value == "water"
+
+
 def emergence_metrics(sim, initial_ids, actions, successes) -> dict:
     """What the society created. Reported only; never part of PASS/FAIL."""
     from engine.simulation import UNHANDLED_ACTION_FALLBACKS
@@ -98,6 +103,8 @@ def emergence_metrics(sim, initial_ids, actions, successes) -> dict:
         "street_lights": len(sim.infrastructure.lights),
         "tiles_saved_on_roads": sim.infrastructure.road_steps,
         "with_a_home": sum(1 for a in alive if getattr(a, "home_id", None)),
+        "agents_in_water": sum(1 for a in alive if _wet(sim, a.location.x, a.location.y)),
+        "buildings_on_water": sum(1 for b in sim.dynamic_building_system.buildings.values() if _wet(sim, *b.location)),
         "nights_slept_at_home": (f"{sim.life_events['slept_home'] / (sim.life_events['slept_home'] + sim.life_events['slept_out']):.0%}"
                                  if sim.life_events['slept_home'] + sim.life_events['slept_out'] else None),
         "kinds_of_things_made": len(sim.products),

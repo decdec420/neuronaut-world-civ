@@ -54,6 +54,47 @@ class Pathfinder:
         self.world_height = world_height
         self.path_cache = {}  # Cache paths for performance (up to MAX_CACHED_PATHS)
         self.cache_max_age = 50  # Clear cache after 50 ticks
+        self.water: set = set()             # tiles nobody walks on (set_terrain)
+        self.land_component: dict = {}      # which piece of land each tile is on
+        self._shore: dict = {}              # water tile -> nearest dry tile
+
+    WADING_COST = 4.0   # someone stranded in water (an old save) may wade out, slowly
+
+    def set_terrain(self, world_map) -> None:
+        """Water is impassable: paths go round lakes. A path to a water tile
+        ends on the nearest dry tile (the shore, where you can drink)."""
+        from world.simulation import TerrainType
+        self.water = {pos for pos, t in world_map.tiles.items() if t.terrain == TerrainType.WATER}
+        self.land_component = dict(getattr(world_map, 'land_component', {}))
+        self._shore = {}
+        self.path_cache.clear()
+
+    def _nearest_dry(self, tile: Tuple[int, int], prefer=None) -> Optional[Tuple[int, int]]:
+        """The nearest tile that isn't water, preferring the piece of land
+        `prefer` (the walker's own), searching outward ring by ring."""
+        key = (tile, prefer)
+        if key in self._shore:
+            return self._shore[key]
+        x0, y0 = tile
+        found = fallback = None
+        for r in range(1, max(self.world_width, self.world_height)):
+            ring = [(x0 + dx, y0 + dy) for dx in range(-r, r + 1) for dy in (-r, r)] + \
+                   [(x0 + dx, y0 + dy) for dx in (-r, r) for dy in range(-r + 1, r)]
+            dry = [c for c in ring if self._in_bounds(*c) and c not in self.water]
+            if dry:
+                dry.sort(key=lambda c: (c[0] - x0) ** 2 + (c[1] - y0) ** 2)
+                same = [c for c in dry if prefer is None or self.land_component.get(c) == prefer]
+                if same:
+                    found = same[0]
+                    break
+                fallback = fallback or dry[0]
+            if fallback and r > 12:        # nothing of our own land nearby: the nearest dry ground
+                found = fallback
+                break
+        if len(self._shore) > 20000:
+            self._shore.clear()
+        self._shore[key] = found
+        return found
 
     def find_path(
         self,
@@ -72,14 +113,26 @@ class Pathfinder:
         start = (int(start_x), int(start_y))
         end = (int(end_x), int(end_y))
 
+        # Bounds check
+        if not self._in_bounds(start[0], start[1]) or not self._in_bounds(end[0], end[1]):
+            return None
+
+        # Water: a walker on land never steps into it; a target in the water
+        # means its shore; land you can't reach (an island) has no path
+        water = getattr(self, 'water', None) or set()
+        wading = start in water
+        if end in water:
+            end = self._nearest_dry(end, prefer=None if wading else self.land_component.get(start))
+            if end is None:
+                return None
+        components = getattr(self, 'land_component', None)
+        if components and not wading and components.get(start) != components.get(end):
+            return None
+
         # Check cache
         cache_key = (start, end)
         if cache_key in self.path_cache:
             return self.path_cache[cache_key]
-
-        # Bounds check
-        if not self._in_bounds(start[0], start[1]) or not self._in_bounds(end[0], end[1]):
-            return None
 
         # Initialize
         obstacles = set(obstacles) if obstacles else set()
@@ -109,12 +162,16 @@ class Pathfinder:
             for neighbor_pos in self._get_neighbors(current.x, current.y):
                 if neighbor_pos in closed_set or neighbor_pos in obstacles:
                     continue
+                if neighbor_pos in water and not wading:
+                    continue
 
                 # Calculate costs
                 move_cost = self._movement_cost(
                     current.x, current.y,
                     neighbor_pos[0], neighbor_pos[1]
                 )
+                if neighbor_pos in water:
+                    move_cost *= self.WADING_COST
                 tentative_g = current.g_cost + move_cost
 
                 # Get or create neighbor node

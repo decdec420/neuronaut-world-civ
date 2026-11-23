@@ -295,10 +295,9 @@ class FamilyHandler(ActionHandler):
         distance = agent.location.distance_to(child.location)
         if distance > family.CARE_REACH:
             # Go to them first (a long walk takes a few turns)
-            from agents.agent import Position
-            step = min(10.0, distance - 1.0) / distance
-            agent.location = Position(agent.location.x + (child.location.x - agent.location.x) * step,
-                                      agent.location.y + (child.location.y - agent.location.y) * step)
+            # (a straight walk that stops at any water on the way)
+            agent.location = self.context.world.map.walk_line(agent.location, child.location,
+                                                              min(10.0, distance - 1.0))
             return ActionResult(success=True, emotional_impact=0.05,
                                 message=f"On your way to look after {child.name}")
         given = []

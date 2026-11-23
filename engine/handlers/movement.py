@@ -147,10 +147,9 @@ class MovementActionHandler(ActionHandler):
         # Check if action has a target position
         if action.target_position:
             # Move agent toward target position at configured speed
-            new_position = agent.location.move_toward(
-                action.target_position,
-                distance=self.MOVEMENT_SPEED
-            )
+            # Straight toward it, stopping at the shore (water isn't walkable)
+            new_position = self.context.world.map.walk_line(
+                agent.location, action.target_position, self.MOVEMENT_SPEED)
 
             # Update agent's location
             agent.location = new_position

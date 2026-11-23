@@ -73,11 +73,8 @@ class WorldInitializer:
             # Birthdays spread through the year (life/aging.py)
             agent.age_ticks = random.randrange(self.sim.config.ticks_per_life_year)
 
-            # Random starting position
-            agent.location = Position(
-                random.uniform(20, 80),
-                random.uniform(20, 80)
-            )
+            # A random starting place on the mainland (never in a lake)
+            agent.location = self.sim.world.map.random_mainland_position()
 
             # Give starting resources
             # NO FREE WEALTH - This is a survival world! Must discover economy from scratch.

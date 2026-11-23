@@ -316,6 +316,7 @@ class SimulationEngine:
         from world.infrastructure import Infrastructure
         self.infrastructure = Infrastructure(self.world.map.width, self.world.map.height)
         self.pathfinder.road_tiles = self.infrastructure.roads
+        self.pathfinder.set_terrain(self.world.map)  # water is impassable
         self.resource_memory = systems['resource_memory']
 
         # Weather and disasters
@@ -790,6 +791,10 @@ class SimulationEngine:
             from world.infrastructure import Infrastructure
             self.infrastructure = Infrastructure(self.world.map.width, self.world.map.height)
             self.pathfinder.road_tiles = self.infrastructure.roads
+        if not hasattr(self.world.map, 'land_component'):
+            self.world.map._label_land()
+        if not getattr(self.pathfinder, 'water', None):
+            self.pathfinder.set_terrain(self.world.map)
 
     EVENT_MEMORY_IMPORTANCE = {0: 0.1, 1: 0.3, 2: 0.5, 3: 0.8, 4: 1.0}
 

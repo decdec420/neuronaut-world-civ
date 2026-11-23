@@ -89,32 +89,124 @@ class WorldMap:
         self._generate_terrain()
         self._spawn_resources()
 
+    # Shares of the map by terrain. Water used to be 31% of a map that was the
+    # same pattern tiled (sums of sines); land keeps the old proportions.
+    WATER_SHARE, MOUNTAIN_SHARE = 0.22, 0.167
+    DESERT_OF_MIDLAND, FOREST_OF_MIDLAND = 0.287, 0.352
+
     def _generate_terrain(self):
-        """Generate terrain using simple noise"""
-        for x in range(self.width):
-            for y in range(self.height):
-                # Simple terrain generation
-                noise = self._perlin_noise(x / 10.0, y / 10.0)
+        """Terrain from seeded value noise: lakes are the lowest ground and
+        mountains the highest; in between, moisture decides desert, plains or
+        forest. Shares are fixed by quantile, so every world has about the
+        same mix but its own shape. The noise has its own generator, seeded
+        with one draw from the world's dice."""
+        rng = random.Random(random.getrandbits(32))
+        cells = [(x, y) for x in range(self.width) for y in range(self.height)]
+        elevation = self._fractal_noise(rng, [(24, 1.0), (12, 0.5), (6, 0.25), (3, 0.12)])
+        moisture = self._fractal_noise(rng, [(20, 1.0), (10, 0.5), (5, 0.25)])
 
-                if noise < -0.3:
-                    terrain = TerrainType.WATER
-                elif noise < 0.0:
-                    terrain = TerrainType.PLAINS
-                elif noise < 0.3:
-                    terrain = TerrainType.FOREST
-                elif noise < 0.6:
-                    terrain = TerrainType.MOUNTAINS
-                else:
-                    terrain = TerrainType.DESERT
+        by_height = sorted(cells, key=lambda c: elevation[c])
+        n = len(by_height)
+        n_water, n_mountain = int(n * self.WATER_SHARE), int(n * self.MOUNTAIN_SHARE)
+        terrain = {}
+        for c in by_height[:n_water]:
+            terrain[c] = TerrainType.WATER
+        for c in by_height[n - n_mountain:]:
+            terrain[c] = TerrainType.MOUNTAINS
+        midland = sorted(by_height[n_water:n - n_mountain], key=lambda c: moisture[c])
+        m = len(midland)
+        n_desert, n_forest = int(m * self.DESERT_OF_MIDLAND), int(m * self.FOREST_OF_MIDLAND)
+        for i, c in enumerate(midland):
+            terrain[c] = (TerrainType.DESERT if i < n_desert else
+                          TerrainType.FOREST if i >= m - n_forest else TerrainType.PLAINS)
+        for (x, y), t in terrain.items():
+            self.tiles[(x, y)] = Tile(x, y, t)
+        self._label_land()
 
-                self.tiles[(x, y)] = Tile(x, y, terrain)
+    def _fractal_noise(self, rng: random.Random, octaves) -> Dict[Tuple[int, int], float]:
+        """Value noise: random heights on a coarse lattice, smoothly blended,
+        summed over octaves of (lattice spacing, weight). Not periodic."""
+        w, h = self.width, self.height
+        grid = [[0.0] * h for _ in range(w)]
+        for spacing, weight in octaves:
+            gw, gh = w // spacing + 2, h // spacing + 2
+            lattice = [[rng.random() for _ in range(gh)] for _ in range(gw)]
 
-    def _perlin_noise(self, x: float, y: float) -> float:
-        """Simplified Perlin-like noise"""
-        # Not real Perlin, but good enough for terrain
-        return math.sin(x) * math.cos(y) + \
-               0.5 * math.sin(2*x) * math.cos(2*y) + \
-               0.25 * math.sin(4*x) * math.cos(4*y)
+            def axis(n):
+                out = []
+                for v in range(n):
+                    g = v / spacing
+                    i = int(g)
+                    f = g - i
+                    out.append((i, f * f * (3 - 2 * f)))
+                return out
+            xs, ys = axis(w), axis(h)
+            for x, (ix, sx) in enumerate(xs):
+                col0, col1, row = lattice[ix], lattice[ix + 1], grid[x]
+                for y, (iy, sy) in enumerate(ys):
+                    top = col0[iy] + (col1[iy] - col0[iy]) * sx
+                    bottom = col0[iy + 1] + (col1[iy + 1] - col0[iy + 1]) * sx
+                    row[y] += weight * (top + (bottom - top) * sy)
+        return {(x, y): grid[x][y] for x in range(w) for y in range(h)}
+
+    def _label_land(self) -> None:
+        """Connected pieces of land (8-way, as agents walk). The largest is
+        the mainland, where people start."""
+        self.land_component: Dict[Tuple[int, int], int] = {}
+        sizes = []
+        for start, tile in self.tiles.items():
+            if tile.terrain == TerrainType.WATER or start in self.land_component:
+                continue
+            label, stack, size = len(sizes), [start], 0
+            self.land_component[start] = label
+            while stack:
+                x, y = stack.pop()
+                size += 1
+                for dx in (-1, 0, 1):
+                    for dy in (-1, 0, 1):
+                        nxt = (x + dx, y + dy)
+                        t = self.tiles.get(nxt)
+                        if t is not None and t.terrain != TerrainType.WATER and nxt not in self.land_component:
+                            self.land_component[nxt] = label
+                            stack.append(nxt)
+            sizes.append(size)
+        self.mainland = max(range(len(sizes)), key=sizes.__getitem__) if sizes else None
+
+    # -- what's walkable ---------------------------------------------------------
+
+    def is_water(self, x: float, y: float) -> bool:
+        """True for water and for anywhere off the map."""
+        tile = self.tiles.get((int(x), int(y)))
+        return tile is None or tile.terrain == TerrainType.WATER
+
+    def random_mainland_position(self, x_range=(20, 80), y_range=(20, 80), tries: int = 500) -> Position:
+        """A random place on the mainland, within the given box if possible."""
+        components = getattr(self, 'land_component', {})
+        mainland = getattr(self, 'mainland', None)
+        for i in range(tries):
+            box = (x_range, y_range) if i < tries // 2 else ((0, self.width), (0, self.height))
+            x, y = random.uniform(*box[0]), random.uniform(*box[1])
+            if not self.is_water(x, y) and (mainland is None or components.get((int(x), int(y))) == mainland):
+                return Position(x, y)
+        return Position(random.uniform(*x_range), random.uniform(*y_range))
+
+    def walk_line(self, start: Position, target: Position, distance: float) -> Position:
+        """Where a straight walk of up to `distance` toward `target` ends: at
+        the target, or the last dry ground before water. Someone already in
+        the water (from an old save) may walk out through it."""
+        if self.is_water(start.x, start.y):
+            return start.move_toward(target, distance)
+        end = start.move_toward(target, distance)
+        length = start.distance_to(end)
+        steps = max(1, int(length / 0.5))
+        last = start
+        for i in range(1, steps + 1):
+            t = i / steps
+            p = Position(start.x + (end.x - start.x) * t, start.y + (end.y - start.y) * t)
+            if self.is_water(p.x, p.y):
+                return last
+            last = p
+        return end
 
     def _spawn_resources(self):
         """Spawn initial resources"""
