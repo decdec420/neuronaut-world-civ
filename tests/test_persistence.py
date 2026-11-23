@@ -51,7 +51,9 @@ def fingerprint(sim) -> dict:
                             for b in sim.dynamic_building_system.buildings.values()),
         "governments": sorted((g.id, g.leader_id, tuple(sorted(g.citizens))) for g in gm.governments.values()),
         "laws": sorted((law.id, law.active) for law in gm.laws.values()),
-        "religions": sorted((r.id, tuple(sorted(r.followers))) for r in rel.religions.values()),
+        # By name and founder: like buildings, a faith founded after a save
+        # gets a uuid4 id (not from the world's dice), so ids differ between runs
+        "religions": sorted((r.name, r.founder_id, tuple(sorted(r.followers))) for r in rel.religions.values()),
         "money": round(sum(a.wealth for a in sim.world.agents), 6),
         "life_events": dict(sim.life_events),
     }
