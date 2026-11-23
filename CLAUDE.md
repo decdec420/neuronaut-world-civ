@@ -60,8 +60,9 @@ python3 scripts/sim_check.py --seeds 8        # for changes to the world itself:
 - If you touch `api/` or `web/`, also start the server and load `/app`; check the
   browser console has no errors and the tick counter / activity stream update.
 - Never claim something works without running it. Do not write "COMPLETE",
-  "A+", "100%" or similar status reports. This repo already has ~100 of them,
-  and several described systems that were broken. Report measured results.
+  "A+", "100%" or similar status reports. `docs/archive/` holds ~100 of them,
+  and several described systems that were broken. Report measured results,
+  and don't add status `.md` files.
 
 ## Architecture map
 
@@ -107,25 +108,37 @@ python3 scripts/sim_check.py --seeds 8        # for changes to the world itself:
 
 ## Known open issues (good places to start)
 
-Measured on 8 seeds at the end of the production-readiness work. Of the old
-list, construction failures, drained material pools and gather_food failures no
-longer appear among the top failures; governance, religion and inventions are
-reachable and the LLM brain has the full menu (PR #4); the model path was tested
-with llama3.2:3b. Today's top failures are research attempts that find nothing,
-which is a legitimate outcome.
+Measured on 8 seeds after the open-issues round (see PR #4, "Round 5"). Fixed
+in that round: tell_story dominance (the rule brain's need table credited needs
+actions never meet; it is now measured, `scripts/need_effects.py`), faiths
+lapsing, gathering hosts all picking 18:00, ids not coming from the seed,
+disasters firing at ~27x their written rate, the unused swarm and
+semantic-memory modules (removed), and the stale status docs (now in
+`docs/archive/`). Top failures are research that finds nothing, territory
+already claimed and failed hunts: legitimate outcomes.
 
-1. `tell_story` is ~22% of all rule-brain actions and `rest` ~35%. Find out why.
-2. Faiths get founded but their followers lapse; practice is rarely chosen.
-3. Few who hear of a gathering come (~1 in 6), and hosts pick the same evening.
-4. A live run isn't reproducible from its seed: ids come from uuid4. sim_check
-   works around it; the world's own RNG should make the ids.
-5. `agents/swarm_intelligence.py` is built at startup but never called;
-   `agents/semantic_memory.py` is never used (and needs chromadb + PyTorch).
-6. Roughly 100 status `.md` files in the repo root and `docs/` are stale; leave
-   them unless asked, and never add more.
-7. Disasters kill a lot over long runs (6000 ticks, before shelter: 9 of ~14 in one run).
-   Shelter and warnings now matter; earthquakes come without warning. Whether
-   that's the world you want is a balance call; measure before changing it.
+1. **The rule brain doesn't stick with a plan.** It chooses afresh every tick,
+   so a long walk (to a gathering 50 tiles away, to a far shelter) is usually
+   given up halfway. Guests more than ~20 tiles from a gathering can't arrive:
+   they may set off only two hours early. Letting them set off earlier made
+   fewer people come (measured), because they abandoned the walk. A
+   commitment term (keep doing what you set out to do, weighted by
+   conscientiousness) is the thing to try; it touches every choice, so compare
+   8-seed medians.
+2. Most faiths have only their founder. Joining needs `worship` by someone who
+   likes a follower; nobody preaches. Followers now practise and keep their
+   faith.
+3. `rest` is ~37% of rule-brain actions. Most of it is sleep at night
+   (NIGHT_REST_PULL); worth checking how much is daytime idling.
+4. Building fell when the need table was corrected (8-seed median 20 -> 16.5,
+   glass made 7 -> 1): it had been pulled by needs it doesn't meet. Whether
+   agents build enough is now an honest question about what building gives them.
+5. Disasters now come at their written rates (one every ~2-5 weeks, more in
+   rain and spring), but each is large: radius 40-60 tiles on a 100x100 map
+   for major ones, death chances up to 0.9. A balance call;
+   measure on long runs (`--long`) before changing it.
+6. The design PDFs in `docs/references/` and `.github/copilot-instructions.md`
+   predate most of this; the latter links files that no longer exist.
 
 ## How to work
 
