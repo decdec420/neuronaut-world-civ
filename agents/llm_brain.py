@@ -1666,11 +1666,18 @@ while supplies last. This could drive competition and conflict.
 
         active_disasters = disaster_info.get('active_disasters', [])
         in_danger = disaster_info.get('in_immediate_danger', False)
+        coming = disaster_info.get('warnings', [])
 
-        if not active_disasters:
+        if not active_disasters and not coming:
             return ""
 
         message_parts = []
+        for w in coming[:2]:
+            hours = w.get('ticks_until_impact', 0) / 6
+            where = "it will reach where you are" if w.get('will_reach_you') else \
+                f"its centre is {w.get('distance_from_epicenter', 0):.0f} tiles away, beyond where you are"
+            message_parts.append(f"⏳ Warning: a {w.get('severity', '')} {w.get('type', 'disaster')} is expected "
+                                 f"in about {hours:.1f} hours; {where}.")
 
         # Critical disasters first
         critical_disasters = [d for d in active_disasters if d.get('in_danger_zone')]

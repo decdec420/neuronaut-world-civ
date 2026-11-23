@@ -343,6 +343,8 @@ class NaturalDisasterSystem:
         DisasterType.TSUNAMI: 0.003,
     }
 
+    ACTIVE_TICKS = 6   # one hour
+
     def __init__(self, world_width: int = 100, world_height: int = 100):
         self.world_width = world_width
         self.world_height = world_height
@@ -351,6 +353,7 @@ class NaturalDisasterSystem:
         self.active_disasters: List[Disaster] = []
         self.disaster_history: List[Disaster] = []
         self.pending_warnings: List[Dict] = []  # Disasters with advance warning
+        self._last_tick = 0
 
         # Statistics
         self.total_disasters = 0
@@ -368,6 +371,13 @@ class NaturalDisasterSystem:
         Check for new disasters and process warnings.
         """
         self.ticks_since_last_disaster += 1
+        self._last_tick = current_tick
+
+        # A disaster is "active" (shown, perceived) for ACTIVE_TICKS after it
+        # hits; after that it is history. (It used to stay active forever, so
+        # anyone inside any past disaster's radius was told to evacuate.)
+        self.active_disasters = [d for d in self.active_disasters
+                                 if current_tick - d.tick < self.ACTIVE_TICKS]
 
         # Process pending warnings
         self._process_warnings(current_tick)
@@ -478,9 +488,13 @@ class NaturalDisasterSystem:
         """Process pending disaster warnings"""
         for warning in self.pending_warnings[:]:
             if current_tick >= warning['impact_tick']:
-                # Disaster hits now!
+                # Disaster hits now! It happens at this tick: the engine applies
+                # disasters whose tick is the current one. (It kept the tick of
+                # its warning, so no warned disaster ever did anything: only
+                # earthquakes, which come without warning, ever hit.)
                 disaster = warning['disaster']
                 effects = warning['effects']
+                disaster.tick = current_tick
 
                 self.active_disasters.append(disaster)
                 self._apply_disaster_effects(disaster, effects)
@@ -551,7 +565,8 @@ class NaturalDisasterSystem:
                 'type': disaster.disaster_type.value,
                 'emoji': effects.emoji,
                 'description': effects.description,
-                'time_until_impact': warning['impact_tick'] - warning['warning_tick'],
+                'time_until_impact': warning['impact_tick'] - getattr(self, '_last_tick', warning['warning_tick']),
+                'impact_tick': warning['impact_tick'],
                 'location': {'x': disaster.location_x, 'y': disaster.location_y},
             })
 

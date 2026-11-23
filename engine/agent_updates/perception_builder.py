@@ -841,6 +841,24 @@ class PerceptionBuilder:
         disaster_info['disaster_count'] = len(active_disasters_nearby)
         disaster_info['in_immediate_danger'] = any(d['in_danger_zone'] for d in active_disasters_nearby)
 
+        # Disasters that were warned of: what is coming, when, and whether
+        # this agent is where it will hit. What to do about it is up to them.
+        coming = []
+        now = self.sim.world.time.current_tick
+        for warning in getattr(self.sim.disasters, 'pending_warnings', []):
+            disaster = warning['disaster']
+            dist = ((agent.location.x - disaster.location_x) ** 2 +
+                    (agent.location.y - disaster.location_y) ** 2) ** 0.5
+            coming.append({
+                'type': disaster.disaster_type.value,
+                'severity': disaster.severity.value,
+                'ticks_until_impact': max(0, warning['impact_tick'] - now),
+                'distance_from_epicenter': round(dist, 1),
+                'radius': disaster.radius,
+                'will_reach_you': dist < disaster.radius,
+            })
+        disaster_info['warnings'] = coming
+
         perceptions['disaster_info'] = disaster_info
         return perceptions
 
