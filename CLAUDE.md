@@ -114,19 +114,18 @@ reachable and the LLM brain has the full menu (PR #4); the model path was tested
 with llama3.2:3b. Today's top failures are research attempts that find nothing,
 which is a legitimate outcome.
 
-1. `engine/smart_memory.py` decays memories by wall-clock hours (`time.time()`),
-   not sim time, so decay depends on how fast the server runs. Make it tick-based.
-2. The rule-based brain ignores disaster warnings (`perceptions['disaster_info']['warnings']`);
-   only the LLM brain sees them. Shelter matters, so weigh it, without scripting.
-3. `tell_story` is ~22% of all rule-brain actions and `rest` ~35%. Find out why.
-4. Faiths get founded but their followers lapse; practice is rarely chosen.
-5. Few who hear of a gathering come (~1 in 6), and hosts pick the same evening.
-6. A live run isn't reproducible from its seed: ids come from uuid4. sim_check
+1. `tell_story` is ~22% of all rule-brain actions and `rest` ~35%. Find out why.
+2. Faiths get founded but their followers lapse; practice is rarely chosen.
+3. Few who hear of a gathering come (~1 in 6), and hosts pick the same evening.
+4. A live run isn't reproducible from its seed: ids come from uuid4. sim_check
    works around it; the world's own RNG should make the ids.
-7. `agents/swarm_intelligence.py` is built at startup but never called;
+5. `agents/swarm_intelligence.py` is built at startup but never called;
    `agents/semantic_memory.py` is never used (and needs chromadb + PyTorch).
-8. Roughly 100 status `.md` files in the repo root and `docs/` are stale; leave
+6. Roughly 100 status `.md` files in the repo root and `docs/` are stale; leave
    them unless asked, and never add more.
+7. Disasters kill a lot over long runs (6000 ticks, before shelter: 9 of ~14 in one run).
+   Shelter and warnings now matter; earthquakes come without warning. Whether
+   that's the world you want is a balance call; measure before changing it.
 
 ## How to work
 
