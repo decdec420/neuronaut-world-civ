@@ -509,6 +509,7 @@ class Agent:
         self.partner_id: Optional[str] = None
         self.admirers: Dict[str, int] = {}  # who courted this agent -> tick they last did
         self.child_wish_tick: Optional[int] = None  # when it last said it wants a child
+        self.home_id: Optional[str] = None  # the building it lives in (life/homes.py)
 
         # Pregnancy (for females only)
         self.is_pregnant: bool = False
@@ -1320,6 +1321,7 @@ class Agent:
             'father_id': self.father_id,
             'children_ids': self.children_ids,
             'partner_id': self.partner_id,
+            'home_id': getattr(self, 'home_id', None),
             'is_pregnant': self.is_pregnant,
             'pregnancy_partner_id': self.pregnancy_partner_id,
             'death_cause': self.death_cause,

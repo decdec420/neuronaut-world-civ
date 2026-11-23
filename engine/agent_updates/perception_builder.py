@@ -101,6 +101,11 @@ class PerceptionBuilder:
             'lamp_needs_fuel': bool(lamp and lamp.fuel == 0),
             'walking_lately': round(works.walking_burden(agent.id, tick), 2),
         }
+        from life import homes
+        dbs = self.sim.dynamic_building_system
+        home = homes.home_of(dbs, agent)
+        perceptions['works']['home'] = home.name if home else None
+        perceptions['works']['home_distance'] = round(homes.distance_home(dbs, agent), 1) if home else None
         return perceptions
 
     def _add_social_info(self, agent, perceptions: Dict) -> Dict:

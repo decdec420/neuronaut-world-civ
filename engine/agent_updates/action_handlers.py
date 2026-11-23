@@ -554,12 +554,29 @@ class ActionHandlers:
             }
 
     def handle_rest(self, agent: Agent) -> Dict:
-        """Handle rest/sleep"""
-        # Restore energy
-        agent.energy = min(100.0, agent.energy + 20.0)
+        """Handle rest/sleep. At night an agent with a home goes home to
+        sleep (unless exhausted), and sleeps better there (life/homes.py)."""
+        from life import homes
+        tick = self.sim.world.time.current_tick
+        night = homes.is_night(self.sim.world.time.hour)
+        dbs = self.sim.dynamic_building_system
+        away = homes.distance_home(dbs, agent)
+        if night and away is not None and away > homes.HOME_RADIUS and agent.energy > homes.EXHAUSTED_ENERGY:
+            home = homes.home_of(dbs, agent)
+            self.sim.infrastructure.step_toward(agent, self.sim.pathfinder, home.location[0], home.location[1], tick)
+            return {'success': True, 'emotional_impact': 0.05, 'message': f'Heading home to {home.name}'}
+        at_home = away is not None and away <= homes.HOME_RADIUS
+        if night:
+            self.sim.life_events['slept_home' if at_home else 'slept_out'] += 1
+
+        # Restore energy (better at home)
+        agent.energy = min(100.0, agent.energy + (homes.HOME_ENERGY if at_home else 20.0))
 
         # Satisfy sleep need
-        agent.needs.satisfy_need(NeedType.SLEEP, 0.5)
+        agent.needs.satisfy_need(NeedType.SLEEP, homes.HOME_SLEEP if at_home else 0.5)
+        if at_home:
+            agent.needs.satisfy_need(NeedType.SHELTER, 0.3)
+            agent.needs.satisfy_need(NeedType.SECURITY, 0.2)
 
         # Reduce stress
         agent.emotions.stress = max(0.0, agent.emotions.stress - 0.2)

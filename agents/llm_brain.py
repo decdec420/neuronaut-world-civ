@@ -832,6 +832,10 @@ Be bold! Think of something interesting to try.
             if works.get("walking_lately", 0) > 0.5:
                 notes.append("you have been walking a lot lately")
             lines.append("The village has " + ", ".join(parts) + (" (" + "; ".join(notes) + ")" if notes else "") + ".")
+            if works.get("home"):
+                lines.append(f"Your home: {works['home']}, {works['home_distance']:.0f} tiles away.")
+            else:
+                lines.append("You have no home yet (a shelter you build becomes yours; partners share).")
 
         known = perceptions.get("relationships", [])
         if known:

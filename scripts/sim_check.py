@@ -87,6 +87,9 @@ def emergence_metrics(sim, initial_ids, actions, successes) -> dict:
         "wells": len(sim.infrastructure.wells),
         "street_lights": len(sim.infrastructure.lights),
         "tiles_saved_on_roads": sim.infrastructure.road_steps,
+        "with_a_home": sum(1 for a in alive if getattr(a, "home_id", None)),
+        "nights_slept_at_home": (f"{sim.life_events['slept_home'] / (sim.life_events['slept_home'] + sim.life_events['slept_out']):.0%}"
+                                 if sim.life_events['slept_home'] + sim.life_events['slept_out'] else None),
         "kinds_of_things_made": len(sim.products),
         "money": round(sum(a.wealth for a in alive), 1),
         "trades_ok": trades_ok,

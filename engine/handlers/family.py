@@ -217,6 +217,15 @@ class FamilyHandler(ActionHandler):
             who.needs.satisfy_need(NeedType.ROMANCE, 0.6)
             who.emotions.trigger_emotion(EmotionType.LOVE, 0.6)
             who.emotions.trigger_emotion(EmotionType.JOY, 0.4)
+        # Partners share a home: one without moves in with the other
+        from life import homes
+        dbs, events = self.context.get_system('dynamic_building_system'), self.context.get_system('life_events')
+        if dbs is not None:
+            home_a, home_b = homes.home_of(dbs, a), homes.home_of(dbs, b)
+            if home_a is not None and home_b is None:
+                homes.move_in(dbs, b, home_a, self.context.current_tick, f"living with {a.name}", events)
+            elif home_b is not None and home_a is None:
+                homes.move_in(dbs, a, home_b, self.context.current_tick, f"living with {b.name}", events)
         self._count('partnered')
         self._log(EventImportance.MAJOR, f"💞 {a.name} and {b.name} are partners",
                   f"{b.name} courted {a.name}, and {a.name} courted {b.name} back.", [a.id, b.id])

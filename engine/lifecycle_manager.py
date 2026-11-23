@@ -81,6 +81,11 @@ class LifecycleManager:
                                                   'agreeableness', 'neuroticism')},
             parents=[p.id for p in parents])
 
+        from life import homes
+        mother_home = homes.home_of(self.sim.dynamic_building_system, mother)
+        if mother_home is not None:
+            homes.move_in(self.sim.dynamic_building_system, child, mother_home, current_tick, "born here",
+                          self.sim.life_events)
         self.sim.births_this_day += 1
         self.sim.life_events['born'] += 1
         father_name = father.name if father else "a father who is gone"

@@ -436,6 +436,27 @@ class AgentUpdater:
                                         f"💬 {agent.name} and {other.name} talked", said[:300],
                                         current_tick, [agent.id, other.id])
 
+    def _move_into(self, agent, building_id, current_tick: int) -> None:
+        """A finished shelter becomes home to its builders who have none, and
+        to their partners and young children who have none (life/homes.py)."""
+        from life import homes, family
+        dbs, events = self.sim.dynamic_building_system, self.sim.life_events
+        building = dbs.buildings.get(building_id)
+        if building is None or not homes.is_shelter(dbs, building):
+            return
+        for builder_id in sorted(building.builder_ids | {agent.id}):
+            builder = self.sim._get_agent_by_id(builder_id)
+            if builder is None or not builder.alive:
+                continue
+            homes.move_in(dbs, builder, building, current_tick, "I built it", events)
+            partner = family.partner_of(builder, self.sim._get_agent_by_id)
+            if partner is not None:
+                homes.move_in(dbs, partner, building, current_tick, f"{builder.name} built it", events)
+            for child_id in builder.children_ids:
+                child = self.sim._get_agent_by_id(child_id)
+                if child is not None and family.is_young(child):
+                    homes.move_in(dbs, child, building, current_tick, f"{builder.name} built it", events)
+
     def _converse(self, agent, action, current_tick: int) -> None:
         """Talking passes news on (world/news.py): socializing both ways, a
         story one way. With a model, the two may also have a few lines of
@@ -751,6 +772,8 @@ class AgentUpdater:
         # 6b. The village's record: counts, and any first (engine/chronicle.py)
         if outcome.get('success', False):
             self._converse(agent, action, current_tick)
+            if outcome.get('building_complete'):
+                self._move_into(agent, outcome.get('building_id'), current_tick)
             self.sim.action_successes[self._resolved_name(action)] += 1
             if outcome.get('product'):
                 self.sim.products[str(outcome['product'])] += 1
