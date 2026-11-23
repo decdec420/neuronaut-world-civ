@@ -788,8 +788,10 @@ Be bold! Think of something interesting to try.
 
         nearby = perceptions.get("nearby_agents", [])
         if nearby:
-            lines.append("Near you: " + "; ".join(
-                f"{a['name']} ({a.get('distance', 0):.0f} away)" for a in nearby[:6]))
+            def seen(a):
+                doing = f", {a['doing'].replace('_', ' ')}" if a.get('doing') else ""
+                return f"{a['name']} ({a.get('distance', 0):.0f} away{doing})"
+            lines.append("Near you: " + "; ".join(seen(a) for a in nearby[:6]))
         else:
             lines.append("Nobody is near you.")
         lines.append(f"Resources in sight: {resources_str}")

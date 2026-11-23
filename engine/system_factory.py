@@ -56,7 +56,6 @@ from world.disasters import NaturalDisasterSystem
 
 # AI AUTONOMY SYSTEMS
 from agents.llm_brain import MultiLLMBrain
-from agents.swarm_intelligence import SwarmIntelligence
 from config import load_config
 
 logger = logging.getLogger(__name__)
@@ -88,7 +87,7 @@ class SystemFactory:
             - old_systems: Legacy civilization systems (buildings, innovations, etc.)
             - autonomous: New autonomous systems (experimentation, knowledge, etc.)
             - specialized: Domain-specific systems (agriculture, health, religion, etc.)
-            - ai: AI systems (LLM brain, swarm intelligence)
+            - ai: AI systems (LLM brain)
             - config: Configuration object
         """
         print("🏗️  Initializing all simulation systems...")
@@ -244,24 +243,6 @@ class SystemFactory:
             systems['llm_brain'] = None
             print("🤖 AI Autonomy DISABLED - Using rule-based psychology only")
             print("   (Set USE_LLM_DECISIONS=true in .env to enable AI)")
-
-        # Initialize Swarm Intelligence (v2.0 - Multi-Agent Coordination)
-        if config.enable_swarm_intelligence and systems['llm_brain']:
-            systems['swarm_intelligence'] = SwarmIntelligence(
-                llm_brain=systems['llm_brain'],
-                config=config.get_swarm_config()
-            )
-            print("🐝 SWARM INTELLIGENCE ENABLED - Agents will coordinate and form alliances!")
-            print(f"   Max Swarm Size: {config.max_swarm_size} agents")
-            print(f"   Consensus Threshold: {config.consensus_threshold * 100:.0f}%")
-            print(f"   Coordination Radius: {config.coordination_radius} tiles")
-            print(f"   Parallel LLM: {'✅' if config.enable_parallel_llm else '❌'}")
-        else:
-            systems['swarm_intelligence'] = None
-            if config.enable_swarm_intelligence and not systems['llm_brain']:
-                print("⚠️  Swarm Intelligence requires LLM decisions to be enabled")
-            else:
-                print("🤖 Swarm Intelligence DISABLED - Agents act independently")
 
         print("✅ All systems initialized!")
         return systems

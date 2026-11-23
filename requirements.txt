@@ -4,8 +4,6 @@
 # Optional extras, not installed by default:
 #   groq, google-genai          cloud AI providers, if you set GROQ_API_KEY or
 #                               GEMINI_API_KEY (a local Ollama needs no package)
-#   chromadb, sentence-transformers
-#                               semantic long-term memory (large: pulls in PyTorch)
 #
 # This file used to list ~25 packages, most unused, including `asyncio==3.4.3`:
 # an old PyPI package that shadows Python's own asyncio and breaks it.

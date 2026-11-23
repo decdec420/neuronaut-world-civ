@@ -17,8 +17,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     HOST=0.0.0.0 \
     PORT=8000 \
     SAVE_DIR=/data/saves \
-    USE_LLM_DECISIONS=false \
-    ENABLE_SEMANTIC_MEMORY=false
+    USE_LLM_DECISIONS=false
 
 WORKDIR /app
 

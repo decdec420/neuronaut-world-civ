@@ -31,7 +31,6 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-os.environ.setdefault("ENABLE_SEMANTIC_MEMORY", "false")
 
 # Deliberately not chosen by agents. Keep this short and say why.
 INTERNAL_ACTIONS = {

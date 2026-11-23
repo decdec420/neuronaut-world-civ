@@ -83,7 +83,6 @@ def main() -> int:
 
     os.environ["USE_LLM_DECISIONS"] = "true"
     os.environ["LLM_TICK_BUDGET"] = str(args.budget)
-    os.environ.setdefault("ENABLE_SEMANTIC_MEMORY", "false")
     logging.disable(logging.WARNING)
     random.seed(args.seed)
     import config

@@ -755,11 +755,14 @@ class Agent:
 
             distance = self.location.distance_to(other_agent.location)
             if distance <= perception_range:
+                doing = getattr(other_agent, 'current_action', None)
                 perceptions['nearby_agents'].append({
                     'id': other_agent.id,
                     'name': other_agent.name,
                     'distance': distance,
                     'location': other_agent.location,
+                    # what it chose last: others can see what you're up to
+                    'doing': doing.action_type.value if doing is not None else None,
                 })
 
         # Get nearby resources

@@ -13,7 +13,6 @@ import sys
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-os.environ.setdefault("ENABLE_SEMANTIC_MEMORY", "false")
 
 
 @contextlib.contextmanager
@@ -96,6 +95,13 @@ def test_prompt_contains_menu_format_and_people():
     assert "Religion:" in prompt and "perform_ritual" in prompt and "mint_coins" in prompt
     assert "ACTION:" in prompt and "TARGET:" in prompt
     assert other.name in prompt          # nearby people by name
+    # and what they're doing, so agents can see each other's intentions
+    from agents.agent import Action, ActionType
+    other.current_action = Action(ActionType.GATHER_WATER)
+    perceptions = sim._perception_builder.build_perceptions(agent, sim.world.get_state())
+    with quiet():
+        prompt = sim.llm_brain._build_thinking_prompt(agent, perceptions, "decide_action")
+    assert f"{other.name} (" in prompt and "gathering water" not in prompt and "gather water)" in prompt
     assert "Governments: none yet" in prompt
     assert len(prompt) < 9000, len(prompt)
 

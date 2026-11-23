@@ -151,7 +151,6 @@ def _heard_vs_came_by_day(held):
 
 def run_seed(ticks: int, seed: int, use_llm: bool) -> dict:
     os.environ["USE_LLM_DECISIONS"] = "true" if use_llm else "false"
-    os.environ.setdefault("ENABLE_SEMANTIC_MEMORY", "false")
     os.environ.setdefault("AUTOSAVE_EVERY", "0")  # a check run leaves no save files behind
     random.seed(seed)
 

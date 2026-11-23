@@ -332,7 +332,6 @@ class SimulationEngine:
         # AI systems
         self.config = systems['config']
         self.llm_brain = systems['llm_brain']
-        self.swarm_intelligence = systems['swarm_intelligence']
 
     def _register_action_handlers(self) -> None:
         """

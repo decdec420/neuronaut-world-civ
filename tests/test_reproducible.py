@@ -17,7 +17,7 @@ SCRIPT = r"""
 import asyncio, contextlib, io, json, logging, os, random, sys
 sys.path.insert(0, ".")
 logging.disable(logging.WARNING)
-os.environ.update(USE_LLM_DECISIONS="false", ENABLE_SEMANTIC_MEMORY="false", AUTOSAVE_EVERY="0")
+os.environ.update(USE_LLM_DECISIONS="false", AUTOSAVE_EVERY="0")
 random.seed(int(sys.argv[1]))
 with contextlib.redirect_stdout(io.StringIO()):
     from engine.simulation import SimulationEngine
