@@ -1209,7 +1209,7 @@
                     <div style="display: grid; gap: 20px;">
                         <!-- CANVAS -->
                         <div style="background: #0f172a; border-radius: 12px; border: 2px solid #334155; overflow: hidden; position: relative; height: 500px;">
-                            <canvas id="world-canvas" width="1200" height="600" style="display: block; width: 100%; height: auto; max-height: 600px;"></canvas>
+                            <canvas id="world-canvas" width="1200" height="600" style="display: block; width: 100%; height: 100%;"></canvas>
 
                             <!-- OVERLAY STATS -->
                             <div style="position: absolute; top: 10px; left: 10px; background: rgba(15, 23, 42, 0.95); padding: 16px; border-radius: 8px; font-size: 11px; border: 1px solid #334155;">
@@ -2761,6 +2761,7 @@
         </div>
     </div>
 
+    <script src="/app/town_map.js"></script>
     <script>
         // SIMULATION SPEED CONTROLS
         let currentSpeed = 'normal';
@@ -2837,6 +2838,7 @@
 
                 previousData = JSON.parse(JSON.stringify(data)); // Deep clone
                 statsData = data;
+                TownMap.update(data);
                 updateUI(data);
             };
 
@@ -2860,8 +2862,7 @@
             currentAgents.forEach((agent, id) => {
                 if (!prevAgents.has(id)) {
                     // NEW AGENT = BIRTH!
-                    const x = (agent.location.x / 100) * canvas.width;
-                    const y = (agent.location.y / 100) * canvas.height;
+                    const {x, y} = TownMap.worldPx(agent.location);
                     birthEffect(x, y);
                     console.log(`🎉 BIRTH EFFECT: ${agent.name} at (${x}, ${y})`);
                 }
@@ -2872,8 +2873,7 @@
                 const prevAgent = prevAgents.get(id);
                 if (prevAgent && prevAgent.alive && !agent.alive) {
                     // AGENT DIED
-                    const x = (agent.location.x / 100) * canvas.width;
-                    const y = (agent.location.y / 100) * canvas.height;
+                    const {x, y} = TownMap.worldPx(agent.location);
                     deathEffect(x, y);
                     console.log(`💀 DEATH EFFECT: ${agent.name} at (${x}, ${y})`);
                 }
@@ -2887,8 +2887,7 @@
                 // Instead, trigger at the agent who just completed it
                 currentAgents.forEach(agent => {
                     if (agent.current_action === 'build' || agent.current_action === 'idle') {
-                        const x = (agent.location.x / 100) * canvas.width;
-                        const y = (agent.location.y / 100) * canvas.height;
+                        const {x, y} = TownMap.worldPx(agent.location);
                         buildingCompleteEffect(x, y);
                         console.log(`🏛️ BUILDING EFFECT at (${x}, ${y})`);
                     }
@@ -2902,8 +2901,7 @@
                 // New discovery! Trigger at experimenting agent
                 currentAgents.forEach(agent => {
                     if (agent.current_action === 'experiment') {
-                        const x = (agent.location.x / 100) * canvas.width;
-                        const y = (agent.location.y / 100) * canvas.height;
+                        const {x, y} = TownMap.worldPx(agent.location);
                         discoveryEffect(x, y);
                         console.log(`🔬 DISCOVERY EFFECT at (${x}, ${y})`);
                     }
@@ -6295,50 +6293,6 @@
 
         let particles = [];
 
-        // ===== MOVEMENT TRAIL SYSTEM - Track agent movement =====
-        let agentTrails = {}; // agentId -> array of {x, y, alpha} positions
-        const MAX_TRAIL_LENGTH = 15;
-
-        function updateAgentTrail(agentId, x, y) {
-            if (!agentTrails[agentId]) {
-                agentTrails[agentId] = [];
-            }
-
-            agentTrails[agentId].push({x, y, alpha: 1.0});
-
-            // Limit trail length
-            if (agentTrails[agentId].length > MAX_TRAIL_LENGTH) {
-                agentTrails[agentId].shift();
-            }
-
-            // Fade out older trail points
-            agentTrails[agentId].forEach((point, i) => {
-                point.alpha = (i + 1) / agentTrails[agentId].length;
-            });
-        }
-
-        function renderAgentTrails(ctx) {
-            Object.values(agentTrails).forEach(trail => {
-                if (trail.length < 2) return;
-
-                for (let i = 0; i < trail.length - 1; i++) {
-                    const point = trail[i];
-                    const nextPoint = trail[i + 1];
-
-                    ctx.globalAlpha = point.alpha * 0.3;
-                    ctx.strokeStyle = '#3b82f6';
-                    ctx.lineWidth = 2;
-                    ctx.lineCap = 'round';
-
-                    ctx.beginPath();
-                    ctx.moveTo(point.x, point.y);
-                    ctx.lineTo(nextPoint.x, nextPoint.y);
-                    ctx.stroke();
-                }
-                ctx.globalAlpha = 1.0;
-            });
-        }
-
         // ===== DISASTER VISUAL EFFECTS =====
         let screenShakeAmount = 0;
         let fireParticles = [];
@@ -6383,167 +6337,34 @@
             }
         }
 
-        // ===== HOVER TOOLTIP SYSTEM =====
+        // ===== MAP INPUT =====
+        // The town map (web/town_map.js) handles hover, drag, zoom and
+        // following an agent; its card's "Full profile" button opens the
+        // agent's profile here.
         let hoveredAgent = null;
-        let mouseX = 0;
-        let mouseY = 0;
 
-        canvas.addEventListener('mousemove', (e) => {
-            const rect = canvas.getBoundingClientRect();
-            // Scale mouse coordinates to match canvas internal resolution
-            const scaleX = canvas.width / rect.width;
-            const scaleY = canvas.height / rect.height;
-            mouseX = (e.clientX - rect.left) * scaleX;
-            mouseY = (e.clientY - rect.top) * scaleY;
-        });
-
-        canvas.addEventListener('click', (e) => {
-            if (hoveredAgent) {
-                const clickedAgentId = hoveredAgent.id;
-
-                // Navigate to agents tab
-                document.querySelector('[data-tab="agents"]').click();
-
-                // Wait for tab to load and agent cards to render
-                setTimeout(() => {
-                    const agentCard = document.querySelector(`[data-agent-id="${clickedAgentId}"]`);
-                    if (agentCard) {
-                        // Scroll to the agent card
-                        agentCard.scrollIntoView({behavior: 'smooth', block: 'center'});
-
-                        // Add visual highlight effect
-                        agentCard.style.boxShadow = '0 0 20px 5px rgba(59, 130, 246, 0.8)';
-                        agentCard.style.transform = 'scale(1.05)';
-
-                        // Open the agent's profile modal
-                        setTimeout(() => {
-                            agentCard.click();
-                        }, 400);
-
-                        // Remove highlight after animation
-                        setTimeout(() => {
-                            agentCard.style.boxShadow = '';
-                            agentCard.style.transform = '';
-                        }, 1000);
-                    } else {
-                        console.warn('⚠️ Could not find agent card for:', clickedAgentId);
-                    }
-                }, 300);
-            }
-        });
-
-        function checkAgentHover(agents) {
-            if (!agents || agents.length === 0) return;
-
-            hoveredAgent = null;
-
-            for (const agent of agents) {
-                if (!agent.alive) continue; // Skip dead agents
-
-                const x = (agent.location.x / 100) * canvas.width;
-                const y = (agent.location.y / 100) * canvas.height;
-                const distance = Math.sqrt((mouseX - x) ** 2 + (mouseY - y) ** 2);
-
-                // Generous hover radius for easy interaction
-                if (distance < 25) {
-                    hoveredAgent = agent;
-                    canvas.style.cursor = 'pointer';
-                    return;
+        function openAgentFromMap(agentId) {
+            const tab = document.querySelector('[data-tab="agents"]');
+            if (tab) tab.click();
+            // Wait for the tab to load and the agent cards to render
+            setTimeout(() => {
+                const agentCard = document.querySelector(`[data-agent-id="${agentId}"]`);
+                if (agentCard) {
+                    agentCard.scrollIntoView({behavior: 'smooth', block: 'center'});
+                    agentCard.style.boxShadow = '0 0 20px 5px rgba(59, 130, 246, 0.8)';
+                    agentCard.style.transform = 'scale(1.05)';
+                    setTimeout(() => { agentCard.click(); }, 400);
+                    setTimeout(() => {
+                        agentCard.style.boxShadow = '';
+                        agentCard.style.transform = '';
+                    }, 1000);
+                } else if (typeof openAgentProfile === 'function') {
+                    openAgentProfile(agentId);
                 }
-            }
-
-            canvas.style.cursor = 'default';
+            }, 300);
         }
 
-        function renderAgentTooltip(ctx, agent) {
-            if (!agent) return;
-
-            const x = (agent.location.x / 100) * canvas.width;
-            const y = (agent.location.y / 100) * canvas.height;
-
-            // Tooltip dimensions - BIGGER for more info
-            const tooltipWidth = 240;
-            const tooltipHeight = 110;
-            let tooltipX = x + 20;
-            let tooltipY = y - tooltipHeight / 2;
-
-            // Keep tooltip on screen
-            if (tooltipX + tooltipWidth > canvas.width) tooltipX = x - tooltipWidth - 20;
-            if (tooltipY < 0) tooltipY = 5;
-            if (tooltipY + tooltipHeight > canvas.height) tooltipY = canvas.height - tooltipHeight - 5;
-
-            // Draw shadow for depth (use rect instead of roundRect for compatibility)
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-            ctx.fillRect(tooltipX + 4, tooltipY + 4, tooltipWidth, tooltipHeight);
-
-            // Draw tooltip background
-            ctx.fillStyle = 'rgba(15, 23, 42, 0.98)';
-            ctx.strokeStyle = '#3b82f6';
-            ctx.lineWidth = 3;
-            ctx.fillRect(tooltipX, tooltipY, tooltipWidth, tooltipHeight);
-            ctx.strokeRect(tooltipX, tooltipY, tooltipWidth, tooltipHeight);
-
-            // Header gradient
-            const headerGradient = ctx.createLinearGradient(tooltipX, tooltipY, tooltipX, tooltipY + 30);
-            headerGradient.addColorStop(0, 'rgba(59, 130, 246, 0.2)');
-            headerGradient.addColorStop(1, 'rgba(59, 130, 246, 0)');
-            ctx.fillStyle = headerGradient;
-            ctx.fillRect(tooltipX, tooltipY, tooltipWidth, 30);
-
-            // Agent name with icon
-            ctx.fillStyle = '#ffffff';
-            ctx.font = 'bold 16px Arial';
-            ctx.fillText('👤', tooltipX + 10, tooltipY + 22);
-            ctx.fillText(agent.name, tooltipX + 32, tooltipY + 22);
-
-            // Status line
-            ctx.fillStyle = agent.alive ? '#10b981' : '#ef4444';
-            ctx.font = '12px Arial';
-            const statusText = agent.alive ? '❤️ Alive' : '💀 Dead';
-            ctx.fillText(statusText, tooltipX + 10, tooltipY + 45);
-
-            // Age
-            ctx.fillStyle = '#94a3b8';
-            ctx.fillText(`Age: ${agent.age}`, tooltipX + 85, tooltipY + 45);
-
-            // Current action with emoji
-            ctx.fillStyle = '#e2e8f0';
-            ctx.font = 'bold 13px Arial';
-            const actionEmojis = {
-                'experiment': '🔬', 'build': '🔨', 'teach': '📚',
-                'write': '✍️', 'gather_food': '🌾', 'gather_materials': '⛏️',
-                'rest': '💤', 'socialize': '💬', 'idle': '🤔'
-            };
-            const actionEmoji = actionEmojis[agent.current_action] || '⚡';
-            ctx.fillText(`${actionEmoji} ${agent.current_action || 'idle'}`, tooltipX + 10, tooltipY + 65);
-
-            // Personality traits (if available)
-            if (agent.personality) {
-                ctx.fillStyle = '#64748b';
-                ctx.font = '10px Arial';
-                const traits = [];
-                if (agent.personality.openness > 0.7) traits.push('Creative');
-                if (agent.personality.conscientiousness > 0.7) traits.push('Diligent');
-                if (agent.personality.extraversion > 0.7) traits.push('Social');
-                if (traits.length > 0) {
-                    ctx.fillText(traits.join(', '), tooltipX + 10, tooltipY + 80);
-                }
-            }
-
-            // Click to view hint - more prominent
-            ctx.fillStyle = '#3b82f6';
-            ctx.font = 'bold italic 12px Arial';
-            ctx.fillText('🖱️ Click to view full profile', tooltipX + 10, tooltipY + 98);
-
-            // Highlight the hovered agent on the map
-            ctx.strokeStyle = '#3b82f6';
-            ctx.lineWidth = 4;
-            ctx.setLineDash([5, 3]);
-            ctx.beginPath();
-            ctx.arc(x, y, 18, 0, Math.PI * 2);
-            ctx.stroke();
-            ctx.setLineDash([]);
-        }
+        TownMap.init(canvas, { onProfile: openAgentFromMap });
 
         function spawnParticles(x, y, count, color, text = null, type = 'circle') {
             for (let i = 0; i < count; i++) {
@@ -6607,528 +6428,78 @@
             spawnParticles(x, y, 6, null, '✨', 'text');
         }
 
-        // ===== GOD-MODE WORLD VIEW - What God Would See =====
-        // This is the complete world overview with terrain, buildings, resources, agents
+        // ===== THE TOWN MAP =====
+        // Drawn by web/town_map.js: the real terrain, buildings where they
+        // stand, roads, wells, lamps, and every agent as a character.
+        // Particles and disaster effects are drawn in world pixels on top.
+        let lastPanelData = null;
+
+        function renderDisasters(wctx, data) {
+            if (!data.disasters?.active_disasters) return;
+            data.disasters.active_disasters.forEach(disaster => {
+                if (!disaster.location) return;
+                const {x, y} = TownMap.worldPx(disaster.location);
+                const radius = (disaster.radius || 5) * TownMap.tile;
+                if (disaster.type === 'earthquake') {
+                    triggerScreenShake(5);
+                    wctx.strokeStyle = 'rgba(139, 69, 19, 0.6)';
+                    wctx.lineWidth = 3;
+                    for (let i = 0; i < 5; i++) {
+                        const angle = Math.random() * Math.PI * 2;
+                        const len = radius * 0.5;
+                        wctx.beginPath();
+                        wctx.moveTo(x, y);
+                        wctx.lineTo(x + Math.cos(angle) * len, y + Math.sin(angle) * len);
+                        wctx.stroke();
+                    }
+                } else if (disaster.type === 'wildfire' || disaster.type === 'volcano') {
+                    addFireEffect(x, y, radius);
+                } else if (disaster.type === 'flood' || disaster.type === 'tsunami') {
+                    addFloodEffect(x, y, radius);
+                } else if (disaster.type === 'tornado') {
+                    wctx.strokeStyle = 'rgba(156, 163, 175, 0.4)';
+                    wctx.lineWidth = 8;
+                    for (let i = 0; i < 3; i++) {
+                        wctx.beginPath();
+                        wctx.arc(x, y, radius * (0.3 + i * 0.2), 0, Math.PI * 2);
+                        wctx.stroke();
+                    }
+                }
+                wctx.strokeStyle = 'rgba(239, 68, 68, 0.5)';
+                wctx.lineWidth = 2;
+                wctx.setLineDash([5, 5]);
+                wctx.beginPath();
+                wctx.arc(x, y, radius, 0, Math.PI * 2);
+                wctx.stroke();
+                wctx.setLineDash([]);
+                wctx.font = '24px Arial';
+                wctx.textAlign = 'center';
+                wctx.fillText(disaster.emoji || '⚠️', x, y + 8);
+            });
+        }
+
         function renderWorld(data) {
             if (!data || !data.agents) return;
 
-            // Save context for screen shake
             ctx.save();
             applyScreenShake(ctx);
-
-            // ===== DAY/NIGHT CYCLE - Subtle overlay so map stays visible =====
-            const currentDay = data.world?.current_day || 1;
-            const currentTick = data.world?.current_tick || 0;
-            const timeOfDay = (currentTick % 144) / 144; // 0 = midnight, 0.5 = noon
-
-            // Clear background (will show terrain underneath)
-            ctx.fillStyle = '#1a1a2e';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            // ===== TERRAIN RENDERING - Living landscape, not boring grid! =====
-            renderTerrain(data);
-
-            // ===== DAY/NIGHT LIGHTING OVERLAY (after terrain) =====
-            // Subtle overlay so you can still see the map
-            let nightOverlayAlpha = 0;
-            if (timeOfDay > 0.7) {
-                // Evening to midnight
-                nightOverlayAlpha = (timeOfDay - 0.7) / 0.3 * 0.3; // Max 30% darkness
-            } else if (timeOfDay < 0.2) {
-                // Midnight to dawn
-                nightOverlayAlpha = (0.2 - timeOfDay) / 0.2 * 0.3; // Max 30% darkness
-            }
-
-            if (nightOverlayAlpha > 0) {
-                ctx.fillStyle = `rgba(10, 14, 26, ${nightOverlayAlpha})`;
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-                // Add subtle stars at night
-                if (nightOverlayAlpha > 0.15) {
-                    ctx.fillStyle = `rgba(255, 255, 255, ${nightOverlayAlpha * 2})`;
-                    for (let i = 0; i < 50; i++) {
-                        const x = (i * 73 + 23) % canvas.width;
-                        const y = (i * 97 + 17) % (canvas.height * 0.7);
-                        ctx.fillRect(x, y, 1, 1);
-                    }
-                }
-            }
-
-            // ===== FLOOD EFFECT OVERLAY =====
+            TownMap.render(ctx, data, wctx => {
+                renderDisasters(wctx, data);
+                updateParticles();
+                renderParticles(wctx);
+            });
             renderFloodEffect(ctx);
-
-            // ===== RESOURCE DEPOSITS - Show where materials can be gathered =====
-            renderResourceDeposits(data);
-
-            // ===== PUBLIC WORKS - roads, wells, street lights the agents built =====
-            renderInfrastructure(data, nightOverlayAlpha);
-
-            // ===== AGENT MOVEMENT TRAILS =====
-            renderAgentTrails(ctx);
-
-            // ===== BUILDINGS - Visible structures with icons =====
-            renderBuildings(data);
-
-            // ===== AGENTS - Show all agents with activity-based coloring =====
-            renderAgents(data);
-
-            // ===== CHECK FOR DISASTERS AND TRIGGER EFFECTS =====
-            if (data.disasters?.active_disasters) {
-                data.disasters.active_disasters.forEach(disaster => {
-                    const x = (disaster.location.x / 100) * canvas.width;
-                    const y = (disaster.location.y / 100) * canvas.height;
-                    const radius = (disaster.radius / 100) * canvas.width;
-
-                    // Disaster-specific effects
-                    if (disaster.type === 'earthquake') {
-                        triggerScreenShake(5);
-                        // Draw shaking ground cracks
-                        ctx.strokeStyle = 'rgba(139, 69, 19, 0.6)';
-                        ctx.lineWidth = 3;
-                        for (let i = 0; i < 5; i++) {
-                            const angle = Math.random() * Math.PI * 2;
-                            const len = radius * 0.5;
-                            ctx.beginPath();
-                            ctx.moveTo(x, y);
-                            ctx.lineTo(x + Math.cos(angle) * len, y + Math.sin(angle) * len);
-                            ctx.stroke();
-                        }
-                    } else if (disaster.type === 'wildfire' || disaster.type === 'volcano') {
-                        addFireEffect(x, y, radius);
-                    } else if (disaster.type === 'flood' || disaster.type === 'tsunami') {
-                        addFloodEffect(x, y, radius);
-                    } else if (disaster.type === 'tornado') {
-                        // Swirling effect
-                        ctx.strokeStyle = 'rgba(156, 163, 175, 0.4)';
-                        ctx.lineWidth = 8;
-                        for (let i = 0; i < 3; i++) {
-                            ctx.beginPath();
-                            ctx.arc(x, y, radius * (0.3 + i * 0.2), 0, Math.PI * 2);
-                            ctx.stroke();
-                        }
-                    }
-
-                    // Draw disaster radius
-                    ctx.strokeStyle = 'rgba(239, 68, 68, 0.3)';
-                    ctx.lineWidth = 2;
-                    ctx.setLineDash([5, 5]);
-                    ctx.beginPath();
-                    ctx.arc(x, y, radius, 0, Math.PI * 2);
-                    ctx.stroke();
-                    ctx.setLineDash([]);
-
-                    // Disaster emoji at center
-                    ctx.font = '32px Arial';
-                    ctx.fillText(disaster.emoji || '⚠️', x - 16, y + 11);
-                });
-            }
-
-            // ===== HOVER TOOLTIP =====
-            checkAgentHover(data.agents);
-
-            // Render tooltip with error handling
-            try {
-                renderAgentTooltip(ctx, hoveredAgent);
-            } catch (err) {
-                console.error('❌ Tooltip rendering error:', err);
-            }
-
-            // ===== DEBUG OVERLAY (remove this after testing) =====
-            if (window.showDebugOverlay) {
-                // Draw mouse position
-                ctx.fillStyle = 'rgba(255, 0, 0, 0.8)';
-                ctx.beginPath();
-                ctx.arc(mouseX, mouseY, 5, 0, Math.PI * 2);
-                ctx.fill();
-
-                // Draw hover radius circles around all agents
-                data.agents.forEach(agent => {
-                    if (!agent.alive) return;
-                    const x = (agent.location.x / 100) * canvas.width;
-                    const y = (agent.location.y / 100) * canvas.height;
-
-                    ctx.strokeStyle = 'rgba(255, 255, 0, 0.5)';
-                    ctx.lineWidth = 2;
-                    ctx.beginPath();
-                    ctx.arc(x, y, 25, 0, Math.PI * 2);
-                    ctx.stroke();
-
-                    // Draw agent position
-                    ctx.fillStyle = 'rgba(0, 255, 0, 0.8)';
-                    ctx.beginPath();
-                    ctx.arc(x, y, 3, 0, Math.PI * 2);
-                    ctx.fill();
-                });
-
-                // Show mouse coordinates
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-                ctx.font = '12px monospace';
-                ctx.fillText(`Mouse: (${mouseX.toFixed(0)}, ${mouseY.toFixed(0)})`, 10, canvas.height - 10);
-                ctx.fillText(`Hovered: ${hoveredAgent ? hoveredAgent.name : 'none'}`, 10, canvas.height - 25);
-            }
-
-            // Restore context
             ctx.restore();
-        }
+            hoveredAgent = TownMap.hoveredAgent();
 
-        // Terrain renderer - Creates living landscape with biomes (MAP-LIKE!)
-        function renderTerrain(data) {
-            const cellSize = 35; // Smaller tiles = more detail!
-            const cols = Math.ceil(canvas.width / cellSize);
-            const rows = Math.ceil(canvas.height / cellSize);
-
-            // Enhanced noise function for more variation
-            const noise = (x, y) => {
-                const val = Math.sin(x * 0.15) * Math.cos(y * 0.15) +
-                           Math.sin(x * 0.08) * Math.cos(y * 0.12) * 0.5 +
-                           Math.sin(x * 0.3) * Math.cos(y * 0.25) * 0.25;
-                return (val + 2) / 3.5; // Normalize to 0-1
-            };
-
-            const moisture = (x, y) => {
-                const val = Math.sin(x * 0.12 + 100) * Math.cos(y * 0.18 + 50);
-                return (val + 1) / 2; // 0-1
-            };
-
-            for (let row = 0; row < rows; row++) {
-                for (let col = 0; col < cols; col++) {
-                    const x = col * cellSize;
-                    const y = row * cellSize;
-                    const elevation = noise(col, row);
-                    const moist = moisture(col, row);
-
-                    // REALISTIC MAP COLORS - Like Civilization or strategy games!
-                    let terrainColor, terrainIcon;
-
-                    if (elevation < 0.25) {
-                        // Deep Water
-                        terrainColor = '#1e3a8a';
-                        terrainIcon = '🌊';
-                    } else if (elevation < 0.35) {
-                        // Shallow Water
-                        terrainColor = '#2563eb';
-                        terrainIcon = '💧';
-                    } else if (elevation < 0.45) {
-                        // Beach/Coast
-                        terrainColor = '#fef3c7';
-                        terrainIcon = '';
-                    } else if (elevation < 0.55) {
-                        // Grassland (varies by moisture)
-                        if (moist > 0.6) {
-                            terrainColor = '#22c55e'; // Lush grass
-                            terrainIcon = '';
-                        } else if (moist > 0.4) {
-                            terrainColor = '#84cc16'; // Normal grass
-                            terrainIcon = '';
-                        } else {
-                            terrainColor = '#a3e635'; // Dry grass
-                            terrainIcon = '';
-                        }
-                    } else if (elevation < 0.65) {
-                        // Plains/Savanna
-                        if (moist < 0.3) {
-                            terrainColor = '#fbbf24'; // Desert
-                            terrainIcon = '';
-                        } else {
-                            terrainColor = '#a3e635'; // Plains
-                            terrainIcon = '';
-                        }
-                    } else if (elevation < 0.75) {
-                        // Forest/Hills
-                        if (moist > 0.5) {
-                            terrainColor = '#15803d'; // Dense forest
-                            terrainIcon = '🌲';
-                        } else {
-                            terrainColor = '#65a30d'; // Light forest
-                            terrainIcon = '';
-                        }
-                    } else if (elevation < 0.85) {
-                        // Mountains
-                        terrainColor = '#78716c';
-                        terrainIcon = '⛰️';
-                    } else {
-                        // Snow peaks
-                        terrainColor = '#e5e7eb';
-                        terrainIcon = '🏔️';
-                    }
-
-                    // Fill terrain cell
-                    ctx.fillStyle = terrainColor;
-                    ctx.fillRect(x, y, cellSize, cellSize);
-
-                    // Add elevation-based shading (3D effect!)
-                    if (elevation > 0.6) {
-                        // Highlands get light from top-left
-                        const lightStrength = (elevation - 0.6) * 0.3;
-                        // Top edge lighter
-                        ctx.fillStyle = `rgba(255, 255, 255, ${lightStrength * 0.3})`;
-                        ctx.fillRect(x, y, cellSize, 3);
-                        // Left edge lighter
-                        ctx.fillRect(x, y, 3, cellSize);
-                        // Bottom edge darker
-                        ctx.fillStyle = `rgba(0, 0, 0, ${lightStrength * 0.4})`;
-                        ctx.fillRect(x, y + cellSize - 3, cellSize, 3);
-                    }
-
-                    // Add subtle texture variation
-                    const textureVariation = (Math.sin(col * 7.3) * Math.cos(row * 9.1) + 1) / 2;
-                    ctx.fillStyle = `rgba(0, 0, 0, ${textureVariation * 0.06})`;
-                    ctx.fillRect(x, y, cellSize, cellSize);
-
-                    // Draw terrain icon occasionally
-                    if (terrainIcon && (col + row) % 3 === 0) {
-                        ctx.font = '16px Arial';
-                        ctx.fillText(terrainIcon, x + 17, y + 30);
-                    }
-
-                    // Clear grid borders
-                    ctx.strokeStyle = 'rgba(0, 0, 0, 0.15)';
-                    ctx.lineWidth = 1;
-                    ctx.strokeRect(x, y, cellSize, cellSize);
-                }
+            // The panels around the map change only when a snapshot arrives
+            if (data !== lastPanelData) {
+                lastPanelData = data;
+                updatePanels(data);
             }
         }
 
-        // Public works renderer (world/infrastructure.py): paved road tiles,
-        // wells, and street lights that glow when lit at night
-        function renderInfrastructure(data, nightAlpha) {
-            const works = data.infrastructure;
-            if (!works) return;
-            const cellW = canvas.width / 100, cellH = canvas.height / 100;
-            ctx.save();
-            ctx.fillStyle = 'rgba(120, 113, 108, 0.9)';
-            ctx.strokeStyle = 'rgba(68, 64, 60, 0.9)';
-            ctx.lineWidth = 0.5;
-            (works.roads || []).forEach(([x, y]) => {
-                ctx.fillRect(x * cellW, y * cellH, cellW + 0.5, cellH + 0.5);
-            });
-            (works.wells || []).forEach(w => {
-                const x = (w.x + 0.5) * cellW, y = (w.y + 0.5) * cellH;
-                ctx.beginPath();
-                ctx.arc(x, y, 6, 0, Math.PI * 2);
-                ctx.fillStyle = '#57534e';
-                ctx.fill();
-                ctx.beginPath();
-                ctx.arc(x, y, 3.5, 0, Math.PI * 2);
-                ctx.fillStyle = '#38bdf8';
-                ctx.fill();
-            });
-            (works.lights || []).forEach(l => {
-                const x = (l.x + 0.5) * cellW, y = (l.y + 0.5) * cellH;
-                if (l.lit && nightAlpha > 0) {
-                    const r = 8 * cellW;  // the light's reach (LIGHT_RADIUS)
-                    const glow = ctx.createRadialGradient(x, y, 2, x, y, r);
-                    glow.addColorStop(0, 'rgba(253, 224, 71, 0.55)');
-                    glow.addColorStop(1, 'rgba(253, 224, 71, 0)');
-                    ctx.fillStyle = glow;
-                    ctx.beginPath();
-                    ctx.arc(x, y, r, 0, Math.PI * 2);
-                    ctx.fill();
-                }
-                ctx.fillStyle = '#292524';
-                ctx.fillRect(x - 1, y - 8, 2, 9);
-                ctx.beginPath();
-                ctx.arc(x, y - 9, 3, 0, Math.PI * 2);
-                ctx.fillStyle = l.lit ? '#fde047' : (l.fuel > 0 ? '#a8a29e' : '#57534e');
-                ctx.fill();
-            });
-            ctx.restore();
-        }
-
-        // Resource deposit renderer - Subtle markers on the map
-        function renderResourceDeposits(data) {
-            if (!data.world || !data.world.resources) return;
-
-            // Show resource-rich areas as subtle markers (less intrusive)
-            const deposits = [
-                {x: 20, y: 30, type: 'stone', color: '#64748b'},
-                {x: 70, y: 40, type: 'wood', color: '#78350f'},
-                {x: 50, y: 70, type: 'food', color: '#15803d'},
-                {x: 30, y: 60, type: 'metal', color: '#991b1b'},
-            ];
-
-            deposits.forEach(deposit => {
-                const x = (deposit.x / 100) * canvas.width;
-                const y = (deposit.y / 100) * canvas.height;
-
-                // Very subtle glow
-                const gradient = ctx.createRadialGradient(x, y, 0, x, y, 25);
-                gradient.addColorStop(0, deposit.color + '22');
-                gradient.addColorStop(1, deposit.color + '00');
-
-                ctx.fillStyle = gradient;
-                ctx.fillRect(x - 25, y - 25, 50, 50);
-
-                // Small icon with subtle background
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-                ctx.beginPath();
-                ctx.arc(x, y, 10, 0, Math.PI * 2);
-                ctx.fill();
-
-                ctx.font = '14px Arial';
-                const icons = {stone: '⛰️', wood: '🌲', food: '🌾', metal: '⚒️'};
-                ctx.fillText(icons[deposit.type] || '⭐', x - 7, y + 5);
-            });
-        }
-
-        // Buildings renderer - Show actual structures!
-        function renderBuildings(data) {
-            if (!data.dynamic_buildings || !data.dynamic_buildings.completed) return;
-
-            const buildings = data.dynamic_buildings.completed || [];
-
-            buildings.forEach(building => {
-                // Use agent creator's location as building location (approximate)
-                // In future, buildings should have their own locations
-                const creator = data.agents.find(a => a.id === building.created_by);
-                if (!creator) return;
-
-                const x = (creator.location.x / 100) * canvas.width;
-                const y = (creator.location.y / 100) * canvas.height;
-
-                // Building base
-                ctx.fillStyle = '#451a03';
-                ctx.fillRect(x - 8, y - 8, 16, 16);
-
-                // Building border
-                ctx.strokeStyle = '#78350f';
-                ctx.lineWidth = 2;
-                ctx.strokeRect(x - 8, y - 8, 16, 16);
-
-                // Building icon based on purpose
-                const icon = building.purpose === 'shelter' ? '🏠' :
-                           building.purpose === 'workshop' ? '🔨' :
-                           building.purpose === 'storage' ? '📦' :
-                           building.purpose === 'research' ? '🔬' :
-                           building.purpose === 'worship' ? '⛪' : '🏛️';
-
-                ctx.font = '12px Arial';
-                ctx.fillText(icon, x - 6, y + 4);
-
-                // Building name on hover (will add tooltip later)
-            });
-        }
-
-        // Agents renderer moved into main renderWorld function below
-        function renderAgents(data) {
-            // Draw agents
-            data.agents.forEach(agent => {
-                const x = (agent.location.x / 100) * canvas.width;
-                const y = (agent.location.y / 100) * canvas.height;
-
-                // Update movement trail
-                if (agent.alive) {
-                    updateAgentTrail(agent.id, x, y);
-                }
-
-                // Color based on current action
-                let color = '#3b82f6'; // Default blue
-                let emoji = null;
-
-                if (agent.current_action === 'experiment') {
-                    color = '#10b981'; // Green
-                    emoji = '🔬';
-                } else if (agent.current_action === 'build') {
-                    color = '#f59e0b'; // Orange
-                    emoji = '🔨';
-                } else if (agent.current_action === 'teach') {
-                    color = '#a78bfa'; // Purple
-                    emoji = '📚';
-                } else if (agent.current_action === 'write') {
-                    color = '#ec4899'; // Pink
-                    emoji = '✍️';
-                } else if (agent.current_action === 'gather_food') {
-                    color = '#84cc16'; // Lime
-                    emoji = '🌾';
-                } else if (agent.current_action === 'gather_materials') {
-                    color = '#78350f'; // Brown
-                    emoji = '⛏️';
-                } else if (agent.current_action === 'rest') {
-                    color = '#64748b'; // Gray
-                    emoji = '💤';
-                } else if (agent.current_action === 'socialize') {
-                    color = '#06b6d4'; // Cyan
-                    emoji = '💬';
-                } else if (!agent.alive) {
-                    color = '#64748b'; // Gray for dead
-                    emoji = '💀';
-                }
-
-                // Draw agent dot - LARGER and MORE VISIBLE!
-
-                // Outer glow/shadow for contrast against any terrain
-                ctx.beginPath();
-                ctx.arc(x, y, 9, 0, Math.PI * 2);
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
-                ctx.fill();
-
-                // White outline for maximum visibility
-                ctx.beginPath();
-                ctx.arc(x, y, 7, 0, Math.PI * 2);
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-                ctx.lineWidth = 2;
-                ctx.stroke();
-
-                // Main agent dot - BIGGER and BRIGHTER
-                ctx.beginPath();
-                ctx.arc(x, y, 6, 0, Math.PI * 2);
-                ctx.fillStyle = color;
-                ctx.fill();
-
-                // Inner highlight for 3D effect
-                ctx.beginPath();
-                ctx.arc(x - 1.5, y - 1.5, 2, 0, Math.PI * 2);
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
-                ctx.fill();
-
-                // Draw pulsing glow for active agents
-                if (agent.alive && agent.current_action && agent.current_action !== 'idle') {
-                    const pulseSize = 12 + Math.sin(Date.now() / 200) * 2;
-                    ctx.beginPath();
-                    ctx.arc(x, y, pulseSize, 0, Math.PI * 2);
-                    ctx.strokeStyle = color + '66';
-                    ctx.lineWidth = 3;
-                    ctx.stroke();
-                }
-
-                // ===== ACTION EMOJI ABOVE AGENT - MORE VISIBLE =====
-                if (emoji && agent.alive) {
-                    // Dark background for emoji visibility
-                    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-                    ctx.beginPath();
-                    ctx.arc(x, y - 15, 11, 0, Math.PI * 2);
-                    ctx.fill();
-
-                    // Emoji
-                    ctx.font = '18px Arial';
-                    ctx.fillText(emoji, x - 9, y - 8);
-                }
-
-                // ===== ENHANCED PARTICLES for active agents =====
-                // Spawn particles based on action
-                if (agent.alive && Math.random() < 0.2) { // 20% chance each frame
-                    if (agent.current_action === 'build') {
-                        spawnParticles(x, y, 2, '#f59e0b');
-                        if (Math.random() < 0.1) spawnParticles(x, y, 1, null, '✨', 'text');
-                    } else if (agent.current_action === 'experiment') {
-                        spawnParticles(x, y, 2, '#10b981');
-                        if (Math.random() < 0.1) spawnParticles(x, y, 1, null, '💡', 'text');
-                    } else if (agent.current_action === 'gather_food') {
-                        spawnParticles(x, y, 1, '#84cc16');
-                    } else if (agent.current_action === 'socialize') {
-                        if (Math.random() < 0.1) spawnParticles(x, y, 1, null, '❤️', 'text');
-                    } else if (agent.current_action === 'teach') {
-                        spawnParticles(x, y, 1, '#a78bfa');
-                        if (Math.random() < 0.1) spawnParticles(x, y, 1, null, '📖', 'text');
-                    }
-                }
-            });
-
-            // ===== UPDATE AND RENDER PARTICLES =====
-            updateParticles();
-            renderParticles(ctx);
-
-            // Count actions for metrics
+        function updatePanels(data) {
             const actionCounts = {};
             const aliveAgents = data.agents.filter(a => a.alive);
             aliveAgents.forEach(agent => {
@@ -7136,7 +6507,6 @@
                 actionCounts[action] = (actionCounts[action] || 0) + 1;
             });
 
-            // Update ALL live data
             updateLiveMetrics(data, actionCounts);
             updateCanvasOverlay(data);
             updateDemographics(data);
@@ -7145,9 +6515,9 @@
             updateActionsBreakdown(actionCounts, aliveAgents.length);
             updateRecentDiscoveries(data);
             updateMilestones(data);
-            updatePopulationGraph(data);  // NEW: Population timeline graph
-            updateWeatherDisplay(data);  // NEW: Weather system display
-            updateDisasterDisplay(data);  // NEW: Natural disaster alerts
+            updatePopulationGraph(data);  // Population timeline graph
+            updateWeatherDisplay(data);  // Weather system display
+            updateDisasterDisplay(data);  // Natural disaster alerts
         }
 
         function updateLiveMetrics(data, actionCounts) {
