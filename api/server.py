@@ -25,6 +25,7 @@ import uvicorn
 
 import sys
 import os
+from pathlib import Path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Setup logging
@@ -118,6 +119,20 @@ active_websockets: List[WebSocket] = []
 _stats_cache = {"data": None, "tick": -1}
 _world_state_cache = {"data": None, "tick": -1}
 
+# Files the server hands out, found from this file rather than the current
+# directory, so the server works wherever it is started from
+WEB_DIR = Path(__file__).resolve().parent.parent / "web"
+
+# How often viewers get a new snapshot, and how long one slow viewer may hold
+# up the others before it is dropped (it reconnects by itself)
+BROADCAST_INTERVAL = float(os.getenv("BROADCAST_INTERVAL", "2.0"))
+SEND_TIMEOUT = 5.0
+
+
+def _drop_websocket(ws: WebSocket) -> None:
+    if ws in active_websockets:
+        active_websockets.remove(ws)
+
 
 @app.on_event("startup")
 async def startup_event():
@@ -156,33 +171,33 @@ async def shutdown_event():
 
 
 async def broadcast_updates():
-    """Broadcast state updates to all connected WebSockets"""
+    """Send every viewer a snapshot every BROADCAST_INTERVAL seconds.
+
+    The snapshot is serialized once for everyone. A viewer whose socket fails
+    or is too slow is dropped (the dashboard reconnects). A failure while
+    building the snapshot is logged with its traceback and the loop carries
+    on: before, any error other than a disconnect ended this task for good
+    and every open dashboard silently stopped updating.
+    """
     while True:
-        if simulation and active_websockets:
-            # Get state snapshot
-            state = simulation.get_state_snapshot()
-
-            # Broadcast to all connections
-            disconnected = []
-            for ws in active_websockets:
-                try:
-                    # Wrap state in standardized message format
-                    message = {
-                        "type": "simulation_update",
-                        "data": state,
-                        "tick": simulation.world.time.current_tick if simulation else 0
-                    }
-                    await ws.send_json(message)
-                except (ConnectionError, WebSocketDisconnect) as e:
-                    print(f"WebSocket disconnected: {e}")
-                    disconnected.append(ws)
-
-            # Remove disconnected websockets
-            for ws in disconnected:
-                active_websockets.remove(ws)
-
-        # Update every 2 seconds
-        await asyncio.sleep(2.0)
+        try:
+            if simulation and active_websockets:
+                message = json.dumps({
+                    "type": "simulation_update",
+                    "data": simulation.get_state_snapshot(),
+                    "tick": simulation.world.time.current_tick,
+                })
+                for ws in list(active_websockets):
+                    try:
+                        await asyncio.wait_for(ws.send_text(message), timeout=SEND_TIMEOUT)
+                    except Exception as e:  # closed, broken or too slow: drop this viewer
+                        logger.info("Dropping a viewer (%s: %s)", type(e).__name__, e)
+                        _drop_websocket(ws)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Could not broadcast a snapshot; trying again next time")
+        await asyncio.sleep(BROADCAST_INTERVAL)
 
 
 # REST Endpoints
@@ -1466,26 +1481,29 @@ async def websocket_endpoint(websocket: WebSocket):
         while True:
             # Wait for client messages (ping/pong)
             try:
-                data = await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
+                await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
             except asyncio.TimeoutError:
                 # Send ping
                 await websocket.send_json({"type": "ping"})
 
     except WebSocketDisconnect:
-        active_websockets.remove(websocket)
+        pass
+    finally:
+        # The broadcast loop may already have dropped it
+        _drop_websocket(websocket)
 
 
 # Serve static files (web interface)
 @app.get("/app")
 async def serve_app():
     """Serve enhanced web interface"""
-    return FileResponse("web/enhanced.html")
+    return FileResponse(WEB_DIR / "enhanced.html")
 
 
 @app.get("/app/town_map.js")
 async def serve_town_map():
     """The map renderer used by /app (web/town_map.js)"""
-    return FileResponse("web/town_map.js", media_type="application/javascript")
+    return FileResponse(WEB_DIR / "town_map.js", media_type="application/javascript")
 
 
 @app.get("/map")
@@ -1500,24 +1518,24 @@ async def get_map():
 @app.get("/materials_example")
 async def serve_materials_example():
     """Serve materials system example"""
-    return FileResponse("web/materials_example.html")
+    return FileResponse(WEB_DIR / "materials_example.html")
 
 
 @app.get("/inventory")
 async def serve_player_inventory():
     """Serve player inventory & crafting interface"""
-    return FileResponse("web/player_inventory.html")
+    return FileResponse(WEB_DIR / "player_inventory.html")
 
 @app.get("/app/classic")
 async def serve_classic_app():
     """Serve original web interface"""
-    return FileResponse("web/index.html")
+    return FileResponse(WEB_DIR / "index.html")
 
 
 @app.get("/game")
 async def serve_game_interface():
     """Redirect /game to /app for consistency"""
-    return FileResponse("web/enhanced.html")
+    return FileResponse(WEB_DIR / "enhanced.html")
 
 
 def main():

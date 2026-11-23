@@ -2824,7 +2824,12 @@
         let previousData = {};
 
         function connectWebSocket() {
-            ws = new WebSocket('ws://localhost:8000/ws');
+            // Same host and port the page came from (wss behind https); a page
+            // opened from disk falls back to the default local server
+            const wsUrl = location.host
+                ? `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws`
+                : 'ws://localhost:8000/ws';
+            ws = new WebSocket(wsUrl);
 
             ws.onmessage = (event) => {
                 const raw = JSON.parse(event.data);
