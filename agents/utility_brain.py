@@ -16,6 +16,8 @@ from) is a candidate. Each gets a utility from the agent's own state:
   a child, whether the agent wants one (its life profile) and whether its
   partner has said it does; for looking after a child, how much the child
   needs it and whether it's the agent's own
+- faith: an agent that holds a faith feels it fading the longer it goes
+  without practising it (unpractised for long enough, it lapses)
 - danger: actions that can get it killed weigh less for careful or hurt agents
 - law: what its government has banned weighs less, the more conscientious
   and agreeable it is
@@ -206,6 +208,8 @@ CARE_WEIGHT = 1.5        # a child who needs looking after
 OTHERS_CHILD_BOND = 0.3  # someone else's child pulls less than your own
 WALKING_PULL = 1.0       # an agent who walks a lot is drawn to pave and dig wells
 GATHERING_PULL = 1.0     # a gathering one has heard of, by a host one likes
+FAITH_PULL = 0.6         # one's own faith, felt more as it fades unpractised
+FAITH_ACTIONS = {"pray", "worship", "perform_ritual"}
 WARNING_PULL = 2.5       # a warned disaster that will reach where one stands: take shelter
 SEVERITY = {"minor": 0.25, "moderate": 0.5, "major": 0.75, "catastrophic": 1.0}
 NIGHT_REST_PULL = 2.5
@@ -305,6 +309,8 @@ class UtilityBrain:
         disaster is coming its way feels the pull of shelter."""
         if action == "hide":
             return self._warning_pull(agent)
+        if action in FAITH_ACTIONS:
+            return self._faith_pull(agent)
         if action == "attend_event":
             # A gathering it has heard of: more so if it likes the host
             gatherings = getattr(self.sim, "gatherings", None)
@@ -324,6 +330,20 @@ class UtilityBrain:
             return 0.0
         burden = works.walking_burden(agent.id, self.sim.world.time.current_tick)
         return WALKING_PULL * burden * (1.0 if action == "build_road" else 0.5)
+
+    def _faith_pull(self, agent) -> float:
+        """An agent's own faith, felt more the longer since it last practised
+        it: nothing just after, FAITH_PULL by the time it would lapse. (Holding a
+        faith used to weigh nothing at all: followers practised about once in
+        400 ticks and lapsed.)"""
+        religion = getattr(self.sim, "religion", None)
+        if religion is None or religion.get_agent_religion(agent.id) is None:
+            return 0.0
+        last = getattr(religion, "last_practice", {}).get(agent.id)
+        if last is None:
+            return 0.0
+        since = self.sim.world.time.current_tick - last
+        return FAITH_PULL * min(1.0, max(0, since) / religion.LAPSE_TICKS)
 
     def _warning_pull(self, agent) -> float:
         """The worst warned disaster that will reach where the agent is: more

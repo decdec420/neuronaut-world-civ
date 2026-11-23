@@ -137,6 +137,27 @@ def test_religion_found_join_ritual_temple_convert_lapse():
     assert a.id in lapsed and rel.get_agent_religion(a.id) is None
 
 
+def test_a_faith_left_unpractised_is_felt_and_seen():
+    """Holding a faith weighs on the agent more as it fades (the rule brain),
+    and the agent is told when it last practised and that faiths lapse (the
+    AI brain's prompt)."""
+    from agents.utility_brain import UtilityBrain, FAITH_PULL
+    sim, roles = make_world()
+    believer, other = roles["actor"], roles["neighbour"]
+    brain = UtilityBrain(sim, ["pray", "worship"])
+    assert brain._faith_pull(believer) == 0.0               # no faith, nothing to fade
+    assert act(sim, believer, "worship").metadata.get("founded")
+    assert brain._faith_pull(believer) == 0.0               # just practised
+    sim.world.time.current_tick += sim.religion.LAPSE_TICKS // 2
+    assert abs(brain._faith_pull(believer) - FAITH_PULL / 2) < 1e-9
+    assert brain._faith_pull(other) == 0.0
+    told = sim._perception_builder._add_social_info(believer, {})["community"]["religions"]
+    assert any("you are one" in r and "hours ago" in r and "lapses" in r for r in told)
+    assert not any("you are one" in r for r in sim._perception_builder._add_social_info(other, {})["community"]["religions"])
+    act(sim, believer, "pray")
+    assert brain._faith_pull(believer) == 0.0
+
+
 def test_inventions_are_recorded_once_and_spread_by_teaching():
     sim, roles = make_world()
     a, b = roles["actor"], roles["neighbour"]

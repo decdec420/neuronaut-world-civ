@@ -137,8 +137,17 @@ class PerceptionBuilder:
                        for g in governance.governments.values()]
         laws = [f"{law.name}: {law.description} ({'in force' if law.active else 'repealed'})"
                 for law in governance.laws.values()]
+        def mine(r):
+            """For its own faith: when it last practised, and that faiths fade."""
+            if agent.id not in r.followers:
+                return ''
+            last = getattr(sim.religion, 'last_practice', {}).get(agent.id)
+            hours = (sim.world.time.current_tick - last) // 6 if last is not None else None
+            when = f"you last prayed, worshipped or held a ritual {hours} hours ago" if hours is not None else ''
+            days = sim.religion.LAPSE_TICKS // 144
+            return f", you are one; {when}{'; ' if when else ''}a faith unpractised for {days} days lapses"
         religions = [f"{r.name} (founded by {r.founder_name or name_of(r.founder_id)}, "
-                     f"{len(r.followers)} followers{', you are one' if agent.id in r.followers else ''})"
+                     f"{len(r.followers)} followers{mine(r)})"
                      for r in sim.religion.religions.values()]
         perceptions['community'] = {'governments': governments, 'laws': laws, 'religions': religions}
         return perceptions
