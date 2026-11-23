@@ -120,7 +120,7 @@ class SystemFactory:
         systems['consequence_engine'] = ConsequenceEngine()
         systems['role_emergence'] = RoleEmergence()
         systems['tech_progression'] = TechProgressionTracker()
-        systems['persistence'] = PersistenceEngine()
+        systems['persistence'] = PersistenceEngine(save_directory=str(load_config().save_dir))
         systems['purposeful_evaluator'] = PurposefulActionEvaluator()
 
         # ===== CIVILIZATION PROGRESSION - Stone Age → Space Age! =====

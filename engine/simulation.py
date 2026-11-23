@@ -657,15 +657,21 @@ class SimulationEngine:
             self.death_wipe_detected = True
             self._log_extinction_event(current_tick)
 
-        # Auto-save every AUTOSAVE_EVERY ticks (0 = off)
+        # Autosave every AUTOSAVE_EVERY ticks (0 = off): a full save that can
+        # be loaded from the dashboard, keeping the newest AUTOSAVE_KEEP. (It
+        # used to write a summary that couldn't be loaded.)
         elif alive_count > 0 and self.config.autosave_every > 0 \
                 and current_tick - self.last_auto_save_tick >= self.config.autosave_every:
+            from engine.save_manager import SaveManager
+            self.last_auto_save_tick = current_tick
             try:
-                snapshot = self.persistence.save_simulation_state(self)
-                self.last_auto_save_tick = current_tick
-                print(f"\n💾 Auto-save: {snapshot.snapshot_id} (Day {self.world.time.day}, {alive_count} alive)")
-            except Exception as e:
-                print(f"❌ Auto-save failed: {e}")
+                manager = SaveManager(self.config.save_dir)
+                manager.auto_save(self.persistence.create_snapshot(), simulation=self,
+                                  keep=self.config.autosave_keep)
+                logger.info("Autosaved (day %d, %d alive)", self.world.time.day, alive_count)
+            except OSError:
+                # a full disk or an unwritable folder: say so, and keep running
+                logger.exception("Autosave failed")
 
         # Warn when the population falls below 10, once per new low (this
         # printed on every tick while it stayed low)

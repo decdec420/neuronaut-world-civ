@@ -613,19 +613,23 @@ async def list_saves():
     return {"saves": save_manager.list_saves()}
 
 
+class SaveRequest(BaseModel):
+    name: Optional[constr(strip_whitespace=True, min_length=1, max_length=80)] = None
+
+
 @app.post("/saves")
-async def create_save(request: dict):
+async def create_save(save_request: SaveRequest):
     """Create a new save"""
     if not simulation:
         raise HTTPException(status_code=503, detail="Simulation not running")
 
-    save_name = request.get("name", f"World {len(save_manager.list_saves()) + 1}")
+    save_name = save_request.name or f"World {len(save_manager.list_saves()) + 1}"
 
     # Get current world state
     world_data = simulation.persistence.create_snapshot()
 
     success = save_manager.create_save(save_name, world_data, simulation=simulation)
-    return {"success": success, "message": f"Saved as '{save_name}'"}
+    return {"success": success, "id": save_manager.last_save_id, "message": f"Saved as '{save_name}'"}
 
 
 @app.post("/saves/{save_id}/load")

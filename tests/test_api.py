@@ -151,3 +151,16 @@ def test_settings_come_from_the_environment(monkeypatch):
         assert cfg.save_dir == config.REPO_DIR / "my_saves"  # not the working directory
     finally:
         config.reset_config()
+
+
+# ------------------------------------------------------------------- saves
+
+def test_saving_through_the_api(client, tmp_path, monkeypatch):
+    from engine.save_manager import SaveManager
+    monkeypatch.setattr(server, "save_manager", SaveManager(tmp_path))
+    control = {"X-Neuronaut-Control": "1"}
+    assert client.post("/saves", json={"name": "x" * 81}, headers=control).status_code == 422
+    r = client.post("/saves", json={"name": "Harvest festival"}, headers=control)
+    assert r.status_code == 200 and r.json()["id"]
+    listed = client.get("/saves").json()["saves"]
+    assert [s["name"] for s in listed] == ["Harvest festival"] and listed[0]["state_filename"]

@@ -7903,75 +7903,9 @@
             filterEvents(currentEventCategory);
         }
 
-        // AUTO-SAVE EVERY 5 MINUTES
-        let autoSaveEnabled = true;
-        let lastAutoSaveTime = Date.now();
-
-        async function performAutoSave() {
-            if (!autoSaveEnabled) return;
-
-            try {
-                const response = await fetch('/world');
-                const world = await response.json();
-
-                // Only auto-save if there are agents alive
-                if (world.world && world.world.alive_agents > 0) {
-                    const timestamp = new Date().toLocaleTimeString();
-                    const saveName = `AutoSave - Day ${world.world.current_day} ${timestamp}`;
-
-                    const saveResponse = await controlFetch('/saves', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ name: saveName })
-                    });
-
-                    const result = await saveResponse.json();
-                    if (result.success) {
-                        console.log(`✅ Auto-saved: ${saveName}`);
-                        lastAutoSaveTime = Date.now();
-
-                        // Show subtle notification
-                        showAutoSaveNotification();
-                    }
-                }
-            } catch (error) {
-                console.error('Auto-save failed:', error);
-            }
-        }
-
-        function showAutoSaveNotification() {
-            // Create notification element
-            const notification = document.createElement('div');
-            notification.style.cssText = `
-                position: fixed;
-                top: 80px;
-                right: 20px;
-                background: linear-gradient(135deg, #10b981, #059669);
-                border: 2px solid #047857;
-                color: white;
-                padding: 12px 20px;
-                border-radius: 8px;
-                font-weight: 600;
-                font-size: 13px;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-                z-index: 10000;
-                opacity: 0;
-                transition: opacity 0.3s;
-            `;
-            notification.textContent = '💾 Auto-saved!';
-            document.body.appendChild(notification);
-
-            // Fade in
-            setTimeout(() => notification.style.opacity = '1', 10);
-
-            // Fade out and remove
-            setTimeout(() => notification.style.opacity = '0', 2000);
-            setTimeout(() => document.body.removeChild(notification), 2300);
-        }
-
-        // Auto-save every 5 minutes (300000ms)
-        setInterval(performAutoSave, 300000);
-        console.log('✅ Auto-save enabled - saving every 5 minutes');
+        // Autosaves are the server's job (AUTOSAVE_EVERY ticks, newest
+        // AUTOSAVE_KEEP kept; they show in Save/Load). Each open tab used to
+        // save the whole world every 5 minutes, never pruned.
 
 
         // ===== CHRONICLE & SOCIETY (GET /chronicle, GET /society) =====
