@@ -135,8 +135,10 @@ already claimed and failed hunts: legitimate outcomes.
    agents build enough is now an honest question about what building gives them.
 5. Disasters now come at their written rates (one every ~2-5 weeks, more in
    rain and spring), but each is large: radius 40-60 tiles on a 100x100 map
-   for major ones, death chances up to 0.9. A balance call;
-   measure on long runs (`--long`) before changing it.
+   for major ones, death chances up to 0.9. Over 6000 ticks (42 days) x 2
+   seeds the fix took disasters 29/29 -> 3/7, disaster deaths 3/6 -> 0/0 and
+   alive at the end 8/18 -> 16/21; a single major one can still kill several.
+   A balance call; measure on long runs (`--long`) before changing it.
 6. The design PDFs in `docs/references/` and `.github/copilot-instructions.md`
    predate most of this; the latter links files that no longer exist.
 
