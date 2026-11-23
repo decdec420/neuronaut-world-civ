@@ -15,7 +15,7 @@ Conflict types:
 - Ideological conflicts
 """
 
-import uuid
+from engine.ids import new_uuid
 import random
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
@@ -256,7 +256,7 @@ class WarfareManager:
         reason: ConflictReason
     ) -> Conflict:
         """Start a 1v1 duel"""
-        conflict_id = str(uuid.uuid4())
+        conflict_id = str(new_uuid())
 
         conflict = Conflict(
             id=conflict_id,
@@ -552,12 +552,12 @@ class WarfareManager:
 
     def create_weapon(self, name: str, damage: float, skill_req: float = 0.0) -> str:
         """Create a new weapon type"""
-        weapon_id = str(uuid.uuid4())
+        weapon_id = str(new_uuid())
         self.weapons[weapon_id] = Weapon(name, damage, skill_req)
         return weapon_id
 
     def create_armor(self, name: str, defense: float, mobility_cost: float = 0.0) -> str:
         """Create a new armor type"""
-        armor_id = str(uuid.uuid4())
+        armor_id = str(new_uuid())
         self.armor[armor_id] = Armor(name, defense, mobility_cost)
         return armor_id

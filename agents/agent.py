@@ -9,7 +9,7 @@ Each agent is an independent entity with:
 - Social relationships
 """
 
-import uuid
+from engine.ids import new_uuid
 import random
 import logging
 from dataclasses import dataclass, field
@@ -448,7 +448,7 @@ class Agent:
         is_player: bool = False
     ):
         # Identity
-        self.id = agent_id or str(uuid.uuid4())
+        self.id = agent_id or str(new_uuid())
         self.gender = gender or random.choice(list(Gender))  # Set gender FIRST
         self.name = name or self._generate_name()  # THEN generate name based on gender
         Agent._used_names.add(self.name)

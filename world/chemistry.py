@@ -16,7 +16,7 @@ Actual chemical reactions: 2H2 + O2 → 2H2O
 """
 
 import random
-import uuid
+from engine.ids import new_uuid
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
 from enum import Enum
@@ -221,7 +221,7 @@ class ChemistryEngine:
         ]
 
         for formula, name, composition, state, mass, stability, is_fuel, is_med, is_building, is_food in compounds_data:
-            compound_id = str(uuid.uuid4())
+            compound_id = str(new_uuid())
             compound = Compound(
                 id=compound_id,
                 formula=formula,
@@ -242,7 +242,7 @@ class ChemistryEngine:
 
         # COMBUSTION: CH4 + 2O2 → CO2 + 2H2O (methane burning)
         reaction = ChemicalReaction(
-            id=str(uuid.uuid4()),
+            id=str(new_uuid()),
             reaction_type=ReactionType.COMBUSTION,
             reactants={"CH4": 1, "O2": 2},
             products={"CO2": 1, "H2O": 2},
@@ -255,7 +255,7 @@ class ChemistryEngine:
 
         # IRON SMELTING: Fe2O3 + 3C → 2Fe + 3CO (actual iron smelting!)
         reaction = ChemicalReaction(
-            id=str(uuid.uuid4()),
+            id=str(new_uuid()),
             reaction_type=ReactionType.REDOX,
             reactants={"Fe2O3": 1, "C": 3},
             products={"Fe": 2, "CO2": 3},
@@ -268,7 +268,7 @@ class ChemistryEngine:
 
         # WATER FORMATION: 2H2 + O2 → 2H2O
         reaction = ChemicalReaction(
-            id=str(uuid.uuid4()),
+            id=str(new_uuid()),
             reaction_type=ReactionType.SYNTHESIS,
             reactants={"H": 4, "O": 2},  # Simplified: 2H2 + O2
             products={"H2O": 2},
@@ -281,7 +281,7 @@ class ChemistryEngine:
 
         # LIMESTONE DECOMPOSITION: CaCO3 → CaO + CO2 (making quicklime)
         reaction = ChemicalReaction(
-            id=str(uuid.uuid4()),
+            id=str(new_uuid()),
             reaction_type=ReactionType.DECOMPOSITION,
             reactants={"CaCO3": 1},
             products={"CaO": 1, "CO2": 1},
@@ -439,7 +439,7 @@ class ChemistryEngine:
             return compound
 
         # Create new compound (discovery!)
-        compound_id = str(uuid.uuid4())
+        compound_id = str(new_uuid())
 
         # Calculate properties
         molecular_mass = sum(

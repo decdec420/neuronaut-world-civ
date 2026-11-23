@@ -20,7 +20,7 @@ from typing import Dict, List, Optional, Set, Tuple
 from enum import Enum
 from datetime import datetime
 import random
-import uuid
+from engine.ids import new_uuid
 
 
 # ==============================================================================
@@ -464,7 +464,7 @@ class ExperimentationEngine:
         # Record if discovery made
         if result.success and result.discovered_material:
             discovery = Discovery(
-                id=str(uuid.uuid4()),
+                id=str(new_uuid()),
                 name=result.discovered_material.name,
                 discovered_by=agent_id,
                 discovery_date=datetime.now(),

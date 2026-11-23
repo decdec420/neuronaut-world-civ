@@ -112,6 +112,7 @@ All settings are environment variables (or a `.env` file; see `.env.example`).
 | `NEURONAUT_ADMIN_TOKEN` | none | If set, pausing, speed, saves, loading, reset, disasters and new characters need `Authorization: Bearer <token>`. The dashboard asks for it once per tab. Set it whenever `HOST` isn't local. |
 | `CORS_ORIGINS` | none | Other origins allowed to call the API, comma separated. The dashboard needs none. |
 | `NUM_AGENTS` | `12` | Agents in a new world. |
+| `WORLD_SEED` | none | The same number gives the same world every run (with the rule-based brain; a model's answers can't be replayed). Unset: a new world each time. |
 | `SAVE_DIR` | `save_states` | Where saves go (relative to the repository). |
 | `AUTOSAVE_EVERY` / `AUTOSAVE_KEEP` | `1000` / `3` | Autosave every N ticks (0 = off), keeping the newest few. Autosaves show in Save/Load. |
 | `LOG_LEVEL` | `INFO` | `DEBUG` logs every action. |

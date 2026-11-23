@@ -13,7 +13,7 @@ Agents can construct buildings that provide benefits:
 - Barracks: Military training
 """
 
-import uuid
+from engine.ids import new_uuid
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
 from enum import Enum
@@ -472,7 +472,7 @@ class BuildingManager:
         name: Optional[str] = None
     ) -> Building:
         """Create a new building"""
-        building_id = str(uuid.uuid4())
+        building_id = str(new_uuid())
 
         # Get template
         cost, benefits = BUILDING_TEMPLATES.get(

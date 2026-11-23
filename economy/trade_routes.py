@@ -18,7 +18,7 @@ Control of trade routes means power and wealth.
 """
 
 import random
-import uuid
+from engine.ids import new_uuid
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
 from enum import Enum
@@ -243,7 +243,7 @@ class TradeRoutesManager:
     ) -> TradeRoute:
         """Establish a new trade route"""
 
-        route_id = str(uuid.uuid4())
+        route_id = str(new_uuid())
 
         # Calculate distance
         distance = ((destination[0] - origin[0])**2 + (destination[1] - origin[1])**2)**0.5
@@ -317,7 +317,7 @@ class TradeRoutesManager:
         if route.status not in [RouteStatus.ACTIVE, RouteStatus.MONOPOLIZED]:
             return None  # Route unusable
 
-        caravan_id = str(uuid.uuid4())
+        caravan_id = str(new_uuid())
 
         # Calculate expected travel time
         travel_time = int(route.distance / 5)  # Assume 5 units per tick
@@ -445,7 +445,7 @@ class TradeRoutesManager:
     ) -> Market:
         """Create a regional market"""
 
-        market_id = str(uuid.uuid4())
+        market_id = str(new_uuid())
 
         # Initialize with base prices
         base_prices = {
@@ -547,7 +547,7 @@ class TradeRoutesManager:
     ) -> MerchantGuild:
         """Found a merchant guild"""
 
-        guild_id = str(uuid.uuid4())
+        guild_id = str(new_uuid())
 
         guild = MerchantGuild(
             id=guild_id,
@@ -588,7 +588,7 @@ class TradeRoutesManager:
     ) -> PirateGang:
         """Form a pirate/bandit gang"""
 
-        gang_id = str(uuid.uuid4())
+        gang_id = str(new_uuid())
 
         gang = PirateGang(
             id=gang_id,

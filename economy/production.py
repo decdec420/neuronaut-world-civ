@@ -10,7 +10,7 @@ Agents can:
 Production is agent-driven, not pre-scripted!
 """
 
-import uuid
+from engine.ids import new_uuid
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
 from datetime import datetime
@@ -237,7 +237,7 @@ class ProductionManager:
 
         This happens when agents try combining items creatively
         """
-        recipe_id = str(uuid.uuid4())
+        recipe_id = str(new_uuid())
 
         recipe = Recipe(
             id=recipe_id,

@@ -181,8 +181,8 @@ class StrategicPlanner:
             return None
 
         # Create goal
-        import uuid
-        goal_id = str(uuid.uuid4())
+        from engine.ids import new_uuid
+        goal_id = str(new_uuid())
 
         goal = Goal(
             id=goal_id,

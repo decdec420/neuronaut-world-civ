@@ -25,15 +25,11 @@ It also reports what the agents created (governments, religions, couples,
 births, trades, distinct actions chosen...). Those are measurements only: zero
 is a valid result and they never affect PASS/FAIL.
 
-The same seed should give the same numbers every run, so a before/after
-comparison measures the change and not luck. Parts of the sim walk sets
-and sorted lists of ids, so two things the world's dice don't cover would
-otherwise change the order things happen in:
-  - Python's hash seed: the script pins PYTHONHASHSEED (0 unless you set
-    one) by restarting itself;
-  - ids from uuid.uuid4(), which uses the OS's randomness: during a check
-    they come from a generator seeded with the run's seed (separate from
-    the world's dice, so the world rolls exactly the same dice).
+The same seed gives the same numbers every run, so a before/after
+comparison measures the change and not luck. The world's dice (and the ids
+it makes, engine/ids.py) are seeded from the run's seed; the one other thing
+that could change the order things happen in is Python's hash seed, which
+the script pins (PYTHONHASHSEED, 0 unless you set one) by restarting itself.
 """
 import argparse
 import asyncio
@@ -136,27 +132,11 @@ def news_metrics(sim) -> dict:
     }
 
 
-_IDS = random.Random()
-
-
-def _seed_ids(seed: int) -> None:
-    """uuid4 ids from a generator seeded per run (see the docstring). One
-    patched function, reseeded each run, so a module that kept a reference
-    to uuid4 gets the same ids as one that looks it up each time."""
-    import uuid
-    if getattr(uuid.uuid4, "__name__", "") != "_seeded_uuid4":
-        def _seeded_uuid4():
-            return uuid.UUID(int=_IDS.getrandbits(128), version=4)
-        uuid.uuid4 = _seeded_uuid4
-    _IDS.seed(f"ids-{seed}")
-
-
 def run_seed(ticks: int, seed: int, use_llm: bool) -> dict:
     os.environ["USE_LLM_DECISIONS"] = "true" if use_llm else "false"
     os.environ.setdefault("ENABLE_SEMANTIC_MEMORY", "false")
     os.environ.setdefault("AUTOSAVE_EVERY", "0")  # a check run leaves no save files behind
     random.seed(seed)
-    _seed_ids(seed)
 
     with contextlib.redirect_stdout(io.StringIO()):
         from engine.simulation import SimulationEngine

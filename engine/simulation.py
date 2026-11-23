@@ -160,6 +160,11 @@ class SimulationEngine:
         All system creation delegated to SystemFactory.
         All initialization logic delegated to specialized managers.
         """
+        # Ids come from the world's dice (engine/ids.py), seeded before any
+        # system makes one, so the same seed gives the same world
+        from engine import ids
+        ids.seed(random.getrandbits(64))
+
         # ===== SYSTEM INITIALIZATION (Delegated to SystemFactory) =====
         systems = SystemFactory.create_simulation_systems(world_width, world_height)
 

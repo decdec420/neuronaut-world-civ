@@ -12,7 +12,7 @@ Philosophy: Fun is a psychological NEED for happiness and culture.
 """
 
 import random
-import uuid
+from engine.ids import new_uuid
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
 from datetime import datetime
@@ -158,7 +158,7 @@ class FunSystem:
         
         Nearby agents will be invited to join.
         """
-        celebration_id = str(uuid.uuid4())
+        celebration_id = str(new_uuid())
         
         # Generate celebration name
         celebration_names = {
@@ -231,7 +231,7 @@ class FunSystem:
         
         Simple: Each player rolls, highest wins all the stakes.
         """
-        game_id = str(uuid.uuid4())
+        game_id = str(new_uuid())
         
         game = Game(
             id=game_id,
@@ -310,7 +310,7 @@ class FunSystem:
         distance: float = 100.0
     ) -> Game:
         """Start a racing competition"""
-        game_id = str(uuid.uuid4())
+        game_id = str(new_uuid())
         
         game = Game(
             id=game_id,
@@ -369,7 +369,7 @@ class FunSystem:
         
         Quality depends on creativity + relevant skill.
         """
-        art_id = str(uuid.uuid4())
+        art_id = str(new_uuid())
         
         # Generate title
         titles = {

@@ -181,6 +181,14 @@ BROADCAST_INTERVAL = float(os.getenv("BROADCAST_INTERVAL", "2.0"))
 SEND_TIMEOUT = 5.0
 
 
+def _seed_world() -> None:
+    """Seed the world's dice from WORLD_SEED, if set."""
+    import random
+    seed = load_config().world_seed
+    if seed is not None:
+        random.seed(seed)
+
+
 def _drop_websocket(ws: WebSocket) -> None:
     if ws in active_websockets:
         active_websockets.remove(ws)
@@ -192,7 +200,8 @@ async def startup_event():
 
     print("🌍 Starting Neuronaut World...")
 
-    # Create simulation
+    # Create simulation (WORLD_SEED, if set, makes it the same world every time)
+    _seed_world()
     simulation = SimulationEngine(world_width=100, world_height=100)
 
     # NUM_AGENTS agents (default 12), half of each sex
@@ -691,6 +700,7 @@ async def reset_world(request: Request):
         simulation.stop()
 
     # Create new simulation
+    _seed_world()
     simulation = SimulationEngine(world_width=100, world_height=100)
     simulation.initialize_world(num_agents=load_config().num_agents)
 

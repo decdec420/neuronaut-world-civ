@@ -52,7 +52,8 @@ def save_full_state(simulation, path: str) -> None:
     names in use. Gzipped pickle; only load files this program wrote."""
     import random
     from agents.agent import Agent
-    state = {"version": FULL_STATE_VERSION, "random": random.getstate(),
+    from engine import ids
+    state = {"version": FULL_STATE_VERSION, "random": random.getstate(), "ids": ids.get_state(),
              "used_names": set(Agent._used_names), "simulation": simulation}
     tmp = f"{path}.tmp"
     with gzip.open(tmp, "wb") as f:
@@ -71,6 +72,11 @@ def load_full_state(path: str):
     if state.get("version") != FULL_STATE_VERSION:
         raise ValueError(f"Unsupported save version {state.get('version')}")
     random.setstate(state["random"])
+    from engine import ids
+    if "ids" in state:
+        ids.set_state(state["ids"])
+    else:   # saved before ids came from the world's dice
+        ids.seed(random.getrandbits(64))
     Agent.reset_names(state["used_names"])
     simulation = state["simulation"]
     simulation.ensure_newer_systems()

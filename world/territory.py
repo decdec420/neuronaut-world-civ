@@ -15,7 +15,7 @@ Territory is the foundation of civilization and conflict.
 """
 
 import random
-import uuid
+from engine.ids import new_uuid
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
 from datetime import datetime
@@ -135,7 +135,7 @@ class TerritoryManager:
             # Already claimed by another agent
             return None
 
-        territory_id = str(uuid.uuid4())
+        territory_id = str(new_uuid())
 
         # Generate name
         name = self._generate_territory_name(owner_name, territory_type, location)
@@ -214,7 +214,7 @@ class TerritoryManager:
 
             if dist < max_dist:
                 # Adjacent - create border
-                border_id = str(uuid.uuid4())
+                border_id = str(new_uuid())
                 border = Border(
                     id=border_id,
                     territory1_id=territory_id,
@@ -252,7 +252,7 @@ class TerritoryManager:
         territory.total_trespasses += 1
 
         # Record event
-        event_id = str(uuid.uuid4())
+        event_id = str(new_uuid())
         event = TrespassEvent(
             id=event_id,
             trespasser_id=agent_id,
@@ -343,7 +343,7 @@ class TerritoryManager:
 
         if not border:
             # Create new border
-            border_id = str(uuid.uuid4())
+            border_id = str(new_uuid())
             border = Border(
                 id=border_id,
                 territory1_id=territory1_id,

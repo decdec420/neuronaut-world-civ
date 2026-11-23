@@ -17,7 +17,7 @@ Economic shocks test civilization resilience.
 """
 
 import random
-import uuid
+from engine.ids import new_uuid
 from collections import deque
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Deque
@@ -199,7 +199,7 @@ class EconomicCrisesManager:
             if crisis.crisis_type == CrisisType.INFLATION:
                 return  # Already in one
 
-        crisis_id = str(uuid.uuid4())
+        crisis_id = str(new_uuid())
         crisis = Crisis(
             id=crisis_id,
             crisis_type=CrisisType.INFLATION,
@@ -215,7 +215,7 @@ class EconomicCrisesManager:
     def _trigger_hyperinflation(self):
         """Trigger catastrophic hyperinflation"""
 
-        crisis_id = str(uuid.uuid4())
+        crisis_id = str(new_uuid())
         crisis = Crisis(
             id=crisis_id,
             crisis_type=CrisisType.HYPERINFLATION,
@@ -232,7 +232,7 @@ class EconomicCrisesManager:
     def _trigger_deflation_crisis(self):
         """Trigger deflation crisis"""
 
-        crisis_id = str(uuid.uuid4())
+        crisis_id = str(new_uuid())
         crisis = Crisis(
             id=crisis_id,
             crisis_type=CrisisType.DEFLATION,
@@ -255,7 +255,7 @@ class EconomicCrisesManager:
     ) -> AssetBubble:
         """Create a new speculative bubble"""
 
-        bubble_id = str(uuid.uuid4())
+        bubble_id = str(new_uuid())
 
         bubble = AssetBubble(
             id=bubble_id,
@@ -288,7 +288,7 @@ class EconomicCrisesManager:
         if bubble.burst:
             return None  # Can't invest in burst bubble
 
-        investment_id = str(uuid.uuid4())
+        investment_id = str(new_uuid())
 
         investment = SpeculativeInvestment(
             id=investment_id,
@@ -409,7 +409,7 @@ class EconomicCrisesManager:
         elif wealth_lost > 1000:
             severity = CrisisSeverity.MODERATE
 
-        crisis_id = str(uuid.uuid4())
+        crisis_id = str(new_uuid())
         crisis = Crisis(
             id=crisis_id,
             crisis_type=CrisisType.BUBBLE_BURST,
@@ -434,7 +434,7 @@ class EconomicCrisesManager:
     ) -> Crisis:
         """Trigger a general market crash"""
 
-        crisis_id = str(uuid.uuid4())
+        crisis_id = str(new_uuid())
 
         # Calculate impact
         severity_multipliers = {
@@ -473,7 +473,7 @@ class EconomicCrisesManager:
     ) -> Crisis:
         """Trigger a bank run panic"""
 
-        crisis_id = str(uuid.uuid4())
+        crisis_id = str(new_uuid())
 
         crisis = Crisis(
             id=crisis_id,

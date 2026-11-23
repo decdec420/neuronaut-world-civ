@@ -11,7 +11,7 @@ Instead of fixed tech trees, agents:
 Agents decide WHAT to build, WHEN to build it, and HOW based on their psychology and needs.
 """
 
-import uuid
+from engine.ids import new_uuid
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
 from datetime import datetime
@@ -164,7 +164,7 @@ class InnovationManager:
         - Solving problems creatively
         """
         # Generate innovation based on context
-        innovation_id = str(uuid.uuid4())
+        innovation_id = str(new_uuid())
 
         # Let the agent NAME their discovery
         name = self._generate_innovation_name(agent_name, discovery_type, context)
@@ -232,7 +232,7 @@ class InnovationManager:
 
         They estimate what materials they need and what it should do
         """
-        concept_id = str(uuid.uuid4())
+        concept_id = str(new_uuid())
 
         # Agent makes educated guesses about materials needed
         import random

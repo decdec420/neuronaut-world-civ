@@ -15,7 +15,7 @@ Provides meaning, social cohesion, moral frameworks, and cultural identity.
 """
 
 import random
-import uuid
+from engine.ids import new_uuid
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
 from datetime import datetime
@@ -190,7 +190,7 @@ class ReligionManager:
     ) -> Deity:
         """Create a new deity/spirit"""
 
-        deity_id = str(uuid.uuid4())
+        deity_id = str(new_uuid())
 
         # Deity attributes based on domain
         attributes = self._get_deity_attributes(domain)
@@ -239,7 +239,7 @@ class ReligionManager:
     ) -> Religion:
         """Agent founds a new religion"""
 
-        religion_id = str(uuid.uuid4())
+        religion_id = str(new_uuid())
 
         # Generate religion name
         name = self._generate_religion_name(religion_type, founder_name)
@@ -348,7 +348,7 @@ class ReligionManager:
         if religion_id not in self.religions:
             return None
 
-        temple_id = str(uuid.uuid4())
+        temple_id = str(new_uuid())
         religion = self.religions[religion_id]
 
         # Generate temple name
@@ -385,7 +385,7 @@ class ReligionManager:
     ) -> Ritual:
         """Start a religious ritual"""
 
-        ritual_id = str(uuid.uuid4())
+        ritual_id = str(new_uuid())
 
         ritual = Ritual(
             id=ritual_id,

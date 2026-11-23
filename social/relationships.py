@@ -8,7 +8,7 @@ Handles:
 - Cultural emergence
 """
 
-import uuid
+from engine.ids import new_uuid
 from dataclasses import dataclass, field
 from typing import Dict, List, Set, Optional, Tuple
 from enum import Enum
@@ -94,7 +94,7 @@ class RelationshipManager:
         if existing:
             return existing
 
-        rel_id = str(uuid.uuid4())
+        rel_id = str(new_uuid())
         relationship = Relationship(
             id=rel_id,
             agent_a=agent_a_id,
@@ -270,7 +270,7 @@ class GroupManager:
         founder_id: str
     ) -> Group:
         """Create new group"""
-        group_id = str(uuid.uuid4())
+        group_id = str(new_uuid())
         group = Group(
             id=group_id,
             name=name,

@@ -30,6 +30,10 @@ def configure_logging(level: str) -> None:
 def main():
     """Main entry point"""
     cfg = load_config()
+    if cfg.world_seed is not None and "PYTHONHASHSEED" not in os.environ:
+        # A seeded world must also walk its sets in the same order every run
+        os.environ["PYTHONHASHSEED"] = "0"
+        os.execv(sys.executable, [sys.executable] + sys.argv)
     configure_logging(cfg.log_level)
     log = logging.getLogger("neuronaut")
     url = f"http://{'localhost' if cfg.host in ('127.0.0.1', '0.0.0.0', '::') else cfg.host}:{cfg.port}"

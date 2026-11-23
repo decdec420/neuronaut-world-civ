@@ -56,6 +56,15 @@ class Config:
         self.host = os.getenv('HOST', '127.0.0.1').strip() or '127.0.0.1'
         self.port = _int_env('PORT', 8000)
         self.num_agents = _int_env('NUM_AGENTS', 12)
+        # WORLD_SEED: the same number gives the same world, run after run (with
+        # the rule-based brain; a model's answers can't be replayed). Unset:
+        # a new world each time.
+        raw_seed = os.getenv('WORLD_SEED', '').strip()
+        try:
+            self.world_seed = int(raw_seed) if raw_seed else None
+        except ValueError:
+            print(f"⚠️  Invalid WORLD_SEED={raw_seed!r}, starting an unseeded world")
+            self.world_seed = None
         level = os.getenv('LOG_LEVEL', 'INFO').strip().upper()
         if level not in ('DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'):
             print(f"⚠️  Invalid LOG_LEVEL={level!r}, using INFO")

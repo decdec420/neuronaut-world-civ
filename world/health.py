@@ -14,7 +14,7 @@ Without health challenges, no healers, no medicine, no public health systems.
 """
 
 import random
-import uuid
+from engine.ids import new_uuid
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
 from datetime import datetime
@@ -185,7 +185,7 @@ class HealthManager:
             if disease.infected_agent_id == agent_id and disease.disease_type == disease_type:
                 return disease  # Already infected
 
-        disease_id = str(uuid.uuid4())
+        disease_id = str(new_uuid())
 
         # Disease properties based on type
         properties = self._get_disease_properties(disease_type, severity)
@@ -372,7 +372,7 @@ class HealthManager:
     ) -> Optional[Medicine]:
         """Agent discovers a new medicine through experimentation"""
 
-        medicine_id = str(uuid.uuid4())
+        medicine_id = str(new_uuid())
 
         # Determine what diseases this might cure based on ingredients
         # (Simplified - in reality would need actual material properties)

@@ -17,7 +17,7 @@ Debt drives growth but creates instability.
 """
 
 import random
-import uuid
+from engine.ids import new_uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set, Tuple
 from enum import Enum
@@ -209,7 +209,7 @@ class BankingManager:
     ) -> Bank:
         """Found a new bank"""
 
-        bank_id = str(uuid.uuid4())
+        bank_id = str(new_uuid())
 
         bank = Bank(
             id=bank_id,
@@ -244,7 +244,7 @@ class BankingManager:
         if not bank.operational:
             return None
 
-        account_id = str(uuid.uuid4())
+        account_id = str(new_uuid())
 
         account = SavingsAccount(
             id=account_id,
@@ -377,7 +377,7 @@ class BankingManager:
         interest_rate = self._calculate_interest_rate(bank, credit_rating, loan_type)
 
         # Create loan
-        loan_id = str(uuid.uuid4())
+        loan_id = str(new_uuid())
 
         # Calculate payment schedule
         # Simple: principal + interest divided by term
@@ -619,7 +619,7 @@ class BankingManager:
     ) -> Investment:
         """Create an investment"""
 
-        investment_id = str(uuid.uuid4())
+        investment_id = str(new_uuid())
 
         investment = Investment(
             id=investment_id,

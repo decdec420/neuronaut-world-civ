@@ -10,7 +10,7 @@ Agents form their own governments based on:
 No fixed political system - agents create their own!
 """
 
-import uuid
+from engine.ids import new_uuid
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
 from datetime import datetime
@@ -122,7 +122,7 @@ class GovernanceManager:
         gov_type: GovernmentType
     ) -> Government:
         """Agent creates a new government"""
-        gov_id = str(uuid.uuid4())
+        gov_id = str(new_uuid())
 
         government = Government(
             id=gov_id,
@@ -168,7 +168,7 @@ class GovernanceManager:
         if not self._can_make_law(creator_id, government):
             return None
 
-        law_id = str(uuid.uuid4())
+        law_id = str(new_uuid())
 
         law = Law(
             id=law_id,
@@ -224,7 +224,7 @@ class GovernanceManager:
         current_tick: int = 0
     ) -> Election:
         """Hold an election that closes duration_ticks from now"""
-        election_id = str(uuid.uuid4())
+        election_id = str(new_uuid())
 
         government = self.governments[government_id]
 

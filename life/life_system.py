@@ -16,7 +16,7 @@ from typing import Dict, List, Optional, Set, Tuple
 from datetime import datetime
 from enum import Enum
 import random
-import uuid
+from engine.ids import new_uuid
 
 
 class LifeStage(Enum):
@@ -242,7 +242,7 @@ class LifeSystem:
 
         if philosophy == LifePhilosophy.WEALTH_BUILDER:
             goals.append(LifeGoal(
-                id=str(uuid.uuid4()),
+                id=str(new_uuid()),
                 goal_type="wealth",
                 description="Accumulate 1000 wealth",
                 target_value=1000,
@@ -250,7 +250,7 @@ class LifeSystem:
                 deadline_age=50
             ))
             goals.append(LifeGoal(
-                id=str(uuid.uuid4()),
+                id=str(new_uuid()),
                 goal_type="family",
                 description="Raise successful children",
                 target_value=2,
@@ -260,14 +260,14 @@ class LifeSystem:
 
         elif philosophy == LifePhilosophy.ADVENTURE_SEEKER:
             goals.append(LifeGoal(
-                id=str(uuid.uuid4()),
+                id=str(new_uuid()),
                 goal_type="adventure",
                 description="Make 50 discoveries",
                 target_value=50,
                 priority=0.9
             ))
             goals.append(LifeGoal(
-                id=str(uuid.uuid4()),
+                id=str(new_uuid()),
                 goal_type="experience",
                 description="Master experimentation",
                 target_value=1.0,
@@ -276,7 +276,7 @@ class LifeSystem:
 
         elif philosophy == LifePhilosophy.LEGACY_SEEKER:
             goals.append(LifeGoal(
-                id=str(uuid.uuid4()),
+                id=str(new_uuid()),
                 goal_type="legacy",
                 description="Build 10 lasting structures",
                 target_value=10,
@@ -284,7 +284,7 @@ class LifeSystem:
                 deadline_age=60
             ))
             goals.append(LifeGoal(
-                id=str(uuid.uuid4()),
+                id=str(new_uuid()),
                 goal_type="legacy",
                 description="Teach 100 lessons",
                 target_value=100,
@@ -293,7 +293,7 @@ class LifeSystem:
 
         elif philosophy == LifePhilosophy.PLEASURE_SEEKER:
             goals.append(LifeGoal(
-                id=str(uuid.uuid4()),
+                id=str(new_uuid()),
                 goal_type="experience",
                 description="Live every moment fully",
                 target_value=1000,  # Life satisfaction points
@@ -302,7 +302,7 @@ class LifeSystem:
 
         # Add career goal (emerges from discovered role later)
         goals.append(LifeGoal(
-            id=str(uuid.uuid4()),
+            id=str(new_uuid()),
             goal_type="career",
             description="Master my craft",
             target_value=1.0,  # Skill level

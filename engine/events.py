@@ -9,7 +9,7 @@ Tracks all significant happenings:
 - Cultural moments
 """
 
-import uuid
+from engine.ids import new_uuid
 from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Tuple, Deque
 from datetime import datetime
@@ -89,7 +89,7 @@ class EventLogger:
     ) -> Event:
         """Log a new event"""
         event = Event(
-            id=str(uuid.uuid4()),
+            id=str(new_uuid()),
             timestamp=datetime.now(),
             tick=current_tick,
             category=category,

@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
 from datetime import datetime
 import random
-import uuid
+from engine.ids import new_uuid
 
 
 # ==============================================================================
@@ -276,7 +276,7 @@ class DynamicBuildingSystem:
 
         # Create design
         design = BuildingDesign(
-            id=str(uuid.uuid4()),
+            id=str(new_uuid()),
             name=name,
             designer_id=agent_id,
             design_date=datetime.now(),
@@ -575,7 +575,7 @@ class DynamicBuildingSystem:
 
         # Create building
         building = Building(
-            id=str(uuid.uuid4()),
+            id=str(new_uuid()),
             name=design.name,
             design_id=design_id,
             location=location,
