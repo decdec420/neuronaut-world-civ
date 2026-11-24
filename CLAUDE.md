@@ -76,6 +76,7 @@ python3 scripts/sim_check.py --seeds 8        # for changes to the world itself:
 | Unimplemented actions | `UNHANDLED_ACTION_FALLBACKS` in `engine/simulation.py` routes them to the closest real action |
 | Agents, needs, inventory | `agents/agent.py`, `engine/psychology.py` |
 | Goals / plans | `agents/strategy.py` (`evaluate_goal_action` maps plan steps to real actions) |
+| Commitments (carrying on with a walk) | `agents/commitment.py`, noted in `SimulationEngine.execute_action` |
 | Buildings | `engine/handlers/construction.py`, `world/dynamic_buildings.py` |
 | World, resources, regrowth | `world/simulation.py` (`resource_pools`, `pool_regeneration`) |
 | Dashboard | `web/enhanced.html` (served at `/app`) |
@@ -101,46 +102,47 @@ python3 scripts/sim_check.py --seeds 8        # for changes to the world itself:
   Iterate `sorted(...)` wherever order can change an outcome.
 - **Water isn't walkable.** Move agents with `infrastructure.step_toward` (paths)
   or `world.map.walk_line` (straight, stops at the shore), never by setting
-  `agent.location` directly.
+  `agent.location` directly. A step toward somewhere also starts the agent's
+  commitment (`agent.stepped_toward`); a handler that walks with `walk_line`
+  must set it too, and one that waits in place returns `underway: True`.
 - **Requests that change the world** need the `X-Neuronaut-Control: 1` header
   (and the admin token if `NEURONAUT_ADMIN_TOKEN` is set). In the dashboard use
   `controlFetch()`.
 
 ## Known open issues (good places to start)
 
-Measured on 8 seeds after the open-issues round (see PR #4, "Round 5"). Fixed
-in that round: tell_story dominance (the rule brain's need table credited needs
-actions never meet; it is now measured, `scripts/need_effects.py`), faiths
-lapsing, gathering hosts all picking 18:00, ids not coming from the seed,
-disasters firing at ~27x their written rate, the unused swarm and
-semantic-memory modules (removed), and the stale status docs (now in
-`docs/archive/`). Top failures are research that finds nothing, territory
-already claimed and failed hunts: legitimate outcomes.
+Measured on 8 seeds after the "make the sim work right" round (PR #4, Round 6).
+Fixed in that round: agents now carry on with what they set out to do
+(`agents/commitment.py`: 84-95% of commitments end with the agent arriving),
+believers can tell others about their faith (`convert`), the dashboard serves
+only `/app` (fake and stale pages removed) and shows names, not ids. Checked and
+fine: `rest` is ~36% of actions, but 92% of it is sleep at night. Earlier rounds
+fixed tell_story dominance, lapsing faiths, clashing gatherings, ids from the
+seed, the disaster rate, unused modules and stale docs.
 
-1. **The rule brain doesn't stick with a plan.** It chooses afresh every tick,
-   so a long walk (to a gathering 50 tiles away, to a far shelter) is usually
-   given up halfway. Guests more than ~20 tiles from a gathering can't arrive:
-   they may set off only two hours early. Letting them set off earlier made
-   fewer people come (measured), because they abandoned the walk. A
-   commitment term (keep doing what you set out to do, weighted by
-   conscientiousness) is the thing to try; it touches every choice, so compare
-   8-seed medians.
-2. Most faiths have only their founder. Joining needs `worship` by someone who
-   likes a follower; nobody preaches. Followers now practise and keep their
-   faith.
-3. `rest` is ~37% of rule-brain actions. Most of it is sleep at night
-   (NIGHT_REST_PULL); worth checking how much is daytime idling.
-4. Building fell when the need table was corrected (8-seed median 20 -> 16.5,
-   glass made 7 -> 1): it had been pulled by needs it doesn't meet. Whether
-   agents build enough is now an honest question about what building gives them.
-5. Disasters now come at their written rates (one every ~2-5 weeks, more in
-   rain and spring), but each is large: radius 40-60 tiles on a 100x100 map
-   for major ones, death chances up to 0.9. Over 6000 ticks (42 days) x 2
-   seeds the fix took disasters 29/29 -> 3/7, disaster deaths 3/6 -> 0/0 and
-   alive at the end 8/18 -> 16/21; a single major one can still kill several.
-   A balance call; measure on long runs (`--long`) before changing it.
-6. The design PDFs in `docs/references/` and `.github/copilot-instructions.md`
-   predate most of this; the latter links files that no longer exist.
+1. **Far guests can't reach a gathering.** One may set off only two hours
+   early (LEAD_TICKS), and walking is a tile a tick, so anyone more than ~20
+   tiles away arrives after the end. Letting them set off in time (walk time
+   on top) lowered attendance in every test, with commitments too (seeds 1
+   and 4, per person per day: 64%/58% without it, 60%/46% with it). Why is
+   not known; long walks get set aside for water, food and sleep, and the
+   pull of a far gathering may draw people from a near one. Measure before
+   trying again.
+2. Commitments cost some other things (8-seed medians): innovations 41.5 ->
+   36, road tiles 55 -> 31.5, conversations 2192 -> 1828. Likely time spent
+   finishing walks; not measured. COMMIT_PULL (0.8) is the knob.
+3. Faiths stay small: followers at the end, median 2 per world. `convert` is
+   rare; the listener's chance (LISTEN_* in engine/handlers/religion.py) is
+   a sketch of persuasion, not tuned to any target.
+4. Building fell when the need table was corrected (8-seed median 20 ->
+   16.5-17.5 since, glass made 7 -> 1-2): it had been pulled by needs it
+   doesn't meet. Whether agents build enough is an honest question about
+   what building gives them.
+5. Disasters come at their written rates (one every ~2-5 weeks, more in rain
+   and spring), but each is large: radius 40-60 tiles on a 100x100 map for
+   major ones, death chances up to 0.9. A balance call; measure on long runs
+   (`--long`) before changing it.
+6. The design PDFs in `docs/references/` predate most of this.
 
 ## How to work
 
