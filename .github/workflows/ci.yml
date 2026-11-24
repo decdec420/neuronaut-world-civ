@@ -19,15 +19,16 @@ jobs:
         python: ["3.13", "3.9"]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python }}
-          cache: pip
-          cache-dependency-path: |
-            requirements-minimal.txt
-            requirements-dev.txt
+      # uv, not setup-python: setup-python has no 3.9 for the current
+      # ubuntu-latest, and uv's Python builds cover every version here
+      - uses: astral-sh/setup-uv@v6
       - name: Install
-        run: pip install -r requirements-dev.txt
+        run: |
+          uv venv --python ${{ matrix.python }} .venv
+          source .venv/bin/activate
+          uv pip install -r requirements-dev.txt
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+          python --version
       - name: Tests
         run: pytest -q
       - name: Sim check (1200 ticks x 3 seeds; must print OVERALL PASS)
