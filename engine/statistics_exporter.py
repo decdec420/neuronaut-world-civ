@@ -120,6 +120,8 @@ class StatisticsExporter:
             # The town as the map draws it: buildings where they stand, homes,
             # gatherings, weather (world/town_view.py)
             'town': town_snapshot(self.sim),
+            # Firsts, losses and who knows what (world/knowhow.py)
+            'history': self.sim.knowhow.snapshot(),
             # COMPLETE ECONOMIC SYSTEM - All financial subsystems!
             'economy': economic_stats.get('wealth', {}),  # Backward compatibility
             'market': economic_stats.get('market', {}),  # Backward compatibility

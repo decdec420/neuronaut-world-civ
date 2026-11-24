@@ -75,6 +75,7 @@ class PerceptionBuilder:
         perceptions = self._add_energy_info(agent, perceptions)
         perceptions = self._add_materials_info(agent, perceptions)
         perceptions = self._add_life_info(agent, perceptions)
+        perceptions = self._add_knowhow_info(agent, perceptions)
         perceptions = self._add_economic_info(agent, perceptions)
         perceptions = self._add_religious_info(agent, perceptions)
         perceptions = self._add_strategic_info(agent, perceptions)
@@ -359,6 +360,26 @@ class PerceptionBuilder:
         scarcity_info['needs_resources'] = agent_needs_resources
 
         perceptions['scarcity_info'] = scarcity_info
+        return perceptions
+
+    def _add_knowhow_info(self, agent, perceptions: Dict) -> Dict:
+        """In a world where know-how has to be learned (world/knowhow.py):
+        what the agent knows how to do, and what it could show people near it
+        who don't know yet. Nothing about know-how nobody has worked out."""
+        if not self.sim.knowhow.active or getattr(agent, 'knowhow', None) is None:
+            return perceptions
+        from world.knowhow import KNOWHOW
+        could_teach = {}
+        for other in self.sim.world.agents:
+            if other is agent or not other.alive or agent.location.distance_to(other.location) > 15:
+                continue
+            lesson = self.sim.knowhow.lesson(agent, other)
+            if lesson is not None:
+                could_teach[other.name] = KNOWHOW[lesson].label
+        perceptions['knowhow'] = {
+            'knows': [KNOWHOW[n].label for n in sorted(agent.knowhow)],
+            'could_teach': dict(list(sorted(could_teach.items()))[:4]),
+        }
         return perceptions
 
     def _add_life_info(self, agent, perceptions: Dict) -> Dict:

@@ -10,7 +10,7 @@ These actions enable agents to learn, discover, and preserve knowledge across
 generations, driving technological and cultural progress.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 import random
 import logging
 
@@ -466,8 +466,40 @@ class KnowledgeActionHandler(ActionHandler):
                 }
             )
 
+    def _teach_knowhow(self, agent: 'Agent', action: 'Action', current_tick: int) -> Optional[ActionResult]:
+        """Show the pupil how to do something (None if there's nothing to show)."""
+        from world.knowhow import KNOWHOW, TEACH_REACH
+        ledger = self.context.get_system('knowhow')
+        pupil = self.context.get_agent_by_id(action.target_agent) if action.target_agent else None
+        if ledger is None or not ledger.active or pupil is None or ledger.lesson(agent, pupil) is None:
+            return None
+        if agent.location.distance_to(pupil.location) > TEACH_REACH:
+            works = self.context.get_system('infrastructure')
+            works.step_toward(agent, self.context.get_system('pathfinder'),
+                              pupil.location.x, pupil.location.y, current_tick)
+            return ActionResult(success=True, emotional_impact=0.05,
+                                message=f"On your way to show {pupil.name} something",
+                                metadata={'underway': True, 'target_agent': pupil.id})
+        name, took = ledger.teach(agent, pupil, current_tick)
+        agent.skills.learn_skill('teaching', 0.03)
+        agent.needs.satisfy_need(NeedType.MEANING, 0.2)
+        label = KNOWHOW[name].label
+        if took:
+            return ActionResult(success=True, emotional_impact=0.3, message=f"Taught {pupil.name} {label}",
+                                metadata={'action_type': 'teach', 'knowhow': name, 'target_agent': pupil.id})
+        return ActionResult(success=True, emotional_impact=0.1,
+                            message=f"Showed {pupil.name} {label}; it hasn't sunk in yet",
+                            metadata={'action_type': 'teach', 'knowhow': name, 'target_agent': pupil.id})
+
     def _handle_teach(self, agent: 'Agent', action: 'Action', current_tick: int) -> ActionResult:
-        """Handle TEACH action - share knowledge with another agent."""
+        """Handle TEACH action - share knowledge with another agent.
+
+        In a world where know-how has to be learned (world/knowhow.py), the
+        first thing to show is something the teacher knows how to do and the
+        pupil doesn't yet, in person."""
+        lesson = self._teach_knowhow(agent, action, current_tick)
+        if lesson is not None:
+            return lesson
         knowledge_system = self.context.get_system('knowledge_system')
 
         if not knowledge_system or len(knowledge_system.knowledge_records) == 0:

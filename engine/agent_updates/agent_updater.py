@@ -600,6 +600,9 @@ class AgentUpdater:
             resolved = ActionType(UNHANDLED_ACTION_FALLBACKS.get(action.action_type.value, action.action_type.value))
             if not allowed_at_stage(agent, resolved.value):
                 return False
+            from world.knowhow import knows_action
+            if not knows_action(agent, resolved.value):
+                return False
             handler = self.sim._handler_registry.get_handler(resolved)
             if handler is None:
                 return False

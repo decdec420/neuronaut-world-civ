@@ -58,6 +58,11 @@ class WorldInitializer:
         print(f"Initializing Neuronaut World with {num_agents} agents...")
         Agent.reset_names()  # a new world: every name is free again
 
+        # A world at the dawn of time, or one of settlers (config WORLD_START)
+        from world.knowhow import KnowHowLedger
+        dawn = getattr(self.sim.config, 'world_start', 'settlers') == 'dawn'
+        self.sim.knowhow = KnowHowLedger(self.sim, active=dawn)
+
         # Create initial agents with balanced genders
         num_male = num_agents // 2
         num_female = num_agents - num_male
@@ -81,15 +86,21 @@ class WorldInitializer:
             # Agents must earn wealth through: trading, gambling, or discovering coin minting!
             agent.wealth = 0.0
             print(f"🆕 Created {agent.name} with wealth: {agent.wealth} (ZERO WEALTH MODE)")
-            agent.inventory.add_item('food', random.randint(3, 8))
-            agent.inventory.add_item('water', random.randint(3, 8))
-
-            # Give basic materials for experimentation!
-            agent.inventory.add_item('wood', random.randint(5, 15))
-            agent.inventory.add_item('stone', random.randint(3, 10))
-            agent.inventory.add_item('plant_fiber', random.randint(2, 8))
-            # Give some metal ore so they can discover smelting → minting → coin creation!
-            agent.inventory.add_item('metal_ore', random.randint(2, 5))
+            if dawn:
+                # The beginning of time: a little food and water, nothing
+                # else, and only what comes with being human (world/knowhow.py)
+                agent.knowhow = set()
+                agent.inventory.add_item('food', random.randint(2, 4))
+                agent.inventory.add_item('water', random.randint(2, 4))
+            else:
+                agent.inventory.add_item('food', random.randint(3, 8))
+                agent.inventory.add_item('water', random.randint(3, 8))
+                # Give basic materials for experimentation!
+                agent.inventory.add_item('wood', random.randint(5, 15))
+                agent.inventory.add_item('stone', random.randint(3, 10))
+                agent.inventory.add_item('plant_fiber', random.randint(2, 8))
+                # Give some metal ore so they can discover smelting → minting → coin creation!
+                agent.inventory.add_item('metal_ore', random.randint(2, 5))
 
             self.sim.world.agents.append(agent)
 

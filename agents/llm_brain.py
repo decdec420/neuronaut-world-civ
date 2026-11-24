@@ -824,6 +824,15 @@ Be bold! Think of something interesting to try.
                          + f". You can only: {', '.join(life['can_do'])}."]
             lines.append(" ".join(heart))
 
+        known = perceptions.get("knowhow")
+        if known is not None:
+            skills = ", ".join(known["knows"]) if known["knows"] else "nothing beyond what comes with being human"
+            line = (f"You know how to do: {skills}. What else is on the menu nobody has shown you: "
+                    "it fails until you work it out yourself (experimenting helps), see it done, or are taught.")
+            if known.get("could_teach"):
+                line += " You could teach " + "; ".join(f"{who} {what}" for who, what in known["could_teach"].items()) + "."
+            lines.append(line)
+
         heard = perceptions.get("news")
         if heard:
             lines.append("News you've heard: " + "; ".join(heard) + ".")

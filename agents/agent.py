@@ -508,6 +508,10 @@ class Agent:
         # Partnership (life/family.py): formed only when both chose each other
         self.partner_id: Optional[str] = None
         self.admirers: Dict[str, int] = {}  # who courted this agent -> tick they last did
+        # What it knows how to do beyond what comes with being human
+        # (world/knowhow.py); None: everything (a settlers' world)
+        self.knowhow: Optional[Set[str]] = None
+        self.generation: int = 1   # founders are 1; a child is one more than its parents
         self.child_wish_tick: Optional[int] = None  # when it last said it wants a child
         self.home_id: Optional[str] = None  # the building it lives in (life/homes.py)
 
@@ -1321,6 +1325,9 @@ class Agent:
             'is_player': self.is_player,
             # Life Cycle data
             'life_stage': self.life_stage,
+            'generation': getattr(self, 'generation', 1),
+            # Know-how beyond what comes with being human (world/knowhow.py); None: everything
+            'knowhow': sorted(self.knowhow) if getattr(self, 'knowhow', None) is not None else None,
             'mother_id': self.mother_id,
             'father_id': self.father_id,
             'children_ids': self.children_ids,

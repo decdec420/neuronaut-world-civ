@@ -269,6 +269,8 @@ class SimulationEngine:
         self.world = systems['world']
         self.relationship_manager = systems['relationship_manager']
         self.relationship_manager.time = self.world.time   # bonds grow with time (social/relationships.py)
+        from world.knowhow import KnowHowLedger
+        self.knowhow = KnowHowLedger(self, active=False)  # initialize_world sets the world's start
         self.group_manager = systems['group_manager']
         self.economy = systems['economy']
         self.event_logger = systems['event_logger']
@@ -603,6 +605,7 @@ class SimulationEngine:
         self.infrastructure.update_lights(self.world, current_tick)
         # Gatherings start and end (world/gatherings.py)
         self.gatherings.update(current_tick)
+        self.knowhow.update(current_tick)   # know-how nobody alive has any more is lost
 
         # Write down any firsts and milestones (engine/chronicle.py)
         self.chronicle.observe(self, current_tick)
@@ -759,6 +762,14 @@ class SimulationEngine:
                 'emotional_impact': 0.0,
                 'message': f"Too young to {action.action_type.value.replace('_', ' ')}"
             }
+        # Nor can anyone do what they don't know how to (world/knowhow.py)
+        from world import knowhow
+        if not knowhow.knows_action(agent, action.action_type.value):
+            return {
+                'success': False,
+                'emotional_impact': -0.05,
+                'message': knowhow.not_known_message(action.action_type.value)
+            }
 
         # Social actions chosen without a partner: pick the nearest living agent
         if action.target_agent is None and action.action_type.value in TARGETED_ACTIONS:
@@ -785,6 +796,8 @@ class SimulationEngine:
         agent.stepped_toward = None
         result = handler.execute(agent, action).to_dict()
         commitment.note(agent, action.action_type.value, result, current_tick)
+        # An idea from what it just did; onlookers may see how it's done
+        self.knowhow.after_action(agent, action.action_type.value, result, current_tick)
         return result
 
     def ensure_newer_systems(self) -> None:
@@ -809,6 +822,9 @@ class SimulationEngine:
             self.pathfinder.set_terrain(self.world.map)
         if getattr(self.relationship_manager, 'time', None) is None:
             self.relationship_manager.time = self.world.time
+        if not hasattr(self, 'knowhow'):
+            from world.knowhow import KnowHowLedger
+            self.knowhow = KnowHowLedger(self, active=False)   # saved before know-how: everyone knows all
 
     EVENT_MEMORY_IMPORTANCE = {0: 0.1, 1: 0.3, 2: 0.5, 3: 0.8, 4: 1.0}
 

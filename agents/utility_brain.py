@@ -406,6 +406,9 @@ class UtilityBrain:
             religion = self.sim.religion
             mine = religion.get_agent_religion(agent.id)
             pool = {p for p in (pool or set(alive)) if religion.get_agent_religion(p) is not mine}
+        if action == "teach" and self.sim.knowhow.active:
+            # where know-how has to be learned, someone it could show something
+            pool = {p for p in (pool or set(alive)) if self.sim.knowhow.lesson(agent, alive[p]) is not None}
         if not pool:
             return None, 0.0
         people = sorted(pool)   # a set's order isn't stable; the dice must pick from a fixed order

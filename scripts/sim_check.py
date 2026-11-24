@@ -19,7 +19,12 @@ PASS means, for every seed:
     count: a catastrophic earthquake (5% of quakes) kills ~17% of a village
     whatever the code does (tests/test_disasters.py checks that shelter works)
   - average health of living agents >= MIN_HEALTH
-  - at least one finished building
+  - in a settlers' world, at least one finished building (at the dawn of
+    time, whether anyone works out how to build is part of what's measured)
+
+--start dawn|settlers picks how the world begins (default: the WORLD_START
+setting; world/knowhow.py). A dawn world also reports its firsts: the day
+each piece of know-how was first worked out, and anything lost.
 
 It also reports what the agents created (governments, religions, couples,
 births, trades, distinct actions chosen...). Those are measurements only: zero
@@ -106,6 +111,9 @@ def emergence_metrics(sim, initial_ids, actions, successes) -> dict:
         "kinds_of_things_made": len(sim.products),
         # how agents' commitments ended (agents/commitment.py): done, dropped for
         # something else, ran out, or could not be done
+        "firsts": {f["knowhow"]: f["day"] for f in sim.knowhow.snapshot()["firsts"]} if sim.knowhow.active else None,
+        "knowhow_lost": [l["knowhow"] for l in sim.knowhow.lost] if sim.knowhow.active else None,
+        "taught": sim.knowhow.counts.get("taught", 0) if sim.knowhow.active else None,
         "commitments": dict(sum((getattr(a, "commitments_ended", collections.Counter()) for a in agents),
                                 collections.Counter())),
         "money": round(sum(a.wealth for a in alive), 1),
@@ -217,6 +225,7 @@ def run_seed(ticks: int, seed: int, use_llm: bool) -> dict:
         "hunger": avg(need(a, NeedType.HUNGER) for a in alive),
         "thirst": avg(need(a, NeedType.THIRST) for a in alive),
         "buildings": sum(b.is_complete for b in buildings),
+        "dawn": sim.knowhow.active,
         # Agents record why they died in `death_cause` (this used to read a field
         # that doesn't exist, so every cause printed as None)
         "deaths": [(a.name, getattr(a, "death_cause", None)) for a in agents if not a.alive],
@@ -259,7 +268,11 @@ def main() -> int:
     parser.add_argument("--verbose", action="store_true", help="show top actions and failures")
     parser.add_argument("--long", action="store_true",
                         help="one long run (6000 ticks, 1 seed) to spot slowdowns and memory growth")
+    parser.add_argument("--start", choices=("dawn", "settlers"),
+                        help="how the world begins (default: the WORLD_START setting)")
     args = parser.parse_args()
+    if args.start:
+        os.environ["WORLD_START"] = args.start
     if args.long:
         args.ticks, args.seeds = 6000, 1
 
@@ -278,7 +291,7 @@ def main() -> int:
             problems.append("nobody alive")
         if r["health"] < MIN_HEALTH:
             problems.append(f"avg health {r['health']:.0f} < {MIN_HEALTH:.0f}")
-        if r["buildings"] < 1:
+        if r["buildings"] < 1 and not r["dawn"]:
             problems.append("no finished buildings")
         ok = not problems
         all_ok &= ok
