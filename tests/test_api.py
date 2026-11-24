@@ -189,3 +189,15 @@ def test_saving_through_the_api(client, tmp_path, monkeypatch):
     assert r.status_code == 200 and r.json()["id"]
     listed = client.get("/saves").json()["saves"]
     assert [s["name"] for s in listed] == ["Harvest festival"] and listed[0]["state_filename"]
+
+
+def test_a_profile_tells_the_agents_story_and_has_real_mood(client):
+    from api import server
+    agent = next(a for a in server.simulation.world.agents if a.alive)
+    profile = client.get(f"/agents/{agent.id}/profile").json()
+    story = profile["story"]
+    assert {"doing", "set_out", "life_stage", "generation", "partner", "parents", "children",
+            "home", "faith", "knows", "memories"} <= set(story)
+    assert story["generation"] == 1 and isinstance(story["memories"], list)
+    # the dashboard reads mood, stress and satisfaction from here (they showed NaN)
+    assert all(isinstance(profile["psychology"][k], (int, float)) for k in ("mood", "stress", "life_satisfaction"))

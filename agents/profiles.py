@@ -590,3 +590,40 @@ class ProfileBuilder:
         """Get agent name by ID"""
         agent = self.simulation._get_agent_by_id(agent_id)
         return agent.name if agent else "Unknown"
+
+
+def agent_story(sim, agent) -> dict:
+    """An agent's life as a viewer would want to read it: what it's doing and
+    where it set out for, family, home, faith, what it knows how to do, and
+    what it remembers best lately (agents/memory_stream.py)."""
+    from agents import commitment
+    from world.knowhow import KNOWHOW
+    from life import homes
+
+    def name_of(agent_id):
+        other = sim._get_agent_by_id(agent_id) if agent_id else None
+        return other.name if other is not None else None
+
+    tick = sim.world.time.current_tick
+    set_out = commitment.current(agent, tick)
+    home = homes.home_of(sim.dynamic_building_system, agent)
+    faith = sim.religion.get_agent_religion(agent.id)
+    known = getattr(agent, 'knowhow', None)
+    records = list(getattr(getattr(agent, 'memory_stream', None), 'records', []) or [])
+    notable = sorted((r for r in records if r.importance >= 0.4), key=lambda r: r.tick)[-6:] or records[-6:]
+    return {
+        'doing': (agent.current_action.action_type.value if getattr(agent, 'current_action', None) else None),
+        'set_out': None if set_out is None else {
+            'action': set_out.action, 'x': round(set_out.x), 'y': round(set_out.y),
+            'hours_ago': (tick - set_out.since) // 6,
+            'distance': round(((agent.location.x - set_out.x) ** 2 + (agent.location.y - set_out.y) ** 2) ** 0.5)},
+        'life_stage': agent.life_stage,
+        'generation': getattr(agent, 'generation', 1),
+        'partner': name_of(agent.partner_id),
+        'parents': [n for n in (name_of(agent.mother_id), name_of(agent.father_id)) if n],
+        'children': [n for n in (name_of(c) for c in agent.children_ids) if n],
+        'home': getattr(home, 'name', None) if home is not None else None,
+        'faith': faith.name if faith is not None else None,
+        'knows': None if known is None else [KNOWHOW[n].label for n in sorted(known)],
+        'memories': [{'tick': r.tick, 'day': r.tick // 144 + 1, 'text': r.text} for r in reversed(notable)],
+    }

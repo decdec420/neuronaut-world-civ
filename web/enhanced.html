@@ -2619,6 +2619,14 @@
             <div class="tab-panel" id="chronicle">
                 <h2 style="margin-bottom: 15px;">🗓️ Chronicle - What They Did First</h2>
                 <p style="color: #94a3b8; margin-bottom: 20px;">Written down as it happens. Nothing here is scripted: every entry is something an agent chose to do.</p>
+                <!-- From the beginning of time (world/knowhow.py; snapshot 'history'): shown in a dawn world -->
+                <div id="dawn-panel" style="display: none; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border: 2px solid #22c55e; border-radius: 12px; padding: 20px; margin-bottom: 20px;">
+                    <h3 style="margin: 0 0 6px 0; color: #22c55e; font-size: 18px;">🕰️ From the Beginning of Time</h3>
+                    <p style="color: #94a3b8; font-size: 12px; margin: 0 0 14px 0;">They started knowing only what comes with being human. Each thing below someone worked out, and others learned by watching or being taught. A sim day is a year of their lives; a generation is about 25 days.</p>
+                    <div id="dawn-firsts"></div>
+                    <div id="dawn-lost"></div>
+                    <div id="dawn-not-yet" style="margin-top: 12px;"></div>
+                </div>
                 <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border: 2px solid #f59e0b; border-radius: 12px; padding: 20px; margin-bottom: 20px;">
                     <h3 style="margin: 0 0 16px 0; color: #f59e0b; font-size: 18px;">📜 Firsts &amp; Milestones <span id="chronicle-count" style="font-size: 12px; color: #94a3b8;"></span></h3>
                     <div id="chronicle-entries"><div style="text-align: center; color: #64748b; padding: 40px;">Nothing has happened for the first time yet</div></div>
@@ -7196,6 +7204,41 @@
             }
         });
 
+        // Their life in words (GET /agents/{id}/profile -> story): what they're
+        // doing and where they set out for, family, home, faith, what they
+        // know how to do and what they remember. Escaped: names and memories
+        // can come from agents' AI minds.
+        function renderAgentStory(story) {
+            if (!story) return '';
+            const words = v => escHtml(String(v ?? '').replace(/_/g, ' '));
+            const rows = [];
+            if (story.doing) rows.push(['Doing', words(story.doing)]);
+            if (story.set_out) {
+                const s = story.set_out;
+                rows.push(['Set out to', `${words(s.action)}, ${s.hours_ago} h ago, ${s.distance} tiles to go`]);
+            }
+            rows.push(['Life', `${words(story.life_stage)}, generation ${escHtml(story.generation)}`]);
+            const family = [];
+            if (story.partner) family.push(`partner ${escHtml(story.partner)}`);
+            if (story.parents?.length) family.push(`child of ${story.parents.map(escHtml).join(' and ')}`);
+            if (story.children?.length) family.push(`parent of ${story.children.map(escHtml).join(', ')}`);
+            rows.push(['Family', family.length ? family.join('; ') : 'none yet']);
+            rows.push(['Home', story.home ? escHtml(story.home) : 'none yet']);
+            if (story.faith) rows.push(['Faith', escHtml(story.faith)]);
+            rows.push(['Knows how to', story.knows === null ? 'everything a settler knows'
+                : (story.knows.length ? story.knows.map(escHtml).join(', ') : 'only what comes with being human')]);
+            const memories = (story.memories || []).map(m =>
+                `<li style="margin: 3px 0;"><span style="color: #64748b;">day ${escHtml(m.day)}</span> ${escHtml(m.text)}</li>`).join('');
+            return `
+                <div class="profile-section">
+                    <h3>📖 Their Story</h3>
+                    <div style="display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; font-size: 13px;">
+                        ${rows.map(([k, v]) => `<div style="color: #94a3b8;">${k}</div><div style="color: #f1f5f9;">${v}</div>`).join('')}
+                    </div>
+                    ${memories ? `<div style="margin-top: 10px; font-size: 12px; color: #cbd5e1;"><div style="color: #94a3b8; margin-bottom: 4px;">Remembers</div><ul style="margin: 0; padding-left: 16px;">${memories}</ul></div>` : ''}
+                </div>`;
+        }
+
         function renderAgentProfile(profile) {
             // Update header
             document.getElementById('modal-agent-name').textContent = profile.name;
@@ -7205,6 +7248,8 @@
             // Render full profile
             const modalBody = document.getElementById('modal-body');
             modalBody.innerHTML = `
+                ${renderAgentStory(profile.story)}
+
                 <!-- OVERALL METRICS -->
                 <div class="profile-section">
                     <h3>📊 Overall Metrics</h3>
@@ -7230,9 +7275,9 @@
                     <div class="trait-grid">
                         ${renderVitalStat('Health', profile.health, '❤️')}
                         ${renderVitalStat('Energy', profile.energy, '⚡')}
-                        ${renderVitalStat('Mood', ((profile.mood + 1) / 2) * 100, '😊')}
-                        ${renderVitalStat('Stress', profile.stress * 100, '😰')}
-                        ${renderVitalStat('Life Satisfaction', profile.life_satisfaction * 100, '🌟')}
+                        ${renderVitalStat('Mood', ((profile.psychology?.mood ?? 0) + 1) / 2 * 100, '😊')}
+                        ${renderVitalStat('Stress', (profile.psychology?.stress ?? 0) * 100, '😰')}
+                        ${renderVitalStat('Life Satisfaction', (profile.psychology?.life_satisfaction ?? 0) * 100, '🌟')}
                     </div>
                 </div>
 
@@ -7948,7 +7993,39 @@
         }
         const CHRONICLE_ICONS = { first: '⭐', milestone: '🏁', voice: '💬' };
 
+        // The beginning of time: firsts beside our own history, what's been
+        // lost, how many know each thing, and what nobody has worked out yet
+        function renderDawnHistory(history) {
+            const panel = $safe('dawn-panel');
+            if (!history || !history.active) { panel.style.display = 'none'; return; }
+            panel.style.display = '';
+            const knowers = history.knowers || {};
+            const firsts = history.firsts || [];
+            $safe('dawn-firsts').innerHTML = firsts.length === 0
+                ? emptyNote('Nobody has worked anything out yet')
+                : `<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; font-size: 13px;">
+                    <div style="color: #22c55e; font-weight: 700;">This world</div>
+                    <div style="color: #94a3b8; font-weight: 700;">Humans</div>
+                    ${firsts.map(f => {
+                        const n = knowers[f.knowhow];
+                        const now = n ? `${n} know it now` : '<span style="color: #f87171;">nobody knows it now</span>';
+                        return `<div style="background: #0f172a; border-left: 3px solid #22c55e; border-radius: 6px; padding: 8px 10px;">
+                                    <div style="color: #f8fafc; font-weight: 600;">${escHtml(f.label)}</div>
+                                    <div style="font-size: 11px; color: #cbd5e1;">day ${escHtml(f.day)}, generation ${escHtml(f.generation)} · ${escHtml(f.who)} · ${now}</div>
+                                </div>
+                                <div style="background: #0f172a; border-left: 3px solid #475569; border-radius: 6px; padding: 8px 10px; color: #cbd5e1; display: flex; align-items: center;">${escHtml(f.humans)}</div>`;
+                    }).join('')}
+                   </div>`;
+            const lost = history.lost || [];
+            $safe('dawn-lost').innerHTML = lost.length === 0 ? '' :
+                `<div style="margin-top: 12px; font-size: 13px; color: #fca5a5;">🕯️ Lost: ${lost.map(l => `${escHtml(l.label)} (day ${escHtml(l.day)})`).join(', ')}</div>`;
+            const notYet = history.not_yet || [];
+            $safe('dawn-not-yet').innerHTML = notYet.length === 0 ? '' :
+                `<div style="font-size: 12px; color: #94a3b8;">Not worked out yet: ${notYet.map(k => `${escHtml(k.label)} <span style="color: #64748b;">(humans: ${escHtml(k.humans)})</span>`).join(' · ')}</div>`;
+        }
+
         async function fetchChronicle() {
+            renderDawnHistory(statsData.history);
             try {
                 const response = await fetch('/chronicle?limit=100');
                 if (!response.ok) return;
