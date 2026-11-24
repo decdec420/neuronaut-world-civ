@@ -15,6 +15,17 @@ from enum import Enum
 from datetime import datetime
 
 
+# A bond grows with time spent together, not with how many times in a row:
+# each friendly interaction adds up to BOND_STEP, in proportion to the ticks
+# since this pair's bond last grew (the full step after BOND_SPACING). Every
+# interaction used to add the full 0.1, with nothing fading: by the end of the
+# first day most relationships were at the maximum (1.0) and by day 8 all
+# were, so how much two people liked each other meant nothing, and couples
+# formed hours after meeting.
+BOND_STEP = 0.1
+BOND_SPACING = 48   # ticks (8 hours)
+
+
 class RelationshipType(Enum):
     """Types of relationships"""
     FRIENDSHIP = "friendship"
@@ -36,6 +47,7 @@ class Relationship:
     trust: float = 0.5  # 0-1
     history: List[Dict] = field(default_factory=list)
     formed_at: datetime = field(default_factory=datetime.now)
+    last_grown: Optional[int] = None  # tick the bond last grew (BOND_SPACING)
 
     def update_strength(self, delta: float):
         """Modify relationship strength"""
@@ -80,6 +92,21 @@ class RelationshipManager:
         self.relationships: Dict[str, Relationship] = {}
         # Index for quick lookups
         self.agent_relationships: Dict[str, Set[str]] = {}
+        # The world's clock (anything with .current_tick), set by the
+        # simulation; without one every friendly interaction counts in full
+        self.time = None
+
+    def growth(self, rel: Relationship) -> float:
+        """How much a friendly interaction now deepens this bond (0..BOND_STEP),
+        by the time since it last grew; notes that it grew now."""
+        if self.time is None:
+            return BOND_STEP
+        now = self.time.current_tick
+        last = getattr(rel, 'last_grown', None)
+        rel.last_grown = now
+        if last is None:
+            return BOND_STEP
+        return BOND_STEP * min(1.0, max(0, now - last) / BOND_SPACING)
 
     def create_relationship(
         self,
@@ -176,8 +203,8 @@ class RelationshipManager:
                 agent_a_id, agent_b_id, rel_type, initial_strength
             )
 
-        # Update strength
-        delta = 0.1 if positive else -0.1
+        # Update strength (a quarrel hurts at once; liking grows with time)
+        delta = self.growth(rel) if positive else -0.1
         status = rel.update_strength(delta)
 
         # Record interaction

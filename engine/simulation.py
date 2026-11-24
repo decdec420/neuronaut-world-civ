@@ -268,6 +268,7 @@ class SimulationEngine:
         # Core systems
         self.world = systems['world']
         self.relationship_manager = systems['relationship_manager']
+        self.relationship_manager.time = self.world.time   # bonds grow with time (social/relationships.py)
         self.group_manager = systems['group_manager']
         self.economy = systems['economy']
         self.event_logger = systems['event_logger']
@@ -806,6 +807,8 @@ class SimulationEngine:
             self.world.map._label_land()
         if not getattr(self.pathfinder, 'water', None):
             self.pathfinder.set_terrain(self.world.map)
+        if getattr(self.relationship_manager, 'time', None) is None:
+            self.relationship_manager.time = self.world.time
 
     EVENT_MEMORY_IMPORTANCE = {0: 0.1, 1: 0.3, 2: 0.5, 3: 0.8, 4: 1.0}
 

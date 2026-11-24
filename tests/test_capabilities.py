@@ -28,6 +28,18 @@ def act(sim, agent, name, target=None, **params):
         return handler.execute(agent, action)
 
 
+def court_until_partners(sim, a, b, visits=12):
+    """A and B court each other in turn, in person, a visit every
+    BOND_SPACING ticks, until they're partners. Returns how many visits it
+    took (each deepens the bond: life/family.py PARTNER_BOND)."""
+    from social.relationships import BOND_SPACING
+    for n in range(1, visits + 1):
+        if act(sim, a if n % 2 else b, "seek_romance", target=b if n % 2 else a).metadata.get("partnership_formed"):
+            return n
+        sim.world.time.current_tick += BOND_SPACING
+    raise AssertionError(f"not partners after {visits} visits")
+
+
 def befriend(sim, a, b, strength=0.9):
     from social.relationships import RelationshipType
     with quiet():
@@ -334,6 +346,47 @@ def test_steel_from_refined_iron():
     assert act(sim, a, "create_alloy").success  # a known alloy can be made again
 
 
+def test_courting_needs_having_met_and_is_done_in_person():
+    """Only someone you've met (life/family.py knows); farther than
+    COURT_REACH, you walk to them first. Courting used to reach any stranger
+    anywhere, and every couple formed in the first hours of day one."""
+    from agents.agent import Action, ActionType, Position
+    from life import family
+    sim, roles = make_world()
+    b, d = roles["partner"], roles["neighbour"]      # B and D have never met
+    romance = sim._handler_registry.get_handler(ActionType.SEEK_ROMANCE)
+    b.partner_id = None
+    roles["actor"].partner_id = None
+    with quiet():
+        ok, why = romance.validate(d, Action(ActionType.SEEK_ROMANCE, target_agent=b.id))
+    assert not ok and "haven't met" in why
+    befriend(sim, b, d, 0.4)
+    d.location = Position(*next((x, y) for (x, y) in sorted(sim.world.map.land_component)
+                                if 15 <= ((x - b.location.x) ** 2 + (y - b.location.y) ** 2) ** 0.5 <= 20))
+    far = d.location.distance_to(b.location)
+    walking = act(sim, d, "seek_romance", target=b)
+    assert walking.success and "On your way" in walking.message and walking.metadata.get("underway")
+    assert d.location.distance_to(b.location) < far and d.id not in b.admirers
+    d.location = Position(b.location.x + 1, b.location.y)
+    assert act(sim, d, "seek_romance", target=b).success and d.id in b.admirers
+
+
+def test_a_courtship_deepens_with_time_between_visits_not_with_haste():
+    """Visits in quick succession hardly deepen the bond; spaced over days
+    they do (social/relationships.py BOND_SPACING)."""
+    sim, roles = make_world()
+    c, d = roles["sick"], roles["neighbour"]
+    rel = sim.relationship_manager.get_relationship(c.id, d.id)
+    act(sim, d, "seek_romance", target=c)
+    act(sim, c, "seek_romance", target=d)              # both courting: getting to know each other
+    start = rel.strength
+    for i in range(20):                                # an afternoon of visits, back to back
+        act(sim, d if i % 2 else c, "seek_romance", target=c if i % 2 else d)
+    assert rel.strength - start < 0.05 and c.partner_id is None
+    visits = court_until_partners(sim, d, c)           # a visit every 8 hours
+    assert visits >= 3 and c.partner_id == d.id
+
+
 def test_partnership_needs_both_to_choose_and_either_can_end_it():
     from life import family
     sim, roles = make_world()
@@ -346,8 +399,12 @@ def test_partnership_needs_both_to_choose_and_either_can_end_it():
     assert d.partner_id is None and c.partner_id is None
     assert not act(sim, d, "seek_romance", target=c).success  # still no answer
 
-    # C, on its own turn, courts D back: both chose it, so they're partners
-    assert act(sim, c, "seek_romance", target=d).metadata.get("partnership_formed")
+    # C, on its own turn, courts D back: both chose it, but they've only just
+    # met (bond 0.4), so they're getting to know each other
+    back = act(sim, c, "seek_romance", target=d)
+    assert back.success and back.metadata.get("mutual") and c.partner_id is None
+    # A few more visits, each deepening the bond, and they're partners
+    assert court_until_partners(sim, d, c) > 1
     assert c.partner_id == d.id and d.partner_id == c.id
 
     # A has a partner (from make_world) and C is taken: neither can court

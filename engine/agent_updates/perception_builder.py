@@ -384,7 +384,8 @@ class PerceptionBuilder:
         for other in self.sim.world.agents:
             if not other.alive or other.id == agent.id:
                 continue
-            if family.recently(agent.admirers, other.id, now) and family.free_to_court(agent, other)[0]:
+            if family.recently(agent.admirers, other.id, now) and \
+                    family.free_to_court(agent, other, self.sim.relationship_manager)[0]:
                 life_info['admirers'].append(other.name)
             if family.recently(other.admirers, agent.id, now):
                 life_info['courting'].append(other.name)

@@ -27,6 +27,13 @@ INTEREST_MEMORY_TICKS = 432
 CONCEPTION_CHANCE = 0.3   # each time both partners try, at peak fertility
 PREGNANCY_YEARS = 0.75    # in life years (life/aging.py)
 CARE_REACH = 10.0         # how close you must be to look after a child
+COURT_REACH = 3.0         # courting, and time with a partner, happen in person
+# How deep the bond (relationship strength, 0-1) between two people courting
+# each other must be before they're partners. A first meeting leaves 0.3-0.4,
+# and bonds grow with time spent together (social/relationships.py
+# BOND_SPACING), so a courtship takes days. (Without it, couples formed an
+# hour after first meeting.)
+PARTNER_BOND = 0.7
 
 BABY_ACTIONS = frozenset({"rest", "eat", "drink", "socialize"})
 CHILD_ACTIONS = BABY_ACTIONS | frozenset({
@@ -93,8 +100,17 @@ def forget_old(marks: Dict[str, int], now: int) -> None:
         del marks[who]
 
 
-def free_to_court(agent, other) -> Tuple[bool, str]:
-    """Whether `agent` may court `other` (its own partner always counts)."""
+def knows(relationships, agent, other) -> bool:
+    """Whether `agent` has met `other`: any relationship at all (they've talked,
+    traded, worked or quarrelled)."""
+    return relationships is not None and relationships.get_relationship(agent.id, other.id) is not None
+
+
+def free_to_court(agent, other, relationships=None) -> Tuple[bool, str]:
+    """Whether `agent` may court `other` (its own partner always counts).
+    Given `relationships`, only someone it has met: courting used to reach
+    any stranger anywhere on the map, so every couple formed within the first
+    hours of the first day, between people who had never spoken."""
     if other is None or other.id == agent.id or not other.alive:
         return False, "Nobody to court"
     if not is_adult(agent):
@@ -107,6 +123,8 @@ def free_to_court(agent, other) -> Tuple[bool, str]:
         return False, "You already have a partner (separate first)"
     if other.partner_id:
         return False, f"{other.name} already has a partner"
+    if relationships is not None and not knows(relationships, agent, other):
+        return False, f"You haven't met {other.name} yet"
     return True, ""
 
 

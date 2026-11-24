@@ -807,7 +807,7 @@ Be bold! Think of something interesting to try.
         if life:
             heart = [f"Partner: {life['partner']}." if life.get("partner") else "You have no partner."]
             if life.get("admirers"):
-                heart.append(f"Courting you: {', '.join(life['admirers'][:4])} (court them back to become partners).")
+                heart.append(f"Courting you: {', '.join(life['admirers'][:4])} (court them back; once you've grown close, you'll be partners).")
             if life.get("courting"):
                 heart.append(f"You courted {', '.join(life['courting'][:4])}; no answer yet.")
             if life.get("is_pregnant"):

@@ -416,7 +416,8 @@ class UtilityBrain:
 
     def _romance_target(self, agent, action: str) -> Tuple[Optional[str], float]:
         """The partner (for time together, or to leave); for someone single, a
-        person free to court, picked by how drawn the agent is to them. Someone
+        person it has met and is free to court, picked by how drawn the agent
+        is to them. Someone
         who courted the agent pulls more; someone it courted who never answered
         pulls less. Returns (agent id, pull)."""
         from life import family
@@ -429,7 +430,7 @@ class UtilityBrain:
         now = self.sim.world.time.current_tick
         people, pulls = [], []
         for other in self.sim.world.agents:
-            if not other.alive or other.id == agent.id or not family.free_to_court(agent, other)[0]:
+            if not other.alive or other.id == agent.id or not family.free_to_court(agent, other, rm)[0]:
                 continue
             pull = family.attraction(rm, agent, other)
             if family.recently(agent.admirers, other.id, now):
