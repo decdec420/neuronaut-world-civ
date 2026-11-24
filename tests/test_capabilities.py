@@ -443,3 +443,18 @@ def test_glass_from_sand_burns_fuel():
     result = act(sim, a, "refine_material", details="sand into glass")
     assert result.metadata["product"] == "glass" and a.inventory.items["glass"] == 1
     assert a.inventory.items["sand"] == 2 and a.inventory.items["wood"] == 1
+
+
+def test_land_already_claimed_is_refused_before_the_turn_is_spent():
+    """validate, not execute, says the land is taken, so the brains choose
+    something else (it used to fail ~75 turns per dawn world)."""
+    from agents.agent import Action, ActionType
+    sim, roles = make_world()
+    owner, other = roles["actor"], roles["neighbour"]
+    assert act(sim, owner, "claim_territory").success
+    handler = sim._handler_registry.get_handler(ActionType.CLAIM_TERRITORY)
+    with quiet():
+        mine = handler.validate(owner, Action(ActionType.CLAIM_TERRITORY))
+        theirs = handler.validate(other, Action(ActionType.CLAIM_TERRITORY))
+    assert mine == (False, "Already own this territory") and theirs == (False, "Land already claimed by another")
+    assert not sim._agent_updater._can_run(other, Action(ActionType.CLAIM_TERRITORY))

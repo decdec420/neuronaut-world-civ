@@ -37,6 +37,16 @@ class TerritoryHandler(ActionHandler):
             if not agent_territories:
                 return False, "No territory to patrol/guard"
 
+        if action.action_type == ActionType.CLAIM_TERRITORY:
+            # Land that's already someone's can't be claimed here (this was only
+            # found out in execute, so agents kept choosing it: 604 failed claims
+            # over 8 dawn worlds)
+            existing = territory.get_territory_at_location((agent.location.x, agent.location.y))
+            if existing and existing.owner_id == agent.id:
+                return False, "Already own this territory"
+            if existing:
+                return False, "Land already claimed by another"
+
         return True, ""
 
     def execute(self, agent: 'Agent', action: 'Action') -> ActionResult:
