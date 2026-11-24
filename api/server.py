@@ -17,8 +17,7 @@ from typing import List, Dict, Optional
 from functools import lru_cache
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field, constr, field_validator
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -187,6 +186,14 @@ def _seed_world() -> None:
     seed = load_config().world_seed
     if seed is not None:
         random.seed(seed)
+
+
+def _name_of(agent_id):
+    """An agent's name for display (ids mean nothing to a viewer)."""
+    if not agent_id or simulation is None:
+        return None
+    agent = simulation._get_agent_by_id(agent_id)
+    return agent.name if agent is not None else "someone gone"
 
 
 def _drop_websocket(ws: WebSocket) -> None:
@@ -477,9 +484,13 @@ async def get_economy():
     if not simulation:
         raise HTTPException(status_code=503, detail="Simulation not running")
 
+    done = simulation.action_successes
     return {
         "wealth_stats": simulation.economy.get_wealth_statistics(),
-        "market_stats": simulation.economy.market.get_market_statistics()
+        "market_stats": simulation.economy.market.get_market_statistics(),
+        # how many times each step toward money has been done
+        "made": {"smelt_ore": done.get("smelt_ore", 0), "refine_material": done.get("refine_material", 0),
+                 "mint_coins": done.get("mint_coins", 0)},
     }
 
 
@@ -1021,7 +1032,8 @@ async def get_politics():
                     "type": g.government_type.value,
                     "citizens": len(g.citizens),
                     "approval": g.approval_rating,
-                    "leader": g.leader_id,
+                    "leader": _name_of(g.leader_id),
+                    "leader_id": g.leader_id,
                     "laws": len(g.laws) if hasattr(g, 'laws') else 0,
                     "authority": g.authority if hasattr(g, 'authority') else 0.5
                 })
@@ -1058,7 +1070,8 @@ async def get_culture():
                 "id": group.id,
                 "name": group.name,
                 "members": len(group.members),
-                "leader": group.leader_id,
+                "leader": _name_of(group.leader_id),
+                "leader_id": group.leader_id,
                 "cohesion": group.cohesion if hasattr(group, 'cohesion') else 0.5,
                 "purpose": group.purpose if hasattr(group, 'purpose') else "General"
             })
@@ -1111,7 +1124,8 @@ async def get_governments():
             "type": g.government_type.value,
             "citizens": len(g.citizens),
             "approval": g.approval_rating,
-            "leader": g.leader_id,
+            "leader": _name_of(g.leader_id),
+            "leader_id": g.leader_id,
         }
         for g in simulation.governance_manager.governments.values()
         if g.active
@@ -1594,39 +1608,10 @@ async def get_map():
     return map_layout(simulation)
 
 
-@app.get("/materials_example")
-async def serve_materials_example():
-    """Serve materials system example"""
-    return FileResponse(WEB_DIR / "materials_example.html")
-
-
-@app.get("/inventory")
-async def serve_player_inventory():
-    """Serve player inventory & crafting interface"""
-    return FileResponse(WEB_DIR / "player_inventory.html")
-
-@app.get("/app/classic")
-async def serve_classic_app():
-    """Serve original web interface"""
-    return FileResponse(WEB_DIR / "index.html")
-
-
 @app.get("/game")
 async def serve_game_interface():
-    """Redirect /game to /app for consistency"""
-    return FileResponse(WEB_DIR / "enhanced.html")
+    """The dashboard's old address"""
+    return RedirectResponse("/app")
 
 
-def main():
-    """Run the server"""
-    uvicorn.run(
-        "api.server:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=False,
-        log_level="info"
-    )
-
-
-if __name__ == "__main__":
-    main()
+# Run the server with main.py: it reads the settings (HOST, PORT, ...).

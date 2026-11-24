@@ -372,7 +372,7 @@ Web Browser (Observer)
 - `engine/events.py` - Event logging and narration
 - `engine/simulation.py` - Main simulation loop
 - `api/server.py` - FastAPI backend
-- `web/index.html` - Live observation interface
+- `web/enhanced.html`, `web/town_map.js` - the dashboard and its 2D map (served at `/app`)
 
 **Total: 5,000+ lines of code**
 

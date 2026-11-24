@@ -6111,9 +6111,10 @@
                 // Currency system status
                 document.getElementById('econ-metal-ore').textContent = Math.round(resources.metal_ore || 0);
 
-                // Check if smelting/coinage discovered (placeholder - you can add actual discovery tracking)
-                const hasSmelting = (resources.metal_ore || 0) < 900; // Some has been used
-                const hasCoinage = market.total_transactions > 0; // Trading indicates currency use
+                // What has actually been done (counted by the server)
+                const made = economyData.made || {};
+                const hasSmelting = (made.smelt_ore || 0) + (made.refine_material || 0) > 0;
+                const hasCoinage = (made.mint_coins || 0) > 0;
 
                 document.getElementById('econ-smelting-status').textContent = hasSmelting ? 'Yes ✅' : 'Not yet';
                 document.getElementById('econ-coinage-status').textContent = hasCoinage ? 'Yes ✅' : 'Not yet';

@@ -44,6 +44,31 @@ def test_pages_are_served_from_any_working_directory(client, tmp_path, monkeypat
     assert js.status_code == 200 and "javascript" in js.headers["content-type"]
 
 
+def test_only_the_dashboard_is_served(client):
+    """/game is the dashboard's old address; the old pages (a "classic" view,
+    a crafting page whose button only showed an alert, a materials demo) are
+    gone."""
+    moved = client.get("/game", follow_redirects=False)
+    assert moved.status_code in (302, 307) and moved.headers["location"] == "/app"
+    for gone in ("/app/classic", "/inventory", "/materials_example"):
+        assert client.get(gone).status_code == 404, gone
+
+
+def test_politics_names_leaders_and_economy_counts_what_was_made(client):
+    sim = server.simulation
+    founder = sim.world.agents[0]
+    from world.governance import GovernmentType
+    gov = sim.governance_manager.agent_forms_government(founder.id, "Test Council", GovernmentType.DEMOCRACY)
+    politics = client.get("/politics").json()
+    mine = next(g for g in politics["governments"] if g["id"] == gov.id)
+    assert mine["leader"] == founder.name and mine["leader_id"] == founder.id
+    listed = next(g for g in client.get("/governments").json()["governments"] if g["id"] == gov.id)
+    assert listed["leader"] == founder.name      # the Politics tab shows this one
+    sim.action_successes["mint_coins"] += 1
+    made = client.get("/economy").json()["made"]
+    assert made["mint_coins"] >= 1 and "smelt_ore" in made
+
+
 def test_the_websocket_sends_a_snapshot_then_updates(client):
     with client.websocket_connect("/ws") as ws:
         first = _receive(ws)
