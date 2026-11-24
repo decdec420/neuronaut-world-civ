@@ -64,6 +64,7 @@ ACTION_NEEDS: Dict[str, Dict[N, float]] = {
     "celebrate": {N.BELONGING: 0.55, N.MEANING: 0.45},
     "chop_wood": {N.RESOURCES: 1},
     "claim_territory": {N.SECURITY: 0.6, N.ACHIEVEMENT: 0.4},
+    "convert": {N.MEANING: 1},  # speaking of one's faith; belonging too if they take it up
     "create_alloy": {N.ACHIEVEMENT: 1},
     "create_art": {N.CREATIVITY: 0.45, N.ACHIEVEMENT: 0.35, N.MEANING: 0.2},
     "cure": {N.ACHIEVEMENT: 0.55, N.MEANING: 0.45},
@@ -183,13 +184,14 @@ ACTION_TRAITS: Dict[str, Dict[str, float]] = {
     "pray": {"rationality": -0.5, "neuroticism": 0.3, "openness": 0.2},
     "worship": {"rationality": -0.5, "agreeableness": 0.3},
     "perform_ritual": {"rationality": -0.4, "extraversion": 0.3},
+    "convert": {"rationality": -0.3, "extraversion": 0.5, "ambition": 0.2},
     "build_temple": {"rationality": -0.4, "conscientiousness": 0.3, "ambition": 0.3},
     "fight": {"aggression": 0.8, "risk_taking": 0.3, "agreeableness": -0.4},
 }
 
 SOCIAL_ACTIONS = {"socialize", "seek_romance", "celebrate", "tell_story", "play_game", "create_art",
                   "organize_event", "attend_event"}
-NEEDS_TARGET = {"socialize", "seek_romance", "separate", "try_for_child", "care_for_child", "trade", "teach", "tell_story", "play_game", "gamble",
+NEEDS_TARGET = {"convert", "socialize", "seek_romance", "separate", "try_for_child", "care_for_child", "trade", "teach", "tell_story", "play_game", "gamble",
                 "fight", "heal", "cure", "diagnose"}
 NEEDS_SICK_TARGET = {"heal", "cure", "diagnose"}
 ROMANCE_ACTIONS = {"seek_romance", "separate"}
@@ -399,6 +401,11 @@ class UtilityBrain:
         pool = {a["id"] for a in perceptions.get("nearby_agents", []) if a["id"] in alive} | set(liking)
         if not pool:
             pool = set(alive)
+        if action == "convert":
+            # someone who doesn't already share its faith
+            religion = self.sim.religion
+            mine = religion.get_agent_religion(agent.id)
+            pool = {p for p in (pool or set(alive)) if religion.get_agent_religion(p) is not mine}
         if not pool:
             return None, 0.0
         people = sorted(pool)   # a set's order isn't stable; the dice must pick from a fixed order

@@ -138,7 +138,7 @@ UNHANDLED_ACTION_FALLBACKS = {
     'exile': 'govern',
     # Religion / health
     'bless': 'perform_ritual', 'curse': 'perform_ritual', 'prophesy': 'worship',
-    'convert': 'worship', 'treat': 'heal', 'midwife': 'heal', 'comfort_sick': 'heal',
+    'treat': 'heal', 'midwife': 'heal', 'comfort_sick': 'heal',
 }
 
 

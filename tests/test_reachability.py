@@ -48,7 +48,7 @@ TRIES_PER_WORLD = 8  # several outcomes are random (discoveries succeed 3-5% of 
 PREPARE = {
     "tend_crops": ["plant_crops"],
     "harvest": ["plant_crops", "<let crops grow>"],
-    "build_temple": ["worship"], "perform_ritual": ["worship"],
+    "build_temple": ["worship"], "perform_ritual": ["worship"], "convert": ["worship"],
     "make_law": ["govern"],
     "vote": ["govern", "make_law"],
     "guard": ["claim_territory"], "patrol": ["claim_territory"],
@@ -164,7 +164,7 @@ TARGETS = {
     "seek_romance": "partner", "separate": "partner", "try_for_child": "partner",
     "trade": "neighbour", "teach": "neighbour", "socialize": "neighbour",
     "tell_story": "neighbour", "play_game": "neighbour", "gamble": "neighbour",
-    "fight": "neighbour",
+    "fight": "neighbour", "convert": "neighbour",
 }
 
 

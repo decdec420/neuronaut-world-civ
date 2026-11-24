@@ -1,4 +1,11 @@
-"""Religion Action Handler - Handles agent religious and spiritual actions."""
+"""Religion Action Handler - Handles agent religious and spiritual actions.
+
+pray, worship, perform_ritual, build_temple, and convert: telling someone
+about your faith. Whether they take it up is theirs to decide, from their own
+state (_listener_takes_it_up). Before convert was real it fell back to
+worship, so nobody could share a faith: a faith grew only when someone who
+already liked a follower happened to worship, and most had only their founder.
+"""
 
 from typing import TYPE_CHECKING
 import random
@@ -17,12 +24,22 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Telling someone about your faith: the chance they take it up, from things
+# about the listener. A sketch of how persuasion works, not a target.
+LISTEN_BASE = 0.05      # anyone might
+LISTEN_LIKING = 0.35    # more if they like the one telling them (a rival never)
+LISTEN_OPENNESS = 0.2   # more if they're open to new ideas
+LISTEN_MEANING = 0.2    # more if they're looking for meaning
+LISTEN_HELD = 0.6       # less if their own faith still holds them
+LISTEN_MAX = 0.8
+
 
 class ReligionHandler(ActionHandler):
     """Handles religious and spiritual actions for agents."""
 
     def can_handle(self, action_type: ActionType) -> bool:
-        return action_type in [ActionType.PRAY, ActionType.WORSHIP, ActionType.PERFORM_RITUAL, ActionType.BUILD_TEMPLE]
+        return action_type in [ActionType.PRAY, ActionType.WORSHIP, ActionType.PERFORM_RITUAL, ActionType.BUILD_TEMPLE,
+                               ActionType.CONVERT]
 
     def validate(self, agent: 'Agent', action: 'Action') -> tuple[bool, str]:
         alive_valid = validate_agent_alive(agent)
@@ -31,9 +48,15 @@ class ReligionHandler(ActionHandler):
         religion = self.context.get_system('religion')
         if religion is None:
             return False, "Religion system unavailable"
-        if action.action_type in (ActionType.PERFORM_RITUAL, ActionType.BUILD_TEMPLE):
+        if action.action_type in (ActionType.PERFORM_RITUAL, ActionType.BUILD_TEMPLE, ActionType.CONVERT):
             if religion.get_agent_religion(agent.id) is None:
                 return False, "Not religious"
+        if action.action_type == ActionType.CONVERT:
+            listener = self.context.get_agent_by_id(action.target_agent) if action.target_agent else None
+            if listener is None or not listener.alive:
+                return False, "Nobody to tell about your faith"
+            if religion.get_agent_religion(listener.id) is religion.get_agent_religion(agent.id):
+                return False, f"{listener.name} already shares your faith"
         if action.action_type == ActionType.BUILD_TEMPLE:
             if not (agent.inventory.has_item('stone', 5) and agent.inventory.has_item('wood', 5)):
                 return False, "Need 5 stone and 5 wood for a temple"
@@ -65,6 +88,49 @@ class ReligionHandler(ActionHandler):
             if pull > best_pull:
                 best, best_pull = faith, pull
         return best
+
+    def _listener_takes_it_up(self, listener, speaker, tick: int) -> float:
+        """The chance the listener joins the speaker's faith: from how much it
+        likes the speaker, its openness, how much it's looking for meaning,
+        and how strongly its own faith (if any) still holds it."""
+        religion = self.context.get_system('religion')
+        liking = self._liking(listener.id, speaker.id)
+        if liking < 0:
+            return 0.0
+        held = 0.0
+        theirs = religion.get_agent_religion(listener.id)
+        if theirs is not None:
+            last = getattr(religion, 'last_practice', {}).get(listener.id)
+            since = tick - last if last is not None else religion.LAPSE_TICKS
+            held = max(0.0, 1.0 - since / religion.LAPSE_TICKS, self._pull(listener, theirs))
+        meaning = listener.needs.needs[NeedType.MEANING].get_urgency()
+        chance = (LISTEN_BASE + LISTEN_LIKING * liking + LISTEN_OPENNESS * listener.personality.openness
+                  + LISTEN_MEANING * meaning - LISTEN_HELD * held)
+        return max(0.0, min(LISTEN_MAX, chance))
+
+    def _share_faith(self, agent, faith, listener_id: str, tick: int) -> ActionResult:
+        religion = self.context.get_system('religion')
+        listener = self.context.get_agent_by_id(listener_id)
+        religion.record_practice(agent.id, tick)       # speaking of it is practising it
+        agent.needs.satisfy_need(NeedType.MEANING, 0.2)
+        chance = self._listener_takes_it_up(listener, agent, tick)
+        theirs = religion.get_agent_religion(listener.id)
+        if random.random() < chance:
+            religion.convert_agent(listener.id, faith.id, theirs.id if theirs else None)
+            religion.record_practice(listener.id, tick)
+            listener.needs.satisfy_need(NeedType.MEANING, 0.3)
+            listener.needs.satisfy_need(NeedType.BELONGING, 0.3)
+            agent.needs.satisfy_need(NeedType.BELONGING, 0.2)
+            left = f" (leaving {theirs.name})" if theirs else ""
+            self._log(f"🙏 {listener.name} joined {faith.name}", f"{agent.name} told {listener.name} about "
+                      f"{faith.name}, and {listener.name} took it up{left}.", tick, [agent.id, listener.id])
+            return ActionResult(success=True, emotional_impact=0.4,
+                                message=f"{listener.name} took up {faith.name}",
+                                metadata={'religion_id': faith.id, 'converted': True, 'chance': round(chance, 2)})
+        kept = f"kept to {theirs.name}" if theirs else "didn't take it up"
+        return ActionResult(success=True, emotional_impact=0.05,
+                            message=f"Told {listener.name} about {faith.name}; they {kept}",
+                            metadata={'religion_id': faith.id, 'converted': False, 'chance': round(chance, 2)})
 
     @staticmethod
     def _founding_type(agent):
@@ -155,6 +221,9 @@ class ReligionHandler(ActionHandler):
                 agent.needs.satisfy_need(NeedType.STATUS, 0.2)
             return ActionResult(success=True, emotional_impact=0.3, message=f"Performed {ritual_type.value}",
                                 metadata={'participants': len(ritual.participants)})
+
+        if action.action_type == ActionType.CONVERT:
+            return self._share_faith(agent, faith, action.target_agent, current_tick)
 
         if action.action_type == ActionType.BUILD_TEMPLE:
             agent.inventory.remove_item('stone', 5)

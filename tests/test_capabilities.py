@@ -158,6 +158,53 @@ def test_a_faith_left_unpractised_is_felt_and_seen():
     assert brain._faith_pull(believer) == 0.0
 
 
+def test_a_faith_can_be_shared_and_the_listener_decides():
+    """convert: a believer tells someone about its faith; whether they take
+    it up comes from the listener (engine/handlers/religion.py)."""
+    import random
+    from agents.agent import Action, ActionType, NeedType
+    sim, roles = make_world()
+    believer, friend, rival = roles["actor"], roles["neighbour"], roles["partner"]
+    convert = sim._handler_registry.get_handler(ActionType.CONVERT)
+    assert not convert.validate(believer, Action(ActionType.CONVERT, target_agent=friend.id))[0]   # no faith yet
+    faith = sim.religion.religions[act(sim, believer, "worship").metadata["religion_id"]]
+    rm, tick = sim.relationship_manager, sim.world.time.current_tick
+
+    # a friend who is open and looking for meaning: likely to take it up
+    for _ in range(10):
+        rm.update_relationship(friend.id, believer.id, 'socialize', True)
+    friend.personality.openness = 0.9
+    friend.needs.needs[NeedType.MEANING].level = 0.9
+    likely = convert._listener_takes_it_up(friend, believer, tick)
+    friend.personality.openness = 0.1
+    friend.needs.needs[NeedType.MEANING].level = 0.1
+    assert convert._listener_takes_it_up(friend, believer, tick) < likely
+    friend.personality.openness, friend.needs.needs[NeedType.MEANING].level = 0.9, 0.9
+
+    # a rival never does
+    from social.relationships import RelationshipType
+    rel = rm.get_relationship(rival.id, believer.id) or rm.create_relationship(rival.id, believer.id,
+                                                                               RelationshipType.RIVALRY)
+    rel.relationship_type, rel.strength = RelationshipType.RIVALRY, 0.8
+    assert convert._listener_takes_it_up(rival, believer, tick) == 0.0
+
+    random.seed(3)
+    for _ in range(40):
+        result = act(sim, believer, "convert", target=friend)
+        if result.metadata["converted"]:
+            break
+    assert result.metadata["converted"] and friend.id in faith.followers
+    assert any("joined" in e.title for e in sim.event_logger.events)
+    # now they share it: nothing more to tell them
+    assert not convert.validate(believer, Action(ActionType.CONVERT, target_agent=friend.id))[0]
+
+    # someone whose own faith is fresh is held by it
+    other = sim.religion.religions[act(sim, rival, "worship").metadata["religion_id"]]
+    assert other is not faith
+    rel.relationship_type, rel.strength = RelationshipType.FRIENDSHIP, 0.8
+    assert convert._listener_takes_it_up(rival, believer, sim.world.time.current_tick) == 0.0
+
+
 def test_inventions_are_recorded_once_and_spread_by_teaching():
     sim, roles = make_world()
     a, b = roles["actor"], roles["neighbour"]

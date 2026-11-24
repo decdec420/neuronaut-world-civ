@@ -108,6 +108,7 @@ ACTION_INFO = {
     "worship": ("religion", "worship with your faith"),
     "perform_ritual": ("religion", "lead a ritual"),
     "build_temple": ("religion", "build a temple"),
+    "convert": ("religion", "tell someone about your faith; they may take it up (TARGET)"),
     "fight": ("conflict", "fight someone (TARGET)"),
 }
 
