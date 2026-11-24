@@ -325,11 +325,14 @@ class ResourceMemory:
         agent_id: str,
         resource_type: str,
         current_tick: int,
-        max_age: int = 500
+        max_age: int = 500,
+        near=None  # a position (.x, .y)
     ) -> Optional[Dict]:
         """
-        Recall a resource location from memory.
-        Returns closest remembered location that's not too old.
+        Recall a resource location from memory, not too old: the closest to
+        `near` if given (it used to be the most visited wherever the agent
+        was, so agents walked back across the map to an old favourite spot),
+        otherwise the most visited.
         """
         if agent_id not in self.resource_memories:
             return None
@@ -344,7 +347,8 @@ class ResourceMemory:
         if not valid_memories:
             return None
 
-        # Return most recently visited
+        if near is not None:
+            return min(valid_memories, key=lambda m: ((m['x'] - near.x) ** 2 + (m['y'] - near.y) ** 2, -m['visits']))
         valid_memories.sort(key=lambda m: m['visits'], reverse=True)
         return valid_memories[0]
 
