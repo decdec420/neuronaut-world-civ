@@ -77,6 +77,16 @@
             animation: pulse 2s infinite;
         }
 
+        .pulse-dot.off {
+            background: #64748b;
+            animation: none;
+        }
+
+        /* Shown until the first update arrives, and whenever the server is lost */
+        .conn-pill.lost {
+            background: rgba(239, 68, 68, 0.45);
+        }
+
         @keyframes pulse {
             0%, 100% { opacity: 1; transform: scale(1); }
             50% { opacity: 0.6; transform: scale(1.1); }
@@ -1067,12 +1077,13 @@
                 <p>TRUE Autonomous Civilization Simulator - Stone Age → Space Age</p>
             </div>
             <div class="header-right">
+                <div class="stat-pill conn-pill" id="conn-pill">Connecting to the world…</div>
                 <div class="stat-pill">
-                    <span class="pulse-dot"></span>
-                    <span>Day <strong id="header-day">1</strong></span>
+                    <span class="pulse-dot off" id="conn-dot" title="Not connected yet"></span>
+                    <span>Day <strong id="header-day">–</strong></span>
                 </div>
                 <div class="stat-pill">
-                    👥 <strong id="header-agents">0</strong> Agents
+                    👥 <strong id="header-agents">–</strong> Agents
                 </div>
                 <div class="stat-pill">
                     ⚗️ <strong id="header-discoveries">0</strong> Discoveries
@@ -1155,7 +1166,7 @@
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 20px; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 20px; border-radius: 12px; border: 2px solid #334155;">
                     <!-- Primary Metrics -->
                     <div style="text-align: center; border-right: 1px solid #334155; padding: 0 12px;">
-                        <div style="font-size: 36px; font-weight: 700; color: #3b82f6; line-height: 1;" id="live-agents">50</div>
+                        <div style="font-size: 36px; font-weight: 700; color: #3b82f6; line-height: 1;" id="live-agents">–</div>
                         <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px;">👥 Population</div>
                     </div>
                     <div style="text-align: center; border-right: 1px solid #334155; padding: 0 12px;">
@@ -2852,6 +2863,7 @@
 
             ws.onmessage = (event) => {
                 const raw = JSON.parse(event.data);
+                showConnection(true);
                 if (raw.type === 'ping') return;
                 // The server sends a bare snapshot first, then wraps updates as
                 // {type: 'simulation_update', data: {...}}. Unwrap so every update renders.
@@ -2867,8 +2879,25 @@
             };
 
             ws.onclose = () => {
+                showConnection(false);
                 setTimeout(connectWebSocket, 2000);
             };
+        }
+
+        // Until updates arrive, the numbers on the page aren't the world's: say so
+        function showConnection(live) {
+            const pill = document.getElementById('conn-pill');
+            const dot = document.getElementById('conn-dot');
+            if (dot) {
+                dot.classList.toggle('off', !live);
+                dot.title = live ? 'Live' : 'Not connected';
+            }
+            if (!pill) return;
+            pill.style.display = live ? 'none' : '';
+            if (!live) {
+                pill.classList.add('lost');
+                pill.textContent = '⚠️ Not connected to the server: is main.py running? Retrying…';
+            }
         }
 
         // ===== EVENT DETECTION FOR PARTICLES =====
