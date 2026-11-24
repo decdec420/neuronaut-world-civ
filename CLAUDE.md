@@ -127,38 +127,39 @@ python3 scripts/sim_check.py --start settlers # the other kind of world (default
 
 ## Known open issues (good places to start)
 
-Measured on 8 seeds after the "make the sim work right" round (PR #4, Round 6).
-Fixed in that round: agents now carry on with what they set out to do
-(`agents/commitment.py`: 84-95% of commitments end with the agent arriving),
-believers can tell others about their faith (`convert`), the dashboard serves
-only `/app` (fake and stale pages removed) and shows names, not ids. Checked and
-fine: `rest` is ~36% of actions, but 92% of it is sleep at night. Earlier rounds
-fixed tell_story dominance, lapsing faiths, clashing gatherings, ids from the
-seed, the disaster rate, unused modules and stale docs.
+Measured on 8 seeds after Round 7 (PR #6). Fixed in that round: worlds start
+at the dawn of time (`world/knowhow.py`; settlers is the other start);
+thirsty agents drink what they carry and gather close food and water (thirst
+0.29 -> 0.18, hunger 0.24 -> 0.12); courtship takes days, between people
+who've met, in person, and bonds grow with time together (they used to max
+out by day 8); the profile tells each agent's story (and no longer shows NaN);
+claimed land is refused before the turn is spent. Earlier rounds: commitments,
+`convert`, dashboard-only serving, tell_story dominance, lapsing faiths,
+clashing gatherings, ids from the seed, disaster rate, stale docs.
 
-1. **Far guests can't reach a gathering.** One may set off only two hours
+1. **Couples never separate, and the first pairings decide the future.**
+   Separations are 0 in every run: it's possible, but nothing makes a
+   partnership sour. Founders age past fertility in ~2 weeks (a sim day is a
+   life year), so whether a village has children rests on who paired with
+   whom in the first days. Settlers, seeds 1-4, 42 days: births 29 -> 13
+   after courtship took days (seed 3's only mixed couple was 45).
+2. **Liking ignores personality.** With enough contact every relationship
+   reaches 1.0 in about a week (social/relationships.py growth is paced but
+   not shaped by compatibility, and nothing fades without contact).
+3. **Content agents have little to do:** rest is ~39% of actions (night
+   sleep is about 30%); much of the day goes to patrol and gatherings.
+4. **Resources have no maximum** (`world/simulation.py` Resource.regenerate):
+   food tiles grow +0.5 a tick forever. A balance change: measure first.
+5. **Dawn pacing is a first calibration** (`KnowHow.chance`): stone tools
+   ~week 1, fire ~2 weeks, farming in generation 2; some worlds go 26+ days
+   without shelter. Tune against long runs (`--ticks 6000 --start dawn`).
+6. **Far guests can't reach a gathering.** One may set off only two hours
    early (LEAD_TICKS), and walking is a tile a tick, so anyone more than ~20
-   tiles away arrives after the end. Letting them set off in time (walk time
-   on top) lowered attendance in every test, with commitments too (seeds 1
-   and 4, per person per day: 64%/58% without it, 60%/46% with it). Why is
-   not known; long walks get set aside for water, food and sleep, and the
-   pull of a far gathering may draw people from a near one. Measure before
-   trying again.
-2. Commitments cost some other things (8-seed medians): innovations 41.5 ->
-   36, road tiles 55 -> 31.5, conversations 2192 -> 1828. Likely time spent
-   finishing walks; not measured. COMMIT_PULL (0.8) is the knob.
-3. Faiths stay small: followers at the end, median 2 per world. `convert` is
-   rare; the listener's chance (LISTEN_* in engine/handlers/religion.py) is
-   a sketch of persuasion, not tuned to any target.
-4. Building fell when the need table was corrected (8-seed median 20 ->
-   16.5-17.5 since, glass made 7 -> 1-2): it had been pulled by needs it
-   doesn't meet. Whether agents build enough is an honest question about
-   what building gives them.
-5. Disasters come at their written rates (one every ~2-5 weeks, more in rain
-   and spring), but each is large: radius 40-60 tiles on a 100x100 map for
-   major ones, death chances up to 0.9. A balance call; measure on long runs
-   (`--long`) before changing it.
-6. The design PDFs in `docs/references/` predate most of this.
+   tiles away arrives after the end. Letting them set off in time lowered
+   attendance in every test. Measure before trying again.
+7. Faiths stay small (median 2 followers); disasters are large (radius 40-60
+   on a 100x100 map for major ones); the design PDFs in `docs/references/`
+   predate most of this.
 
 ## How to work
 
