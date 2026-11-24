@@ -168,3 +168,16 @@ def test_the_ai_brain_is_told_what_it_knows_and_what_it_could_teach():
         prompt = sim.llm_brain._build_thinking_prompt(agent, perceptions, "decide_action")
     assert "You know how to do: making fire." in prompt
     assert "You could teach " in prompt and f"{other.name} making fire" in prompt
+
+
+def test_worlds_start_at_the_dawn_unless_told_otherwise(monkeypatch):
+    import config
+    monkeypatch.delenv("WORLD_START", raising=False)
+    config.reset_config()
+    try:
+        assert config.load_config().world_start == "dawn"
+        monkeypatch.setenv("WORLD_START", "settlers")
+        config.reset_config()
+        assert config.load_config().world_start == "settlers"
+    finally:
+        config.reset_config()

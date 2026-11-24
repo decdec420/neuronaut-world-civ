@@ -31,8 +31,10 @@ jobs:
           python --version
       - name: Tests
         run: pytest -q
-      - name: Sim check (1200 ticks x 3 seeds; must print OVERALL PASS)
-        run: python scripts/sim_check.py
+      - name: Sim check, dawn of time (1200 ticks x 3 seeds; must print OVERALL PASS)
+        run: python scripts/sim_check.py --start dawn
+      - name: Sim check, settlers (1200 ticks x 3 seeds; must print OVERALL PASS)
+        run: python scripts/sim_check.py --start settlers
 
   docker:
     name: Docker image

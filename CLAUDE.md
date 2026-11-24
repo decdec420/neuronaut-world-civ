@@ -51,6 +51,7 @@ python3 scripts/sim_check.py                  # 1200 ticks x 3 seeds, must print
 python3 scripts/sim_check.py --verbose        # also shows top actions and top failures
 python3 scripts/sim_check.py --llm            # LLM decision path
 python3 scripts/sim_check.py --seeds 8        # for changes to the world itself: 3 seeds is too few
+python3 scripts/sim_check.py --start settlers # the other kind of world (default: WORLD_START, dawn)
 ```
 
 - `sim_check.py` is reproducible: the same code and seed give the same numbers
@@ -83,6 +84,7 @@ python3 scripts/sim_check.py --seeds 8        # for changes to the world itself:
 | Agents, needs, inventory | `agents/agent.py`, `engine/psychology.py` |
 | Goals / plans | `agents/strategy.py` (`evaluate_goal_action` maps plan steps to real actions) |
 | Commitments (carrying on with a walk) | `agents/commitment.py`, noted in `SimulationEngine.execute_action` |
+| Know-how (the beginning of time) | `world/knowhow.py`: what each agent knows how to do, insight, watching, teaching, loss; gated in `execute_action` and `_can_run` |
 | Buildings | `engine/handlers/construction.py`, `world/dynamic_buildings.py` |
 | World, resources, regrowth | `world/simulation.py` (`resource_pools`, `pool_regeneration`) |
 | Dashboard | `web/enhanced.html` (served at `/app`) |
@@ -111,6 +113,14 @@ python3 scripts/sim_check.py --seeds 8        # for changes to the world itself:
   `agent.location` directly. A step toward somewhere also starts the agent's
   commitment (`agent.stepped_toward`); a handler that walks with `walk_line`
   must set it too, and one that waits in place returns `underway: True`.
+- **Worlds start at the dawn of time** (`WORLD_START=dawn`, the default): agents
+  can't do what they don't know how to (`world/knowhow.py`), so a new action
+  that needs know-how goes in a `KnowHow.unlocks`, and one that doesn't is
+  innate. `agent.knowhow is None` means "knows everything" (settlers, older
+  saves). Tests run as settlers unless they ask for the dawn (`tests/conftest.py`).
+- **Relationships grow with time together** (`social/relationships.py`
+  BOND_SPACING): repeating an interaction in the same hour adds almost
+  nothing. Don't add 0.1 per interaction elsewhere.
 - **Requests that change the world** need the `X-Neuronaut-Control: 1` header
   (and the admin token if `NEURONAUT_ADMIN_TOKEN` is set). In the dashboard use
   `controlFetch()`.

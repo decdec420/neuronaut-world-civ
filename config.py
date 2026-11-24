@@ -70,10 +70,10 @@ class Config:
         # (fire, tools, shelter, farming, metal, writing...) has to be worked
         # out and passed on (world/knowhow.py). "settlers": everything is known
         # from the start and everyone carries supplies.
-        start = os.getenv('WORLD_START', 'settlers').strip().lower()
+        start = os.getenv('WORLD_START', 'dawn').strip().lower()
         if start not in ('dawn', 'settlers'):
-            print(f"⚠️  Invalid WORLD_START={start!r} (dawn or settlers), using settlers")
-            start = 'settlers'
+            print(f"⚠️  Invalid WORLD_START={start!r} (dawn or settlers), using dawn")
+            start = 'dawn'
         self.world_start = start
         level = os.getenv('LOG_LEVEL', 'INFO').strip().upper()
         if level not in ('DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'):
