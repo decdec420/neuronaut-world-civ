@@ -641,6 +641,11 @@ class AgentUpdater:
                 return Action(ActionType.EAT)
             return Action(ActionType.REST)
         if worst == thirst:
+            # Drink what you carry; fetch water only if you have none. (It always
+            # fetched: every bout of thirst was a walk to the lake, several turns
+            # of being thirsty, with water in the pack.)
+            if agent.inventory.has_item('water', 1):
+                return Action(ActionType.DRINK)
             return Action(ActionType.GATHER_WATER)
         if worst == hunger:
             if agent.inventory.has_item('food', 1) if hasattr(agent.inventory, 'has_item') else False:
