@@ -9,20 +9,26 @@ permissions:
 
 jobs:
   test:
-    name: Tests and sim check
+    name: Tests and sim check (Python ${{ matrix.python }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.13 is what the Docker image runs; 3.9 is the Python macOS ships with
+        python: ["3.13", "3.9"]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-          cache: pip
-          cache-dependency-path: |
-            requirements-minimal.txt
-            requirements-dev.txt
+      # uv, not setup-python: setup-python has no 3.9 for the current
+      # ubuntu-latest, and uv's Python builds cover every version here
+      - uses: astral-sh/setup-uv@v6
       - name: Install
-        run: pip install -r requirements-dev.txt
+        run: |
+          uv venv --python ${{ matrix.python }} .venv
+          source .venv/bin/activate
+          uv pip install -r requirements-dev.txt
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+          python --version
       - name: Tests
         run: pytest -q
       - name: Sim check (1200 ticks x 3 seeds; must print OVERALL PASS)

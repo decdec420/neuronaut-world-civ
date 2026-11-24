@@ -12,3 +12,5 @@ scripts/testing
 web/enhanced_backup*.html
 *.png
 *.log
+venv
+.venv

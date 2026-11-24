@@ -64,16 +64,28 @@ Every agent has:
 
 ## Quick Start
 
+Needs Python 3.9 or newer (the `python3` that comes with macOS is 3.9 and works).
+
 ### 1. Install Dependencies
 
+Once, in the project folder: make a virtual environment, so these packages
+don't mix with others on your computer, and install into it.
+
 ```bash
-cd neuronaut-world
-pip install -r requirements-minimal.txt
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements-minimal.txt
 ```
+
+After pulling new code, run the last line again: the versions it pins change.
 
 ### 2. Run the World
 
+In each new terminal, activate the environment first:
+
 ```bash
+source .venv/bin/activate
 python main.py
 ```
 
@@ -489,6 +501,7 @@ MIT License - Use however you want!
 ## Get Started Now
 
 ```bash
+source .venv/bin/activate
 python main.py
 ```
 

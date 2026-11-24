@@ -1,13 +1,25 @@
 # What Neuronaut World needs to run: the simulation, the API and the dashboard.
 # Pinned to the versions it is tested with (CI and the Docker image use these).
-# Python 3.11 or newer; tested on 3.13.
+#
+# Python 3.10 or newer gets the current versions (tested on 3.13). Python 3.9,
+# the one macOS ships with, can't install those, so it gets the last versions
+# that support it; CI runs the tests and sim_check on 3.9 too.
 
-fastapi==0.165.0
-starlette==1.7.0
-uvicorn[standard]==0.54.0
-websockets==17.4
-python-multipart==0.0.32
+fastapi==0.165.0; python_version >= "3.10"
+starlette==1.7.0; python_version >= "3.10"
+uvicorn[standard]==0.54.0; python_version >= "3.10"
+websockets==17.4; python_version >= "3.10"
+python-multipart==0.0.32; python_version >= "3.10"
+python-dotenv==1.2.3; python_version >= "3.10"
+requests==2.34.2; python_version >= "3.10"
+
+fastapi==0.128.8; python_version < "3.10"
+starlette==0.49.3; python_version < "3.10"
+uvicorn[standard]==0.39.0; python_version < "3.10"
+websockets==15.0.1; python_version < "3.10"
+python-multipart==0.0.20; python_version < "3.10"
+python-dotenv==1.2.1; python_version < "3.10"
+requests==2.32.5; python_version < "3.10"
+
 pydantic==2.13.5
-python-dotenv==1.2.3
 slowapi==0.1.10
-requests==2.34.2

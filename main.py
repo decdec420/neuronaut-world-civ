@@ -15,9 +15,17 @@ import logging
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
+if sys.version_info < (3, 9):
+    sys.exit(f"Neuronaut World needs Python 3.9 or newer; this is Python {sys.version.split()[0]}.")
+try:
+    import fastapi, uvicorn, pydantic, slowapi  # noqa: F401  (what the server needs)
+except ModuleNotFoundError as missing:
+    sys.exit(f"The package '{missing.name}' isn't installed for this Python ({sys.executable}).\n"
+             f"Install what the world needs with:\n\n"
+             f"    {os.path.basename(sys.executable)} -m pip install -r requirements-minimal.txt\n")
+
 from config import load_config
 from api.server import app
-import uvicorn
 
 
 def configure_logging(level: str) -> None:

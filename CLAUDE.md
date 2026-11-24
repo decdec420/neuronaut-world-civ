@@ -29,9 +29,15 @@ charge. The world provides capabilities; what happens is up to them.
 ## Run it
 
 ```bash
-pip3 install -r requirements-minimal.txt
-USE_LLM_DECISIONS=false python3 main.py      # then open http://localhost:8000/app
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements-minimal.txt
+USE_LLM_DECISIONS=false python main.py       # then open http://localhost:8000/app
 ```
+
+Python 3.9 or newer. The requirements pin current versions for 3.10+ and the
+last versions that support 3.9 (macOS's own Python) for 3.9; CI tests both.
+Don't use syntax newer than 3.9 (`X | Y` in annotations evaluated at run time,
+`match`, `zip(strict=)`); CI on 3.9 will fail.
 
 `USE_LLM_DECISIONS=true` needs Ollama running locally or an API key in `.env`
 (see `.env.example`). Without a model, the LLM path falls back to the rule-based brain.
