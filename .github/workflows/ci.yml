@@ -9,14 +9,19 @@ permissions:
 
 jobs:
   test:
-    name: Tests and sim check
+    name: Tests and sim check (Python ${{ matrix.python }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.13 is what the Docker image runs; 3.9 is the Python macOS ships with
+        python: ["3.13", "3.9"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: ${{ matrix.python }}
           cache: pip
           cache-dependency-path: |
             requirements-minimal.txt

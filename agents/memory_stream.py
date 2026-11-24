@@ -24,7 +24,7 @@ first), and a repeated action is one memory with a count.
 
 import re
 from dataclasses import dataclass, field
-from typing import FrozenSet, Iterable, List, Optional, Tuple
+from typing import FrozenSet, Iterable, List, Optional, Tuple, Union
 
 TICKS_PER_HOUR = 6
 DECAY_PER_HOUR = 0.995
@@ -95,7 +95,7 @@ class MemoryStream:
     def _recency(record: MemoryRecord, now: int) -> float:
         return DECAY_PER_HOUR ** (max(0, now - record.last_access) / TICKS_PER_HOUR)
 
-    def retrieve(self, about: str | Iterable[str], now: int, k: int = 5) -> List[MemoryRecord]:
+    def retrieve(self, about: Union[str, Iterable[str]], now: int, k: int = 5) -> List[MemoryRecord]:
         """The k memories that score best for this query; recalling them makes
         them recent again."""
         query = keywords(about) if isinstance(about, str) else frozenset(w.lower() for w in about)
