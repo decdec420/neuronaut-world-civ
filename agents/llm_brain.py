@@ -795,6 +795,13 @@ Be bold! Think of something interesting to try.
         else:
             lines.append("Nobody is near you.")
         lines.append(f"Resources in sight: {resources_str}")
+        from agents import commitment
+        set_out = commitment.current(agent, perceptions.get("tick", 0))
+        if set_out is not None:
+            away = ((agent.location.x - set_out.x) ** 2 + (agent.location.y - set_out.y) ** 2) ** 0.5
+            hours = (perceptions.get("tick", set_out.since) - set_out.since) // 6
+            lines.append(f"You set out {hours} hours ago to {set_out.action.replace('_', ' ')}, heading for "
+                         f"({set_out.x:.0f}, {set_out.y:.0f}), {away:.0f} tiles from here. Carry on, or do something else.")
 
         life = perceptions.get("life_info", {})
         if life:

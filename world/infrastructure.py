@@ -115,6 +115,7 @@ class Infrastructure:
             steps += 1
         x, y = path[steps]
         agent.location = Position(float(x), float(y))
+        agent.stepped_toward = (float(tx), float(ty))   # it's on its way somewhere (agents/commitment.py)
         self.road_steps += steps - 1
         destination = (int(tx) // DESTINATION_GRID * DESTINATION_GRID, int(ty) // DESTINATION_GRID * DESTINATION_GRID)
         self.travel.setdefault(agent.id, Travel()).walked(tick, steps, destination)

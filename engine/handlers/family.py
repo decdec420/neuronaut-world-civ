@@ -298,6 +298,7 @@ class FamilyHandler(ActionHandler):
             # (a straight walk that stops at any water on the way)
             agent.location = self.context.world.map.walk_line(agent.location, child.location,
                                                               min(10.0, distance - 1.0))
+            agent.stepped_toward = (child.location.x, child.location.y)
             return ActionResult(success=True, emotional_impact=0.05,
                                 message=f"On your way to look after {child.name}")
         given = []

@@ -766,19 +766,25 @@ class SimulationEngine:
                 nearest = min(others, key=lambda o: agent.location.distance_to(o.location))
                 action.target_agent = nearest.id
 
+        from agents import commitment
+
         # Validate action can be performed
         can_execute, reason = handler.validate(agent, action)
         if not can_execute:
-            return {
+            failed = {
                 'success': False,
                 'emotional_impact': -0.05,
                 'message': reason
             }
+            commitment.note(agent, action.action_type.value, failed, current_tick)
+            return failed
 
-        # Execute via handler
-        result = handler.execute(agent, action)
-
-        return result.to_dict()
+        # Execute via handler; a step it took toward somewhere starts or
+        # carries on a commitment, arriving ends it (agents/commitment.py)
+        agent.stepped_toward = None
+        result = handler.execute(agent, action).to_dict()
+        commitment.note(agent, action.action_type.value, result, current_tick)
+        return result
 
     def ensure_newer_systems(self) -> None:
         """A world saved by an older version lacks systems added since; give it

@@ -104,6 +104,10 @@ def emergence_metrics(sim, initial_ids, actions, successes) -> dict:
         "nights_slept_at_home": (f"{sim.life_events['slept_home'] / (sim.life_events['slept_home'] + sim.life_events['slept_out']):.0%}"
                                  if sim.life_events['slept_home'] + sim.life_events['slept_out'] else None),
         "kinds_of_things_made": len(sim.products),
+        # how agents' commitments ended (agents/commitment.py): done, dropped for
+        # something else, ran out, or could not be done
+        "commitments": dict(sum((getattr(a, "commitments_ended", collections.Counter()) for a in agents),
+                                collections.Counter())),
         "money": round(sum(a.wealth for a in alive), 1),
         "trades_ok": trades_ok,
         "distinct_actions": len(actions),

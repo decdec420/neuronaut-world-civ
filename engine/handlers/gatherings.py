@@ -83,7 +83,7 @@ class GatheringHandler(ActionHandler):
         if not g.is_on(tick):
             return ActionResult(success=True, emotional_impact=0.1,
                                 message=f"Waiting for {g.organizer_name}'s {g.kind} to start",
-                                metadata={'gathering_id': g.id})
+                                metadata={'gathering_id': g.id, 'underway': True})
         new = agent.id not in g.attendees
         g.attendees.add(agent.id)
         agent.needs.satisfy_need(NeedType.BELONGING, 0.4)

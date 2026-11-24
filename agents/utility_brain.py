@@ -16,6 +16,9 @@ from) is a candidate. Each gets a utility from the agent's own state:
   a child, whether the agent wants one (its life profile) and whether its
   partner has said it does; for looking after a child, how much the child
   needs it and whether it's the agent's own
+- commitment: what it set out to do and is part-way through (a walk to a
+  gathering, to shelter, to water) pulls it to carry on, more for a
+  conscientious agent (agents/commitment.py)
 - faith: an agent that holds a faith feels it fading the longer it goes
   without practising it (unpractised for long enough, it lapses)
 - danger: actions that can get it killed weigh less for careful or hurt agents
@@ -209,6 +212,7 @@ OTHERS_CHILD_BOND = 0.3  # someone else's child pulls less than your own
 WALKING_PULL = 1.0       # an agent who walks a lot is drawn to pave and dig wells
 GATHERING_PULL = 1.0     # a gathering one has heard of, by a host one likes
 FAITH_PULL = 0.6         # one's own faith, felt more as it fades unpractised
+COMMIT_PULL = 0.8        # carrying on with what one set out to do (x 0.5-1.5 by conscientiousness)
 FAITH_ACTIONS = {"pray", "worship", "perform_ritual"}
 WARNING_PULL = 2.5       # a warned disaster that will reach where one stands: take shelter
 SEVERITY = {"minor": 0.25, "moderate": 0.5, "major": 0.75, "catastrophic": 1.0}
@@ -279,6 +283,10 @@ class UtilityBrain:
             plan_term += EVENING_SOCIAL_PULL
         if goal_action and action == goal_action:
             plan_term += GOAL_PULL
+        from agents import commitment
+        set_out = commitment.current(agent, self.sim.world.time.current_tick)
+        if set_out is not None and action == set_out.action:
+            plan_term += COMMIT_PULL * (0.5 + agent.personality.get_trait("conscientiousness"))
 
         danger = DANGER.get(action, 0.0)
         danger_term = 0.0
