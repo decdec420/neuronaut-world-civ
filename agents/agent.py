@@ -9,7 +9,7 @@ Each agent is an independent entity with:
 - Social relationships
 """
 
-import uuid
+from engine.ids import new_uuid
 import random
 import logging
 from dataclasses import dataclass, field
@@ -121,6 +121,13 @@ class ActionType(Enum):
     GIVE_BIRTH = "give_birth"
     CARE_FOR_CHILD = "care_for_child"
     PARENT = "parent"
+    SEPARATE = "separate"
+    TRY_FOR_CHILD = "try_for_child"
+
+    # ===== PUBLIC WORKS (world/infrastructure.py) =====
+    BUILD_ROAD = "build_road"
+    DIG_WELL = "dig_well"
+    BUILD_STREETLIGHT = "build_streetlight"
 
     # ===== ECONOMIC & TRADE =====
     TRADE = "trade"
@@ -417,6 +424,17 @@ class Action:
     priority: float = 0.5
 
 
+def _roman(n: int) -> str:
+    """2 -> II, 14 -> XIV (for repeated names)."""
+    out = ""
+    for value, numeral in ((1000, "M"), (900, "CM"), (500, "D"), (400, "CD"), (100, "C"), (90, "XC"),
+                           (50, "L"), (40, "XL"), (10, "X"), (9, "IX"), (5, "V"), (4, "IV"), (1, "I")):
+        while n >= value:
+            out += numeral
+            n -= value
+    return out
+
+
 class Agent:
     """Autonomous agent with psychology and agency"""
 
@@ -430,9 +448,10 @@ class Agent:
         is_player: bool = False
     ):
         # Identity
-        self.id = agent_id or str(uuid.uuid4())
+        self.id = agent_id or str(new_uuid())
         self.gender = gender or random.choice(list(Gender))  # Set gender FIRST
         self.name = name or self._generate_name()  # THEN generate name based on gender
+        Agent._used_names.add(self.name)
         self.age = age
 
         # Psychology
@@ -486,18 +505,26 @@ class Agent:
         self.father_id: Optional[str] = None  # ID of father (if born in-game)
         self.children_ids: List[str] = []  # IDs of children
 
+        # Partnership (life/family.py): formed only when both chose each other
+        self.partner_id: Optional[str] = None
+        self.admirers: Dict[str, int] = {}  # who courted this agent -> tick they last did
+        self.child_wish_tick: Optional[int] = None  # when it last said it wants a child
+        self.home_id: Optional[str] = None  # the building it lives in (life/homes.py)
+
         # Pregnancy (for females only)
         self.is_pregnant: bool = False
         self.pregnancy_partner_id: Optional[str] = None  # ID of father
         self.pregnancy_start_tick: int = 0
         self.pregnancy_duration_ticks: int = 1500  # ~9 months (at ~144 ticks/day = 10.4 days)
 
-        # Life stage
+        # Life stage; age_ticks counts toward the next birthday (life/aging.py)
         self.life_stage: str = self._determine_life_stage()  # baby, child, adult, elder
+        self.age_ticks: int = 0
 
         # Death tracking
         self.death_tick: Optional[int] = None
         self.death_cause: Optional[str] = None
+        self.death_recorded: bool = False  # counted, logged and mourned once
 
         # Current action
         self.current_action: Optional[Action] = None
@@ -509,6 +536,10 @@ class Agent:
         self.routine = DailyRoutine.for_personality(self.personality)
         self.work_life = WorkLife()
         self.shift_job: Optional[str] = None
+        from agents.utility_brain import ActionMemory
+        self.action_memory = ActionMemory()  # what has worked for this agent
+        from agents.memory_stream import MemoryStream
+        self.memory_stream = MemoryStream()  # what it has done and lived through (Smallville-style)
 
         # PURPOSEFUL ACTION TRACKING - Creates empire builders!
         self.current_action_purpose: Optional[Dict] = None  # Why they're doing this
@@ -516,101 +547,68 @@ class Agent:
         self.life_satisfaction_history: List[float] = []  # Track life trajectory
         self.decision_quality_scores: List[float] = []  # How good their choices are
 
-    # Class-level name tracking to avoid duplicates
+    # Names in use in the current world (reset by WorldInitializer.initialize_world)
     _used_names = set()
 
+    MALE_NAMES = ["James", "John", "Robert", "Michael", "William", "David", "Richard", "Joseph",
+                  "Thomas", "Charles", "Daniel", "Matthew", "Andrew", "Benjamin", "Samuel", "Henry",
+                  "Christopher", "Joshua", "George", "Kenneth", "Steven", "Edward", "Brian", "Ronald",
+                  "Arthur", "Walter", "Peter", "Hugo", "Oscar", "Felix", "Leo", "Theo",
+                  "Isaac", "Elias", "Jonah", "Silas", "Owen", "Rafael", "Mateo", "Kofi"]
+    FEMALE_NAMES = ["Mary", "Patricia", "Jennifer", "Linda", "Elizabeth", "Barbara", "Susan",
+                    "Jessica", "Sarah", "Karen", "Nancy", "Margaret", "Lisa", "Betty", "Dorothy", "Emily",
+                    "Ashley", "Michelle", "Kimberly", "Amanda", "Stephanie", "Rebecca", "Laura", "Helen",
+                    "Alice", "Clara", "Rose", "Iris", "Hazel", "Ruth", "Esther", "Nora",
+                    "Lucia", "Maya", "Ada", "Ivy", "Freya", "Amara", "Sofia", "Yara"]
+
+    @classmethod
+    def reset_names(cls, in_use=()) -> None:
+        """Start a new world's name registry (optionally with names already taken)."""
+        cls._used_names = set(in_use)
+
     def _generate_name(self) -> str:
-        """Generate random American traditional name (no duplicates)"""
-        male_names = ["James", "John", "Robert", "Michael", "William", "David", "Richard", "Joseph",
-                      "Thomas", "Charles", "Daniel", "Matthew", "Andrew", "Benjamin", "Samuel", "Henry",
-                      "Christopher", "Joshua", "George", "Kenneth", "Steven", "Edward", "Brian", "Ronald"]
-        female_names = ["Mary", "Patricia", "Jennifer", "Linda", "Elizabeth", "Barbara", "Susan",
-                        "Jessica", "Sarah", "Karen", "Nancy", "Margaret", "Lisa", "Betty", "Dorothy", "Emily",
-                        "Ashley", "Michelle", "Kimberly", "Amanda", "Stephanie", "Rebecca", "Laura", "Helen"]
-
+        """A name nobody in this world has had. When a list runs out, names
+        come back with a numeral: "James II", "James III"... (This used to
+        fall back to random numbers, which could repeat.)"""
         if self.gender == Gender.MALE:
-            available = [n for n in male_names if n not in Agent._used_names]
+            pool = Agent.MALE_NAMES
         elif self.gender == Gender.FEMALE:
-            available = [n for n in female_names if n not in Agent._used_names]
+            pool = Agent.FEMALE_NAMES
         else:
-            available = [n for n in male_names + female_names if n not in Agent._used_names]
-
-        if not available:  # All names used, start reusing with numbers
-            if self.gender == Gender.MALE:
-                return random.choice(male_names) + str(random.randint(1, 99))
-            else:
-                return random.choice(female_names) + str(random.randint(1, 99))
-
-        name = random.choice(available)
+            pool = Agent.MALE_NAMES + Agent.FEMALE_NAMES
+        available = [n for n in pool if n not in Agent._used_names]
+        if available:
+            name = random.choice(available)
+        else:
+            base, n = random.choice(pool), 2
+            while f"{base} {_roman(n)}" in Agent._used_names:
+                n += 1
+            name = f"{base} {_roman(n)}"
         Agent._used_names.add(name)
         return name
 
+    def __getstate__(self) -> Dict:
+        """For saving (engine/persistence.py): the AI-brain methods bound to this
+        agent can't be pickled (they refer back to it); they are re-bound on load."""
+        import types
+        state = self.__dict__.copy()
+        bound = [k for k, v in state.items() if isinstance(v, types.MethodType) and v.__self__ is self]
+        for k in bound:
+            del state[k]
+        state['_had_ai_methods'] = bool(bound)
+        return state
+
+    def __setstate__(self, state: Dict) -> None:
+        had_ai = state.pop('_had_ai_methods', False)
+        self.__dict__.update(state)
+        if had_ai:
+            from agents.autonomous_agent import bind_autonomous_methods
+            bind_autonomous_methods(self, init=False)
+
     def _determine_life_stage(self) -> str:
-        """Determine life stage based on age"""
-        if self.age < 2:
-            return "baby"
-        elif self.age < 16:
-            return "child"
-        elif self.age < 60:
-            return "adult"
-        else:
-            return "elder"
-
-    def check_pregnancy(self, current_tick: int) -> Optional['Agent']:
-        """
-        Check pregnancy status and give birth if due
-        Returns: Baby agent if birth occurred, None otherwise
-        """
-        if not self.is_pregnant:
-            return None
-
-        # Check if pregnancy is complete
-        ticks_pregnant = current_tick - self.pregnancy_start_tick
-        if ticks_pregnant >= self.pregnancy_duration_ticks:
-            # BIRTH!
-            baby = self.give_birth(current_tick)
-            logger.info(f"👶 BIRTH! {self.name} gave birth to {baby.name}!")
-            return baby
-
-        return None
-
-    def give_birth(self, current_tick: int) -> 'Agent':
-        """
-        Give birth to a baby agent
-        Returns: New baby agent
-        """
-        # Create baby with genetic inheritance
-        baby_gender = random.choice(list(Gender))
-
-        # Get father's personality if available (for inheritance)
-        # This will be filled in by simulation engine
-        father_personality = None  # Simulation will provide this
-
-        # Inherit traits from mother (and father if available)
-        baby_personality = self._create_inherited_personality(father_personality)
-
-        # Create baby agent
-        baby = Agent(
-            age=0,
-            gender=baby_gender,
-            personality=baby_personality
-        )
-
-        # Set family relationships
-        baby.mother_id = self.id
-        baby.father_id = self.pregnancy_partner_id
-        baby.life_stage = "baby"
-
-        # Update mother
-        self.children_ids.append(baby.id)
-        self.is_pregnant = False
-        self.pregnancy_partner_id = None
-        self.pregnancy_start_tick = 0
-
-        # Baby starts at mother's location
-        baby.location = Position(self.location.x, self.location.y)
-
-        return baby
+        """baby, child, adult or elder, by age (life/aging.py)"""
+        from life.aging import life_stage
+        return life_stage(self.age)
 
     def _create_inherited_personality(self, father_personality: Optional[PersonalityProfile]) -> PersonalityProfile:
         """Create baby personality by inheriting from parents"""
@@ -714,31 +712,20 @@ class Agent:
             self.health -= disease_damage
             logger.warning(f"🦠 {self.name} contracted a disease! Lost {disease_damage:.1f} health!")
 
-        # Age tracking
+        # Age tracking (birthdays, life stages and old age: LifecycleManager.update_aging)
         self.ticks_lived += 1
 
-        # Update life stage based on age
-        self.life_stage = self._determine_life_stage()
-
-        # Memory decay (every 60 ticks ≈ 1 hour in-game)
+        # Memory runs on the agent's own clock; decay every 60 ticks (10 sim hours)
+        self.memory.clock = self.ticks_lived
         if self.ticks_lived % 60 == 0:
             self.memory.decay_memories()
-
-        # OLD AGE - Natural death between 70-100 years
-        if self.age > 70:
-            # Probability of death increases with age
-            death_chance = (self.age - 70) / 300  # 0% at 70, 10% at 100
-            if random.random() < death_chance * delta_time:
-                self.health = 0  # Die of old age
-                logger.info(f"💀 {self.name} died of old age at {self.age} years")
 
         # Check death conditions
         if self.health <= 0:
             if self.alive:  # Only log death once
                 cause = "starvation" if hunger_need and hunger_need.level > 0.95 else \
                         "dehydration" if thirst_need and thirst_need.level > 0.95 else \
-                        "exhaustion" if self.energy <= 0 else \
-                        "old age" if self.age > 70 else "unknown causes"
+                        "exhaustion" if self.energy <= 0 else "unknown causes"
                 self.death_cause = cause
                 self.death_tick = self.ticks_lived
                 logger.info(f"💀💀💀 {self.name} ({self.age}y) DIED from {cause}!")
@@ -768,11 +755,14 @@ class Agent:
 
             distance = self.location.distance_to(other_agent.location)
             if distance <= perception_range:
+                doing = getattr(other_agent, 'current_action', None)
                 perceptions['nearby_agents'].append({
                     'id': other_agent.id,
                     'name': other_agent.name,
                     'distance': distance,
                     'location': other_agent.location,
+                    # what it chose last: others can see what you're up to
+                    'doing': doing.action_type.value if doing is not None else None,
                 })
 
         # Get nearby resources
@@ -1334,6 +1324,8 @@ class Agent:
             'mother_id': self.mother_id,
             'father_id': self.father_id,
             'children_ids': self.children_ids,
+            'partner_id': self.partner_id,
+            'home_id': getattr(self, 'home_id', None),
             'is_pregnant': self.is_pregnant,
             'pregnancy_partner_id': self.pregnancy_partner_id,
             'death_cause': self.death_cause,

@@ -15,7 +15,7 @@ Territory is the foundation of civilization and conflict.
 """
 
 import random
-import uuid
+from engine.ids import new_uuid
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
 from datetime import datetime
@@ -103,10 +103,12 @@ class TerritoryManager:
     - Resource control drives territorial expansion
     """
 
+    MAX_TRESPASS_EVENTS = 500
+
     def __init__(self):
         self.territories: Dict[str, Territory] = {}
         self.borders: Dict[str, Border] = {}
-        self.trespass_events: Dict[str, TrespassEvent] = {}
+        self.trespass_events: Dict[str, TrespassEvent] = {}  # recent ones (MAX_TRESPASS_EVENTS)
 
         # Statistics
         self.total_claims: int = 0
@@ -133,7 +135,7 @@ class TerritoryManager:
             # Already claimed by another agent
             return None
 
-        territory_id = str(uuid.uuid4())
+        territory_id = str(new_uuid())
 
         # Generate name
         name = self._generate_territory_name(owner_name, territory_type, location)
@@ -212,7 +214,7 @@ class TerritoryManager:
 
             if dist < max_dist:
                 # Adjacent - create border
-                border_id = str(uuid.uuid4())
+                border_id = str(new_uuid())
                 border = Border(
                     id=border_id,
                     territory1_id=territory_id,
@@ -250,7 +252,7 @@ class TerritoryManager:
         territory.total_trespasses += 1
 
         # Record event
-        event_id = str(uuid.uuid4())
+        event_id = str(new_uuid())
         event = TrespassEvent(
             id=event_id,
             trespasser_id=agent_id,
@@ -261,6 +263,11 @@ class TerritoryManager:
 
         self.trespass_events[event_id] = event
         self.total_trespasses += 1
+        # Keep the recent incidents (the totals keep counting); this grew by
+        # ~7 a tick, 35,000 in a 6,000-tick run
+        if len(self.trespass_events) > self.MAX_TRESPASS_EVENTS * 1.2:
+            for old_id in list(self.trespass_events)[:len(self.trespass_events) - self.MAX_TRESPASS_EVENTS]:
+                del self.trespass_events[old_id]
 
         return territory
 
@@ -336,7 +343,7 @@ class TerritoryManager:
 
         if not border:
             # Create new border
-            border_id = str(uuid.uuid4())
+            border_id = str(new_uuid())
             border = Border(
                 id=border_id,
                 territory1_id=territory1_id,

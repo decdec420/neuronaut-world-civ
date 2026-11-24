@@ -8,7 +8,7 @@ Handles:
 - Cultural emergence
 """
 
-import uuid
+from engine.ids import new_uuid
 from dataclasses import dataclass, field
 from typing import Dict, List, Set, Optional, Tuple
 from enum import Enum
@@ -94,7 +94,7 @@ class RelationshipManager:
         if existing:
             return existing
 
-        rel_id = str(uuid.uuid4())
+        rel_id = str(new_uuid())
         relationship = Relationship(
             id=rel_id,
             agent_a=agent_a_id,
@@ -140,7 +140,10 @@ class RelationshipManager:
         relationship_type: Optional[RelationshipType] = None
     ) -> List[Relationship]:
         """Get all relationships for an agent"""
-        rel_ids = self.agent_relationships.get(agent_id, set())
+        # In id order: the ids are kept in a set, and a set can come back from
+        # a save in a different order, which made a loaded world choose
+        # differently from the one it was saved from
+        rel_ids = sorted(self.agent_relationships.get(agent_id, ()))
         relationships = [self.relationships[rid] for rid in rel_ids
                         if rid in self.relationships]
 
@@ -267,7 +270,7 @@ class GroupManager:
         founder_id: str
     ) -> Group:
         """Create new group"""
-        group_id = str(uuid.uuid4())
+        group_id = str(new_uuid())
         group = Group(
             id=group_id,
             name=name,

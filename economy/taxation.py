@@ -17,7 +17,7 @@ Public goods require collective funding.
 """
 
 import random
-import uuid
+from engine.ids import new_uuid
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
 from enum import Enum
@@ -194,7 +194,7 @@ class TaxationManager:
     ) -> TaxPolicy:
         """Enact a new tax policy"""
 
-        policy_id = str(uuid.uuid4())
+        policy_id = str(new_uuid())
 
         # Calculate initial approval based on representation and rate
         if has_representation:
@@ -279,7 +279,7 @@ class TaxationManager:
         # Determine if tax is resisted
         resisted = resistance_level in [ResistanceLevel.REFUSING, ResistanceLevel.REVOLTING]
 
-        collection_id = str(uuid.uuid4())
+        collection_id = str(new_uuid())
         collection = TaxCollection(
             id=collection_id,
             policy_id=policy_id,
@@ -420,7 +420,7 @@ class TaxationManager:
     ) -> TaxRevolt:
         """Start a tax revolt/rebellion"""
 
-        revolt_id = str(uuid.uuid4())
+        revolt_id = str(new_uuid())
 
         policy = self.tax_policies.get(triggering_policy_id)
 
@@ -523,7 +523,7 @@ class TaxationManager:
     ) -> PublicGood:
         """Create a public good funded by taxes"""
 
-        good_id = str(uuid.uuid4())
+        good_id = str(new_uuid())
 
         good = PublicGood(
             id=good_id,

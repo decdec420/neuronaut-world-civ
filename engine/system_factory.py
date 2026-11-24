@@ -56,7 +56,6 @@ from world.disasters import NaturalDisasterSystem
 
 # AI AUTONOMY SYSTEMS
 from agents.llm_brain import MultiLLMBrain
-from agents.swarm_intelligence import SwarmIntelligence
 from config import load_config
 
 logger = logging.getLogger(__name__)
@@ -88,7 +87,7 @@ class SystemFactory:
             - old_systems: Legacy civilization systems (buildings, innovations, etc.)
             - autonomous: New autonomous systems (experimentation, knowledge, etc.)
             - specialized: Domain-specific systems (agriculture, health, religion, etc.)
-            - ai: AI systems (LLM brain, swarm intelligence)
+            - ai: AI systems (LLM brain)
             - config: Configuration object
         """
         print("🏗️  Initializing all simulation systems...")
@@ -120,7 +119,7 @@ class SystemFactory:
         systems['consequence_engine'] = ConsequenceEngine()
         systems['role_emergence'] = RoleEmergence()
         systems['tech_progression'] = TechProgressionTracker()
-        systems['persistence'] = PersistenceEngine()
+        systems['persistence'] = PersistenceEngine(save_directory=str(load_config().save_dir))
         systems['purposeful_evaluator'] = PurposefulActionEvaluator()
 
         # ===== CIVILIZATION PROGRESSION - Stone Age → Space Age! =====
@@ -234,35 +233,16 @@ class SystemFactory:
 
         # Initialize LLM brain (shared across all agents)
         if config.use_llm_decisions:
-            systems['llm_brain'] = MultiLLMBrain(api_keys=config.get_api_keys())
+            systems['llm_brain'] = MultiLLMBrain(api_keys=config.get_api_keys(), config=config)
             print("🧠 AI Autonomy ENABLED - Agents will make AI-powered decisions!")
-            print(f"   LLM Providers: {'Groq' if config.get_api_keys().get('groq') else ''} "
-                  f"{'Gemini' if config.get_api_keys().get('gemini') else ''} "
-                  f"{'Ollama' if True else ''}")
+            keyed = [name for name in ('groq', 'together', 'gemini', 'huggingface') if config.get_api_keys().get(name)]
+            print(f"   LLM providers, in order: {', '.join(keyed + [f'Ollama ({config.ollama_model} at {config.ollama_host})'])}")
             print(f"   Long-term planning: Every {config.long_term_planning_interval} ticks")
             print(f"   Self-reflection: Every {config.reflection_interval} ticks")
         else:
             systems['llm_brain'] = None
             print("🤖 AI Autonomy DISABLED - Using rule-based psychology only")
             print("   (Set USE_LLM_DECISIONS=true in .env to enable AI)")
-
-        # Initialize Swarm Intelligence (v2.0 - Multi-Agent Coordination)
-        if config.enable_swarm_intelligence and systems['llm_brain']:
-            systems['swarm_intelligence'] = SwarmIntelligence(
-                llm_brain=systems['llm_brain'],
-                config=config.get_swarm_config()
-            )
-            print("🐝 SWARM INTELLIGENCE ENABLED - Agents will coordinate and form alliances!")
-            print(f"   Max Swarm Size: {config.max_swarm_size} agents")
-            print(f"   Consensus Threshold: {config.consensus_threshold * 100:.0f}%")
-            print(f"   Coordination Radius: {config.coordination_radius} tiles")
-            print(f"   Parallel LLM: {'✅' if config.enable_parallel_llm else '❌'}")
-        else:
-            systems['swarm_intelligence'] = None
-            if config.enable_swarm_intelligence and not systems['llm_brain']:
-                print("⚠️  Swarm Intelligence requires LLM decisions to be enabled")
-            else:
-                print("🤖 Swarm Intelligence DISABLED - Agents act independently")
 
         print("✅ All systems initialized!")
         return systems

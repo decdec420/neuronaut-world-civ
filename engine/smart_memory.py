@@ -17,9 +17,16 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Any
 from enum import Enum
-import time
 import json
 from datetime import datetime, timedelta
+
+
+# Memory runs on sim time: timestamps are the agent's own tick count (the
+# Agent sets SmartMemorySystem.clock each tick), and decay is per sim hour.
+# It used to run on wall-clock time (time.time()), so a memory decayed by how
+# long the server had been up, not by how much life had passed: at normal
+# speed a sim hour is 6 real seconds, so nothing ever decayed.
+TICKS_PER_HOUR = 6
 
 
 class EventImportance(Enum):
@@ -63,7 +70,7 @@ class Memory:
         Industry standard: 0.995 hourly decay (Redis AI agent best practices)
         Important memories decay slower, mundane memories fade faster.
         """
-        hours_elapsed = (current_time - self.timestamp) / 3600
+        hours_elapsed = max(0.0, (current_time - self.timestamp) / TICKS_PER_HOUR)
 
         # Base decay (exponential decay over time)
         time_decay = decay_factor ** hours_elapsed
@@ -118,12 +125,12 @@ class SkillPattern:
             return 0.0
         return self.successful_attempts / self.total_attempts
 
-    def update(self, success: bool):
-        """Update skill pattern with new attempt"""
+    def update(self, success: bool, now: float = 0.0):
+        """Update skill pattern with new attempt (now: the sim clock)"""
         self.total_attempts += 1
         if success:
             self.successful_attempts += 1
-        self.last_used = time.time()
+        self.last_used = now
 
     def to_summary(self) -> str:
         """Generate natural language summary"""
@@ -146,6 +153,9 @@ class SmartMemorySystem:
     - Redis AI agent memory management
     - "Memory in the Age of AI Agents" research (2026)
     """
+
+    MAX_EPISODIC = 300
+    MAX_PERSISTENT = 100
 
     def __init__(
         self,
@@ -182,7 +192,8 @@ class SmartMemorySystem:
         # Statistics
         self.total_memories_added = 0
         self.total_memories_decayed = 0
-        self.last_cleanup_time = time.time()
+        self.clock = 0                 # sim ticks (set by the agent)
+        self.last_cleanup_time = 0     # clock at the last decay
 
     def add_memory(
         self,
@@ -204,7 +215,7 @@ class SmartMemorySystem:
             content=content,
             importance=importance,
             memory_type=memory_type,
-            timestamp=time.time(),
+            timestamp=getattr(self, 'clock', 0),
             agent_id=self.agent_id,
             emotional_weight=emotional_weight,
             metadata=metadata or {}
@@ -215,11 +226,17 @@ class SmartMemorySystem:
 
         # Route to appropriate long-term storage
         if importance.value >= EventImportance.MAJOR.value:
-            # Major+ events: Never forget (persistent)
+            # Major+ events: kept (the most recent MAX_PERSISTENT of them)
             self.persistent_memories.append(memory)
+            del self.persistent_memories[:-self.MAX_PERSISTENT]
         elif importance.value >= EventImportance.MINOR.value:
             # Minor/Significant: Store but allow decay
             self.episodic_memory.append(memory)
+            # Decay runs on wall-clock hours, so in a fast-running world it
+            # never pruned anything: keep the most important, then newest
+            if len(self.episodic_memory) > self.MAX_EPISODIC * 1.2:
+                keep = sorted(self.episodic_memory, key=lambda m: (m.importance.value, m.timestamp))[-self.MAX_EPISODIC:]
+                self.episodic_memory = sorted(keep, key=lambda m: m.timestamp)
         # MUNDANE events only live in working memory, naturally drop off
 
         self.total_memories_added += 1
@@ -235,7 +252,7 @@ class SmartMemorySystem:
         if action_name not in self.skill_patterns:
             self.skill_patterns[action_name] = SkillPattern(action_name)
 
-        self.skill_patterns[action_name].update(success)
+        self.skill_patterns[action_name].update(success, getattr(self, 'clock', 0))
 
     def decay_memories(self, force: bool = False):
         """
@@ -248,13 +265,19 @@ class SmartMemorySystem:
 
         Runs automatically every hour, or on-demand with force=True.
         """
-        current_time = time.time()
+        current_time = getattr(self, 'clock', 0)
 
-        # Only run decay every hour (unless forced)
-        if not force:
-            hours_since_cleanup = (current_time - self.last_cleanup_time) / 3600
-            if hours_since_cleanup < 1.0:
-                return  # Too soon
+        # A save made when this ran on wall-clock seconds has times far in the
+        # future on this clock: they start counting from now
+        if self.last_cleanup_time > current_time:
+            self.last_cleanup_time = current_time - TICKS_PER_HOUR
+            for memory in self.episodic_memory:
+                if memory.timestamp > current_time:
+                    memory.timestamp = current_time
+
+        # Only run decay every sim hour (unless forced)
+        if not force and current_time - self.last_cleanup_time < TICKS_PER_HOUR:
+            return
 
         # Apply decay to episodic memories
         retained_memories = []

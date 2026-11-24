@@ -9,15 +9,16 @@ Provides:
 """
 
 import asyncio
+import hmac
+from contextlib import asynccontextmanager
 import json
 import logging
 from typing import List, Dict, Optional
 from functools import lru_cache
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, FileResponse
-from pydantic import BaseModel, Field, constr, validator
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from pydantic import BaseModel, Field, constr, field_validator
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -25,12 +26,14 @@ import uvicorn
 
 import sys
 import os
+from pathlib import Path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Setup logging
-logging.basicConfig(level=logging.INFO)
+# Logging when run as `uvicorn api.server:app` (main.py sets its own format)
+logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").strip().upper() or "INFO")
 logger = logging.getLogger(__name__)
 
+from config import load_config
 from engine.simulation import SimulationEngine
 from agents.agent import Gender
 from engine.psychology import PersonalityProfile
@@ -64,7 +67,8 @@ class CreateCharacterRequest(BaseModel):
         description="Optional personality traits"
     )
 
-    @validator('gender')
+    @field_validator('gender')
+    @classmethod
     def validate_gender(cls, v):
         valid_genders = ['male', 'female', 'non_binary']
         if v not in valid_genders:
@@ -86,11 +90,22 @@ class AgentResponse(BaseModel):
     is_player: bool
 
 
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Start the world and its broadcasts with the server; stop them with it."""
+    await startup_event()
+    try:
+        yield
+    finally:
+        await shutdown_event()
+
+
 # Initialize FastAPI app
 app = FastAPI(
     title="Neuronaut World API",
     description="API for observing and interacting with Neuronaut World",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan,
 )
 
 # Rate limiting
@@ -98,18 +113,55 @@ limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Controls: anything that changes the world (pause, speed, reset, saves,
+# disasters, new characters) must carry the X-Neuronaut-Control header. A
+# browser can't send a custom header to another site without asking first
+# (a CORS preflight), and other sites aren't allowed, so a page on another
+# site can't reset or pause your world. Before, CORS allowed every origin
+# with credentials, and a bare POST to /reset from any website worked.
+# If NEURONAUT_ADMIN_TOKEN is set, controls also need
+# "Authorization: Bearer <token>" (the dashboard asks for it once per tab).
+CONTROL_HEADER = "x-neuronaut-control"
+CONTROL_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+
+def _admin_token() -> str:
+    return os.getenv("NEURONAUT_ADMIN_TOKEN", "").strip()
+
+
+async def guard_controls(request: Request, call_next):
+    if request.method in CONTROL_METHODS:
+        if request.headers.get(CONTROL_HEADER) != "1":
+            return JSONResponse(status_code=403, content={
+                "detail": "Requests that change the world need the header 'X-Neuronaut-Control: 1'"})
+        token = _admin_token()
+        if token:
+            supplied = request.headers.get("authorization", "")
+            given = supplied[7:].strip() if supplied.lower().startswith("bearer ") else ""
+            if not hmac.compare_digest(given.encode(), token.encode()):
+                return JSONResponse(status_code=401, headers={"WWW-Authenticate": "Bearer"}, content={
+                    "detail": "This server needs its admin token (Authorization: Bearer <token>) to change the world"})
+    return await call_next(request)
+
+
+app.middleware("http")(guard_controls)
+
+# Cross-origin access only for the origins listed in CORS_ORIGINS (comma
+# separated); the dashboard itself is same-origin and needs none
+CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
+if CORS_ORIGINS:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=CORS_ORIGINS,
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "DELETE"],
+        allow_headers=["Content-Type", "Authorization", "X-Neuronaut-Control"],
+    )
 
 # Global simulation instance
 simulation: Optional[SimulationEngine] = None
 simulation_task: Optional[asyncio.Task] = None
+broadcast_task: Optional[asyncio.Task] = None
 
 # WebSocket connections
 active_websockets: List[WebSocket] = []
@@ -118,74 +170,117 @@ active_websockets: List[WebSocket] = []
 _stats_cache = {"data": None, "tick": -1}
 _world_state_cache = {"data": None, "tick": -1}
 
+# Files the server hands out, found from this file rather than the current
+# directory, so the server works wherever it is started from
+WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
-@app.on_event("startup")
+# How often viewers get a new snapshot, and how long one slow viewer may hold
+# up the others before it is dropped (it reconnects by itself)
+BROADCAST_INTERVAL = float(os.getenv("BROADCAST_INTERVAL", "2.0"))
+SEND_TIMEOUT = 5.0
+
+
+def _seed_world() -> None:
+    """Seed the world's dice from WORLD_SEED, if set."""
+    import random
+    seed = load_config().world_seed
+    if seed is not None:
+        random.seed(seed)
+
+
+def _name_of(agent_id):
+    """An agent's name for display (ids mean nothing to a viewer)."""
+    if not agent_id or simulation is None:
+        return None
+    agent = simulation._get_agent_by_id(agent_id)
+    return agent.name if agent is not None else "someone gone"
+
+
+def _drop_websocket(ws: WebSocket) -> None:
+    if ws in active_websockets:
+        active_websockets.remove(ws)
+
+
 async def startup_event():
     """Initialize simulation on startup"""
-    global simulation, simulation_task
+    global simulation, simulation_task, broadcast_task
 
     print("🌍 Starting Neuronaut World...")
 
-    # Create simulation
+    # Create simulation (WORLD_SEED, if set, makes it the same world every time)
+    _seed_world()
     simulation = SimulationEngine(world_width=100, world_height=100)
 
-    # Initialize world with 12 agents (6 male, 6 female - balanced)
-    simulation.initialize_world(num_agents=12)
+    # NUM_AGENTS agents (default 12), half of each sex
+    simulation.initialize_world(num_agents=load_config().num_agents)
 
     # Start simulation loop in background
     simulation_task = asyncio.create_task(simulation.run())
 
     # Start broadcast task
-    asyncio.create_task(broadcast_updates())
+    broadcast_task = asyncio.create_task(broadcast_updates())
 
     print("✅ Neuronaut World is running!")
 
 
-@app.on_event("shutdown")
 async def shutdown_event():
     """Cleanup on shutdown"""
-    global simulation, simulation_task
-
     if simulation:
         simulation.stop()
 
-    if simulation_task:
-        simulation_task.cancel()
+    for task in (simulation_task, broadcast_task):
+        if task:
+            task.cancel()
 
     print("Neuronaut World stopped")
 
 
 async def broadcast_updates():
-    """Broadcast state updates to all connected WebSockets"""
+    """Send every viewer a snapshot every BROADCAST_INTERVAL seconds.
+
+    The snapshot is serialized once for everyone. A viewer whose socket fails
+    or is too slow is dropped (the dashboard reconnects). A failure while
+    building the snapshot is logged with its traceback and the loop carries
+    on: before, any error other than a disconnect ended this task for good
+    and every open dashboard silently stopped updating.
+    """
     while True:
-        if simulation and active_websockets:
-            # Get state snapshot
-            state = simulation.get_state_snapshot()
-
-            # Broadcast to all connections
-            disconnected = []
-            for ws in active_websockets:
-                try:
-                    # Wrap state in standardized message format
-                    message = {
-                        "type": "simulation_update",
-                        "data": state,
-                        "tick": simulation.world.time.current_tick if simulation else 0
-                    }
-                    await ws.send_json(message)
-                except (ConnectionError, WebSocketDisconnect) as e:
-                    print(f"WebSocket disconnected: {e}")
-                    disconnected.append(ws)
-
-            # Remove disconnected websockets
-            for ws in disconnected:
-                active_websockets.remove(ws)
-
-        # Update every 2 seconds
-        await asyncio.sleep(2.0)
+        try:
+            if simulation and active_websockets:
+                message = json.dumps({
+                    "type": "simulation_update",
+                    "data": simulation.get_state_snapshot(),
+                    "tick": simulation.world.time.current_tick,
+                })
+                for ws in list(active_websockets):
+                    try:
+                        await asyncio.wait_for(ws.send_text(message), timeout=SEND_TIMEOUT)
+                    except Exception as e:  # closed, broken or too slow: drop this viewer
+                        logger.info("Dropping a viewer (%s: %s)", type(e).__name__, e)
+                        _drop_websocket(ws)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Could not broadcast a snapshot; trying again next time")
+        await asyncio.sleep(BROADCAST_INTERVAL)
 
 
 # REST Endpoints
+
+@app.get("/health")
+async def health():
+    """For load balancers and container health checks: 200 while the world
+    is running (paused counts as running), 503 if its loop has stopped."""
+    running = simulation is not None and simulation_task is not None and not simulation_task.done()
+    body = {
+        "status": "ok" if running else "down",
+        "tick": simulation.world.time.current_tick if simulation else None,
+        "paused": bool(simulation.paused) if simulation else None,
+        "alive_agents": sum(1 for a in simulation.world.agents if a.alive) if simulation else 0,
+        "viewers": len(active_websockets),
+    }
+    return JSONResponse(status_code=200 if running else 503, content=body)
+
 
 @app.get("/")
 async def root():
@@ -389,9 +484,13 @@ async def get_economy():
     if not simulation:
         raise HTTPException(status_code=503, detail="Simulation not running")
 
+    done = simulation.action_successes
     return {
         "wealth_stats": simulation.economy.get_wealth_statistics(),
-        "market_stats": simulation.economy.market.get_market_statistics()
+        "market_stats": simulation.economy.market.get_market_statistics(),
+        # how many times each step toward money has been done
+        "made": {"smelt_ore": done.get("smelt_ore", 0), "refine_material": done.get("refine_material", 0),
+                 "mint_coins": done.get("mint_coins", 0)},
     }
 
 
@@ -522,46 +621,72 @@ from engine.save_manager import SaveManager
 save_manager = SaveManager()
 
 
+@app.get("/chronicle")
+async def get_chronicle(limit: int = 100):
+    """The village's history: firsts, milestones, and agents' own words (engine/chronicle.py)."""
+    if not simulation:
+        raise HTTPException(status_code=503, detail="Simulation not running")
+    return simulation.chronicle.to_dict(limit=max(1, min(limit, 300)))
+
+
+@app.get("/society")
+async def get_society():
+    """Governments and laws, faiths, families, economy and inventions (engine/society.py)."""
+    if not simulation:
+        raise HTTPException(status_code=503, detail="Simulation not running")
+    from engine.society import society_snapshot
+    return society_snapshot(simulation)
+
+
 @app.get("/saves")
 async def list_saves():
     """Get list of all saves"""
     return {"saves": save_manager.list_saves()}
 
 
+class SaveRequest(BaseModel):
+    name: Optional[constr(strip_whitespace=True, min_length=1, max_length=80)] = None
+
+
 @app.post("/saves")
-async def create_save(request: dict):
+async def create_save(save_request: SaveRequest):
     """Create a new save"""
     if not simulation:
         raise HTTPException(status_code=503, detail="Simulation not running")
 
-    save_name = request.get("name", f"World {len(save_manager.list_saves()) + 1}")
+    save_name = save_request.name or f"World {len(save_manager.list_saves()) + 1}"
 
     # Get current world state
     world_data = simulation.persistence.create_snapshot()
 
-    success = save_manager.create_save(save_name, world_data)
-    return {"success": success, "message": f"Saved as '{save_name}'"}
+    success = save_manager.create_save(save_name, world_data, simulation=simulation)
+    return {"success": success, "id": save_manager.last_save_id, "message": f"Saved as '{save_name}'"}
 
 
 @app.post("/saves/{save_id}/load")
 async def load_save(save_id: str):
     """Load a save"""
-    global simulation
+    global simulation, simulation_task
 
     world_data = save_manager.load_save(save_id)
     if not world_data:
         raise HTTPException(status_code=404, detail="Save not found")
+    state_path = save_manager.state_path(save_id)
+    if state_path is None:
+        # Saves made before full saves existed hold only a summary. (Loading
+        # used to "succeed" here and start a fresh, empty world instead.)
+        raise HTTPException(status_code=409, detail="This save holds only a summary and can't be loaded")
 
     # Stop current simulation
     if simulation and simulation.running:
         simulation.stop()
 
-    # Load world from save
-    simulation = SimulationEngine()
-    simulation.persistence.restore_snapshot(world_data)
-
-    # Restart simulation
-    asyncio.create_task(simulation.run())
+    # Load the world exactly as it was saved, and carry on
+    from engine.persistence import load_full_state
+    simulation = load_full_state(str(state_path))
+    if simulation_task:
+        simulation_task.cancel()
+    simulation_task = asyncio.create_task(simulation.run())
 
     return {"success": True, "message": "World loaded successfully"}
 
@@ -586,8 +711,9 @@ async def reset_world(request: Request):
         simulation.stop()
 
     # Create new simulation
+    _seed_world()
     simulation = SimulationEngine(world_width=100, world_height=100)
-    simulation.initialize_world(num_agents=12)
+    simulation.initialize_world(num_agents=load_config().num_agents)
 
     # Start new simulation
     if simulation_task:
@@ -616,7 +742,8 @@ class SetSpeedRequest(BaseModel):
         description="Simulation speed setting"
     )
 
-    @validator('speed')
+    @field_validator('speed')
+    @classmethod
     def validate_speed(cls, v):
         valid_speeds = ['paused', 'slow', 'normal', 'fast', 'ultra']
         if v not in valid_speeds:
@@ -905,7 +1032,8 @@ async def get_politics():
                     "type": g.government_type.value,
                     "citizens": len(g.citizens),
                     "approval": g.approval_rating,
-                    "leader": g.leader_id,
+                    "leader": _name_of(g.leader_id),
+                    "leader_id": g.leader_id,
                     "laws": len(g.laws) if hasattr(g, 'laws') else 0,
                     "authority": g.authority if hasattr(g, 'authority') else 0.5
                 })
@@ -942,7 +1070,8 @@ async def get_culture():
                 "id": group.id,
                 "name": group.name,
                 "members": len(group.members),
-                "leader": group.leader_id,
+                "leader": _name_of(group.leader_id),
+                "leader_id": group.leader_id,
                 "cohesion": group.cohesion if hasattr(group, 'cohesion') else 0.5,
                 "purpose": group.purpose if hasattr(group, 'purpose') else "General"
             })
@@ -995,7 +1124,8 @@ async def get_governments():
             "type": g.government_type.value,
             "citizens": len(g.citizens),
             "approval": g.approval_rating,
-            "leader": g.leader_id,
+            "leader": _name_of(g.leader_id),
+            "leader_id": g.leader_id,
         }
         for g in simulation.governance_manager.governments.values()
         if g.active
@@ -1444,55 +1574,44 @@ async def websocket_endpoint(websocket: WebSocket):
         while True:
             # Wait for client messages (ping/pong)
             try:
-                data = await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
+                await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
             except asyncio.TimeoutError:
                 # Send ping
                 await websocket.send_json({"type": "ping"})
 
     except WebSocketDisconnect:
-        active_websockets.remove(websocket)
+        pass
+    finally:
+        # The broadcast loop may already have dropped it
+        _drop_websocket(websocket)
 
 
 # Serve static files (web interface)
 @app.get("/app")
 async def serve_app():
     """Serve enhanced web interface"""
-    return FileResponse("web/enhanced.html")
+    return FileResponse(WEB_DIR / "enhanced.html")
 
 
-@app.get("/materials_example")
-async def serve_materials_example():
-    """Serve materials system example"""
-    return FileResponse("web/materials_example.html")
+@app.get("/app/town_map.js")
+async def serve_town_map():
+    """The map renderer used by /app (web/town_map.js)"""
+    return FileResponse(WEB_DIR / "town_map.js", media_type="application/javascript")
 
 
-@app.get("/inventory")
-async def serve_player_inventory():
-    """Serve player inventory & crafting interface"""
-    return FileResponse("web/player_inventory.html")
-
-@app.get("/app/classic")
-async def serve_classic_app():
-    """Serve original web interface"""
-    return FileResponse("web/index.html")
+@app.get("/map")
+async def get_map():
+    """Terrain grid and resource spots, for drawing the map (world/town_view.py)"""
+    if not simulation:
+        raise HTTPException(status_code=503, detail="Simulation not running")
+    from world.town_view import map_layout
+    return map_layout(simulation)
 
 
 @app.get("/game")
 async def serve_game_interface():
-    """Redirect /game to /app for consistency"""
-    return FileResponse("web/enhanced.html")
+    """The dashboard's old address"""
+    return RedirectResponse("/app")
 
 
-def main():
-    """Run the server"""
-    uvicorn.run(
-        "api.server:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=False,
-        log_level="info"
-    )
-
-
-if __name__ == "__main__":
-    main()
+# Run the server with main.py: it reads the settings (HOST, PORT, ...).

@@ -9,7 +9,7 @@ Handles:
 - Businesses
 """
 
-import uuid
+from engine.ids import new_uuid
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime
@@ -97,7 +97,7 @@ class Market:
         requesting_wealth: float = 0.0
     ) -> TradeOffer:
         """Create a trade offer"""
-        offer_id = str(uuid.uuid4())
+        offer_id = str(new_uuid())
         offer = TradeOffer(
             id=offer_id,
             from_agent=from_agent,
@@ -123,7 +123,7 @@ class Market:
         for item, qty in offer.offering_items.items():
             price = self.item_prices.get(item, 1.0) * qty
             transaction = Transaction(
-                id=str(uuid.uuid4()),
+                id=str(new_uuid()),
                 timestamp=datetime.now(),
                 buyer=offer.to_agent,
                 seller=offer.from_agent,
@@ -133,6 +133,8 @@ class Market:
                 currency=CurrencyType.COINS
             )
             self.transaction_history.append(transaction)
+            if len(self.transaction_history) > 1200:
+                del self.transaction_history[:-1000]  # prices read the last 500
 
         # Update market prices based on trade
         self._update_prices_from_trade(offer)
@@ -280,7 +282,7 @@ class PropertyManager:
         value: float = 100.0
     ) -> Property:
         """Create new property"""
-        prop_id = str(uuid.uuid4())
+        prop_id = str(new_uuid())
         prop = Property(
             id=prop_id,
             property_type=property_type,
@@ -376,7 +378,7 @@ class Economy:
 
         # Record transaction
         transaction = Transaction(
-            id=str(uuid.uuid4()),
+            id=str(new_uuid()),
             timestamp=datetime.now(),
             buyer=buyer_agent.id,
             seller=seller_agent.id,

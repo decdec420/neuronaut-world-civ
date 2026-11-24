@@ -11,7 +11,7 @@ Instead of fixed tech trees, agents:
 Agents decide WHAT to build, WHEN to build it, and HOW based on their psychology and needs.
 """
 
-import uuid
+from engine.ids import new_uuid
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
 from datetime import datetime
@@ -125,6 +125,29 @@ class InnovationManager:
         # Experimentation results (agents learn from trying things)
         self.experiment_log: List[Dict] = []
 
+    def record_creation(
+        self,
+        agent_id: str,
+        agent_name: str,
+        product: str,
+        discovery_type: DiscoveryType,
+        action: str,
+        items_used: Optional[List[str]] = None
+    ) -> Optional[Innovation]:
+        """Someone made `product`. The first maker in the world invents it (an
+        Innovation named after it); anyone after that has simply learned it.
+        Returns the new Innovation, or None if it already existed."""
+        by_product = self.__dict__.setdefault('innovation_by_product', {})
+        if product in by_product:
+            self.learn_innovation(agent_id, by_product[product])
+            return None
+        innovation = self.agent_discovers(agent_id, agent_name, discovery_type,
+                                          {'action': action, 'items_used': items_used or [], 'result': product})
+        innovation.name = product.replace('_', ' ')
+        innovation.description = f"First made by {agent_name} ({action.replace('_', ' ')})"
+        by_product[product] = innovation.id
+        return innovation
+
     def agent_discovers(
         self,
         agent_id: str,
@@ -141,7 +164,7 @@ class InnovationManager:
         - Solving problems creatively
         """
         # Generate innovation based on context
-        innovation_id = str(uuid.uuid4())
+        innovation_id = str(new_uuid())
 
         # Let the agent NAME their discovery
         name = self._generate_innovation_name(agent_name, discovery_type, context)
@@ -209,7 +232,7 @@ class InnovationManager:
 
         They estimate what materials they need and what it should do
         """
-        concept_id = str(uuid.uuid4())
+        concept_id = str(new_uuid())
 
         # Agent makes educated guesses about materials needed
         import random

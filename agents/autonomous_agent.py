@@ -331,196 +331,53 @@ class AutonomousAgentMixin:
 
         # Check if LLM is available
         if not self.llm_brain or not config.use_llm_decisions:
-            # Fall back to rule-based psychology
-            return self._fallback_rule_based_decision(perceptions)
+            return None  # the agent updater uses the rule-based brain
 
-        # Periodic long-term planning
-        self.ticks_since_planning += 1
-        if self.ticks_since_planning >= config.long_term_planning_interval:
-            self._do_long_term_planning(perceptions, current_tick)
-            self.ticks_since_planning = 0
-
-        # Periodic self-reflection
-        self.ticks_since_reflection += 1
-        if self.ticks_since_reflection >= config.reflection_interval:
-            self._do_self_reflection(perceptions, current_tick)
-            self.ticks_since_reflection = 0
-
-        # Make AI-powered decision
+        # Day plans and reflections are separate thoughts, scheduled with the
+        # agent's memory stream (AgentUpdater._next_thought). The ones that
+        # lived here called memory methods that don't exist and raised.
         return self._llm_decide_action(perceptions)
 
-    def _do_long_term_planning(self, perceptions: Dict, current_tick: int):
-        """Agent thinks about long-term goals using AI"""
-
-        logger.info(f"🧠 {self.name} is planning their future...")
-
-        response = self.llm_brain.agent_think(
-            agent=self,
-            perceptions=perceptions,
-            thinking_mode="long_term_planning"
-        )
-
-        if response:
-            # Parse goals from AI response
-            self._parse_and_set_goals(response, current_tick)
-
-            # Remember this planning session
-            self.memory.remember(
-                tick=current_tick,
-                event_type="planning",
-                description=f"Planned future goals: {response[:100]}",
-                importance=0.6
-            )
-
-    def _parse_and_set_goals(self, ai_response: str, current_tick: int):
-        """Parse AI response and create goals"""
-
-        # Simple keyword-based goal extraction
-        # (You could make this more sophisticated with structured prompts)
-
-        response_lower = ai_response.lower()
-
-        # Map keywords to goal types
-        goal_keywords = {
-            GoalType.WEALTH: ['wealth', 'rich', 'money', 'trade', 'business'],
-            GoalType.FAMILY: ['family', 'children', 'marry', 'romance', 'partner'],
-            GoalType.KNOWLEDGE: ['discover', 'learn', 'knowledge', 'research', 'experiment'],
-            GoalType.CREATIVITY: ['create', 'art', 'build', 'invent', 'design'],
-            GoalType.POWER: ['leader', 'power', 'govern', 'influence', 'control'],
-            GoalType.SOCIAL: ['friends', 'social', 'popular', 'community', 'relationships'],
-            GoalType.HEDONISM: ['fun', 'enjoy', 'pleasure', 'party', 'celebrate'],
-        }
-
-        # Detect goals from response
-        for goal_type, keywords in goal_keywords.items():
-            if any(keyword in response_lower for keyword in keywords):
-                # Check if already pursuing this type of goal
-                if not self.goals.has_goal_type(goal_type):
-                    # Add new goal
-                    priority = self._calculate_goal_priority(goal_type)
-                    self.goals.add_goal(
-                        goal_type=goal_type,
-                        description=f"Pursue {goal_type.value}",
-                        priority=priority,
-                        current_tick=current_tick
-                    )
-
-    def _calculate_goal_priority(self, goal_type: GoalType) -> float:
-        """Calculate goal priority based on personality"""
-
-        # Map goal types to personality traits
-        priority_map = {
-            GoalType.WEALTH: self.personality.ambition * 0.7 + self.personality.conscientiousness * 0.3,
-            GoalType.FAMILY: (1.0 - self.personality.ambition) * 0.5 + self.personality.agreeableness * 0.5,
-            GoalType.KNOWLEDGE: self.personality.openness * 0.6 + self.personality.creativity * 0.4,
-            GoalType.CREATIVITY: self.personality.creativity * 0.8 + self.personality.openness * 0.2,
-            GoalType.POWER: self.personality.ambition * 0.8 + self.personality.extraversion * 0.2,
-            GoalType.SOCIAL: self.personality.extraversion * 0.7 + self.personality.agreeableness * 0.3,
-            GoalType.HEDONISM: self.personality.extraversion * 0.5 + (1.0 - self.personality.conscientiousness) * 0.5,
-        }
-
-        return priority_map.get(goal_type, 0.5)
-
-    def _do_self_reflection(self, perceptions: Dict, current_tick: int):
-        """Agent reflects on their life using AI"""
-
-        logger.info(f"💭 {self.name} is reflecting on their life...")
-
-        response = self.llm_brain.agent_think(
-            agent=self,
-            perceptions=perceptions,
-            thinking_mode="reflection"
-        )
-
-        if response:
-            # Store reflection as memory
-            self.memory.remember(
-                tick=current_tick,
-                event_type="reflection",
-                description=f"Reflected: {response[:150]}",
-                emotional_intensity=0.6,
-                importance=0.5
-            )
-
-            # Update recent memories for context
-            self.recent_memories.append(f"[Self-reflection] {response[:100]}")
-            if len(self.recent_memories) > 10:
-                self.recent_memories = self.recent_memories[-10:]
-
-    def _llm_decide_action(self, perceptions: Dict) -> 'Action':
-        """Use LLM to make decision"""
-
-        from agents.agent import Action, ActionType
-
+    def _llm_decide_action(self, perceptions: Dict) -> Optional['Action']:
+        """Ask the AI brain what to do. None means use the rule-based brain this tick."""
         response = self.llm_brain.agent_think(
             agent=self,
             perceptions=perceptions,
             thinking_mode="decide_action"
         )
+        if not response:
+            return None  # no model reachable
+        return self._parse_action_from_llm(response.strip(), perceptions)
 
-        if response:
-            # Parse action from response
-            action = self._parse_action_from_llm(response.strip())
-            return action
-        else:
-            # Fallback if LLM fails
-            return self._fallback_rule_based_decision(perceptions)
+    def _parse_action_from_llm(self, llm_response: str, perceptions: Optional[Dict] = None) -> Optional['Action']:
+        """Read 'ACTION: <name> / TARGET: <person> / DETAILS / REASON' into an Action.
 
-    def _parse_action_from_llm(self, llm_response: str) -> 'Action':
-        """Parse action from LLM text response"""
-
+        Returns None (and counts a parse failure) if the answer doesn't name an
+        action on the menu. The old keyword search returned REST for anything it
+        couldn't read, and matched words inside other words ("create_art" read
+        as eat).
+        """
         from agents.agent import Action, ActionType
+        from agents.action_menu import parse_decision
 
-        response_lower = llm_response.lower()
+        menu = getattr(self.llm_brain, 'action_menu', None) if self.llm_brain else None
+        valid = menu.names if menu else {a.value for a in ActionType}
+        perceptions = perceptions if perceptions is not None else (getattr(self, 'last_perception', None) or {})
+        decision = parse_decision(llm_response, valid, perceptions.get('people_by_name', {}))
+        if self.llm_brain is not None and hasattr(self.llm_brain, 'record_parse'):
+            self.llm_brain.record_parse(decision is not None, llm_response)
+        if decision is None:
+            return None
 
-        # Map keywords to actions (in priority order)
-        action_keywords = [
-            ('drink', ActionType.DRINK),
-            ('eat', ActionType.EAT),
-            ('sleep', ActionType.SLEEP),
-            ('rest', ActionType.REST),
-            ('fight', ActionType.FIGHT),
-            ('attack', ActionType.FIGHT),
-            ('combat', ActionType.FIGHT),
-            ('challenge', ActionType.FIGHT),
-            ('duel', ActionType.FIGHT),
-            ('form government', ActionType.GOVERN),
-            ('establish government', ActionType.GOVERN),
-            ('govern', ActionType.GOVERN),
-            ('lead', ActionType.GOVERN),
-            ('make law', ActionType.MAKE_LAW),
-            ('propose law', ActionType.MAKE_LAW),
-            ('create law', ActionType.MAKE_LAW),
-            ('vote', ActionType.VOTE),
-            ('cast vote', ActionType.VOTE),
-            ('gather food', ActionType.GATHER_FOOD),
-            ('gather water', ActionType.GATHER_WATER),
-            ('gather', ActionType.GATHER_MATERIALS),
-            ('explore', ActionType.EXPLORE),
-            ('experiment', ActionType.EXPERIMENT),
-            ('build', ActionType.BUILD),
-            ('craft', ActionType.CRAFT),
-            ('trade', ActionType.TRADE),
-            ('socialize', ActionType.SOCIALIZE),
-            ('romance', ActionType.SEEK_ROMANCE),
-            ('flirt', ActionType.FLIRT),
-            ('play', ActionType.PLAY_GAME),
-            ('celebrate', ActionType.CELEBRATE),
-            ('teach', ActionType.TEACH),
-            ('learn', ActionType.STUDY),
-            ('create art', ActionType.CREATE_ART),
-            ('hunt', ActionType.HUNT),
-        ]
-
-        # Find first matching action
-        for keyword, action_type in action_keywords:
-            if keyword in response_lower:
-                logger.debug(f"[{self.name}] Chose {action_type.value} based on: {llm_response[:50]}")
-                return Action(action_type)
-
-        # Default fallback
-        logger.warning(f"[{self.name}] Couldn't parse action from: {llm_response[:50]}. Defaulting to REST.")
-        return Action(ActionType.REST)
+        parameters = {}
+        if decision.details:
+            parameters['details'] = decision.details
+            if decision.action in ('vote', 'campaign'):
+                parameters['choice'] = 'no' if decision.details.strip().lower().startswith('no') else 'yes'
+        if decision.reason:
+            parameters['reason'] = decision.reason
+        logger.debug(f"[{self.name}] AI chose {decision.action} ({decision.reason})")
+        return Action(ActionType(decision.action), target_agent=decision.target_id, parameters=parameters)
 
     def _fallback_rule_based_decision(self, perceptions: Dict) -> 'Action':
         """Fallback to original psychology-based decision making"""
@@ -529,28 +386,15 @@ class AutonomousAgentMixin:
         # This method should exist in the Agent class
         return self.decide(perceptions)
 
-    def remember_event(
-        self,
-        tick: int,
-        event_type: str,
-        description: str,
-        emotional_intensity: float = 0.5,
-        importance: float = 0.5,
-        participants: List[str] = None
-    ):
-        """Wrapper to remember an event"""
 
-        self.memory.remember(
-            tick=tick,
-            event_type=event_type,
-            description=description,
-            emotional_intensity=emotional_intensity,
-            importance=importance,
-            participants=participants,
-            location=(self.location.x, self.location.y)
-        )
-
-        # Add to recent memories for LLM context
-        self.recent_memories.append(f"[{event_type}] {description}")
-        if len(self.recent_memories) > 15:
-            self.recent_memories = self.recent_memories[-15:]
+def bind_autonomous_methods(agent, llm_brain=None, init: bool = True) -> None:
+    """Give an agent the AI-brain methods (bound to it). init: also set up its
+    autonomous systems (a new agent); a loaded agent keeps the ones it had."""
+    import types
+    for method_name in dir(AutonomousAgentMixin):
+        if not method_name.startswith('__'):
+            method = getattr(AutonomousAgentMixin, method_name, None)
+            if callable(method):
+                setattr(agent, method_name, types.MethodType(method, agent))
+    if init:
+        agent.init_autonomous_systems(llm_brain=llm_brain)

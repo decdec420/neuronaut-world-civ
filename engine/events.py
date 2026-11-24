@@ -9,7 +9,7 @@ Tracks all significant happenings:
 - Cultural moments
 """
 
-import uuid
+from engine.ids import new_uuid
 from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Tuple, Deque
 from datetime import datetime
@@ -74,6 +74,7 @@ class EventLogger:
         # Use deque with maxlen for automatic memory management
         self.max_events = 10000  # Keep last 10k events
         self.events: Deque[Event] = deque(maxlen=self.max_events)
+        self.listeners = []  # called with each new event (e.g. agents' memories)
 
     def log_event(
         self,
@@ -88,7 +89,7 @@ class EventLogger:
     ) -> Event:
         """Log a new event"""
         event = Event(
-            id=str(uuid.uuid4()),
+            id=str(new_uuid()),
             timestamp=datetime.now(),
             tick=current_tick,
             category=category,
@@ -102,6 +103,8 @@ class EventLogger:
 
         # Deque automatically drops oldest when full
         self.events.append(event)
+        for listener in self.listeners:
+            listener(event)
 
         return event
 

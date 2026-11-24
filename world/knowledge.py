@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple, Union, Any
 from datetime import datetime, timedelta
 import random
-import uuid
+from engine.ids import new_uuid
 import logging
 logger = logging.getLogger(__name__)
 
@@ -196,7 +196,7 @@ class KnowledgeSystem:
         """Agent creates new knowledge"""
 
         record = KnowledgeRecord(
-            id=str(uuid.uuid4()),
+            id=str(new_uuid()),
             knowledge_type=knowledge_type,
             name=name,
             content=content,
@@ -319,7 +319,7 @@ class KnowledgeSystem:
 
         # Create document
         document = WrittenDocument(
-            id=str(uuid.uuid4()),
+            id=str(new_uuid()),
             title=title,
             content="\n\n".join(content_parts),
             author_id=agent_id,
@@ -395,7 +395,7 @@ class KnowledgeSystem:
         """
 
         library = Library(
-            id=str(uuid.uuid4()),
+            id=str(new_uuid()),
             name=name,
             location=location,
             founded_by=founder_id,
@@ -485,7 +485,7 @@ class KnowledgeSystem:
         """
 
         session = TeachingSession(
-            id=str(uuid.uuid4()),
+            id=str(new_uuid()),
             teacher_id=teacher_id,
             student_ids=student_ids,
             knowledge_taught=knowledge_ids,

@@ -73,14 +73,14 @@ class ActionHandlers:
         if not agent.is_willing_to_trade_with(target_agent):
             return {
                 'success': False,
-                'reason': f"{agent.name} doesn't trust {target_agent.name} (poor reputation)",
+                'message': f"{agent.name} doesn't trust {target_agent.name} (poor reputation)",
                 'emotional_impact': -0.05
             }
 
         if not target_agent.is_willing_to_trade_with(agent):
             return {
                 'success': False,
-                'reason': f"{target_agent.name} doesn't trust {agent.name} (poor reputation)",
+                'message': f"{target_agent.name} doesn't trust {agent.name} (poor reputation)",
                 'emotional_impact': -0.05
             }
 
@@ -88,10 +88,11 @@ class ActionHandlers:
         target_items = list(target_agent.inventory.items.keys())
 
         if not target_items:
-            return {'success': False, 'reason': 'No items to trade'}
+            return {'success': False, 'message': 'No items to trade'}
 
-        # Pick random item
-        item = random.choice(target_items)
+        # Ask for what the buyer is shortest of (it used to be a random item)
+        random.shuffle(target_items)
+        item = min(target_items, key=lambda name: agent.inventory.items.get(name, 0))
         quantity = 1
         market_price = self.sim.economy.market.get_market_price(item)
 
@@ -114,9 +115,14 @@ class ActionHandlers:
             # No deal - price expectations don't overlap
             return {
                 'success': False,
-                'reason': f'Price disagreement: buyer offers {buyer_max_price:.1f}, seller wants {seller_min_price:.1f}',
+                'message': f'Price disagreement: buyer offers {buyer_max_price:.1f}, seller wants {seller_min_price:.1f}',
                 'emotional_impact': -0.05
             }
+
+        # No money (nobody starts with any)? Offer goods instead: barter
+        if agent.wealth < negotiated_price:
+            return self._barter(agent, target_agent, item, buyer_max_price, seller_min_price,
+                                market_price, current_tick)
 
         # Attempt trade at negotiated price
         success, message = self.sim.economy.execute_trade(
@@ -175,6 +181,51 @@ class ActionHandlers:
                 'emotional_impact': -0.1,
                 'message': message
             }
+
+    def _barter(self, agent: Agent, target_agent: Agent, item: str, buyer_max: float,
+                seller_min: float, market_price: float, current_tick: int) -> Dict:
+        """Swap goods for goods. The buyer offers as little as it can of what it
+        has most of, for as many units of `item` as the seller thinks that's
+        worth. The seller accepts only if, by its own estimate, it gets at least
+        its asking price; the buyer only if it isn't paying over its limit."""
+        price_of = self.sim.economy.market.get_market_price
+        seller_wants = max(1e-6, seller_min)               # seller's minimum per unit of item
+        buyer_limit = buyer_max                             # buyer's maximum per unit of item
+        stock = target_agent.inventory.items.get(item, 0)
+        offers = sorted(((name, qty) for name, qty in agent.inventory.items.items()
+                         if qty > 0 and name != item), key=lambda kv: -kv[1])
+        for offered, have in offers[:3]:
+            seller_unit = target_agent.get_estimated_value(offered, price_of(offered))
+            buyer_unit = agent.get_estimated_value(offered, price_of(offered))
+            if seller_unit <= 0:
+                continue
+            for give in range(1, min(have, 10) + 1):
+                take = min(stock, int(give * seller_unit // seller_wants))
+                if take < 1:
+                    continue  # not enough yet for the seller to part with one
+                if give * buyer_unit > take * buyer_limit:
+                    break     # the buyer would be overpaying; more of it won't help
+                if target_agent.inventory.get_total_items() - take + give > target_agent.inventory.capacity:
+                    break
+                # The buyer must have room too, or add_item refuses and the goods
+                # it bought vanish (reported in review)
+                if agent.inventory.get_total_items() - give + take > agent.inventory.capacity:
+                    break
+                agent.inventory.remove_item(offered, give)
+                target_agent.inventory.remove_item(item, take)
+                target_agent.inventory.add_item(offered, give)
+                agent.inventory.add_item(item, take)
+                self.sim.relationship_manager.update_relationship(agent.id, target_agent.id, 'trade', positive=True)
+                agent.needs.satisfy_need(NeedType.RESOURCES, 0.2)
+                self.sim.event_logger.log_event(
+                    EventCategory.ECONOMIC, EventImportance.MINOR,
+                    f"{agent.name} bartered with {target_agent.name}",
+                    f"{agent.name} gave {give} {offered} for {take} {item}.",
+                    current_tick, [agent.id, target_agent.id])
+                return {'success': True, 'emotional_impact': 0.25, 'barter': True,
+                        'message': f'Bartered {give} {offered} for {take} {item}'}
+        return {'success': False, 'emotional_impact': -0.05,
+                'message': f'Insufficient funds, and nothing {target_agent.name} would take for {item}'}
 
     def handle_socialize(
         self,
@@ -264,92 +315,6 @@ class ActionHandlers:
                 'message': 'Awkward interaction'
             }
 
-    def handle_romance(
-        self,
-        agent: Agent,
-        target_agent: Agent,
-        current_tick: int
-    ) -> Dict:
-        """Handle romantic interaction"""
-        # Check attraction
-        from engine.psychology import PsychologyEngine
-
-        attraction, rel_type = PsychologyEngine.relationship_attraction(
-            agent.personality,
-            target_agent.personality,
-            agent.needs,
-            target_agent.needs
-        )
-
-        if attraction > 0.6 and rel_type == 'romance':
-            # Mutual attraction
-            self.sim.relationship_manager.update_relationship(
-                agent.id, target_agent.id, 'romance', positive=True
-            )
-
-            # Check if romance forms
-            existing_rel = self.sim.relationship_manager.get_relationship(
-                agent.id, target_agent.id
-            )
-
-            if existing_rel and existing_rel.relationship_type == RelationshipType.ROMANCE:
-                if existing_rel.strength > 0.7:
-                    # Romance blossoms!
-                    title, desc = EventGenerator.relationship_formed(
-                        agent.name, target_agent.name, 'romance'
-                    )
-                    self.sim.event_logger.log_event(
-                        EventCategory.SOCIAL,
-                        EventImportance.MAJOR,
-                        title, desc,
-                        current_tick,
-                        [agent.id, target_agent.id]
-                    )
-
-            # Satisfy needs
-            agent.needs.satisfy_need(NeedType.SEX, 0.5)
-            agent.needs.satisfy_need(NeedType.ROMANCE, 0.6)
-
-            # Positive emotions
-            agent.emotions.trigger_emotion(EmotionType.LOVE, 0.4)
-            agent.emotions.trigger_emotion(EmotionType.LUST, 0.3)
-            agent.emotions.trigger_emotion(EmotionType.JOY, 0.3)
-
-            # ===== PREGNANCY CHANCE =====
-            # Check if one is female and not already pregnant
-            female_agent = agent if agent.gender.value == 'female' else target_agent if target_agent.gender.value == 'female' else None
-            male_agent = agent if agent.gender.value == 'male' else target_agent if target_agent.gender.value == 'male' else None
-
-            if female_agent and male_agent and not female_agent.is_pregnant:
-                # Pregnancy chance based on attraction and age
-                base_chance = 0.15  # 15% base chance
-                age_factor = 1.0 if 18 <= female_agent.age <= 40 else 0.3  # Reduced fertility outside prime years
-                pregnancy_chance = base_chance * age_factor * attraction
-
-                if random.random() < pregnancy_chance:
-                    # PREGNANCY!
-                    female_agent.is_pregnant = True
-                    female_agent.pregnancy_partner_id = male_agent.id
-                    female_agent.pregnancy_start_tick = current_tick
-                    logger.info(f"👶 {female_agent.name} is PREGNANT! Father: {male_agent.name}")
-
-            return {
-                'success': True,
-                'emotional_impact': 0.8,
-                'message': 'Romance flourishes',
-                'reproduction_attempted': True  # Signal for reproduction attempt
-            }
-        else:
-            # Rejection
-            agent.emotions.trigger_emotion(EmotionType.SADNESS, 0.3)
-            agent.emotions.trigger_emotion(EmotionType.SHAME, 0.2)
-
-            return {
-                'success': False,
-                'emotional_impact': -0.5,
-                'message': 'Romantic advance rejected'
-            }
-
     def handle_gather_food(
         self,
         agent: Agent,
@@ -379,12 +344,8 @@ class ActionHandlers:
                 )
             else:
                 # Navigate toward remembered location
-                next_step = self.sim.pathfinder.get_next_step(
-                    agent.location.x, agent.location.y,
-                    target_x, target_y
-                )
-                if next_step:
-                    agent.location = Position(next_step[0], next_step[1])
+                # One step (several along a road), and the walk is remembered
+                self.sim.infrastructure.step_toward(agent, self.sim.pathfinder, target_x, target_y, current_tick)
 
                 return {
                     'success': True,
@@ -410,13 +371,9 @@ class ActionHandlers:
 
         # If too far, navigate closer
         if distance > 3.0:
-            next_step = self.sim.pathfinder.get_next_step(
-                agent.location.x, agent.location.y,
-                resource.location.x, resource.location.y
-            )
-
-            if next_step:
-                agent.location = Position(next_step[0], next_step[1])
+            # One step (several along a road), and the walk is remembered
+            if self.sim.infrastructure.step_toward(agent, self.sim.pathfinder,
+                                                   resource.location.x, resource.location.y, current_tick):
                 # Remember this resource location
                 self.sim.resource_memory.remember_resource(
                     agent.id,
@@ -495,7 +452,9 @@ class ActionHandlers:
         - Trade with others
         """
         # Determine what material to gather based on availability and need
-        material_priority = ['stone', 'wood', 'clay', 'plant_fiber', 'metal_ore', 'iron_ore']
+        # (sand is in the world's pools too; nothing gathered it, so glass,
+        # which is made from sand, could not be made)
+        material_priority = ['stone', 'wood', 'clay', 'plant_fiber', 'sand', 'metal_ore', 'iron_ore']
         # Gather what the agent holds least of first (ties keep the order above).
         # Buildings need a mix (a shelter is wood, stone, fiber and clay); always
         # taking stone first filled every inventory with stone, after which no
@@ -599,12 +558,29 @@ class ActionHandlers:
             }
 
     def handle_rest(self, agent: Agent) -> Dict:
-        """Handle rest/sleep"""
-        # Restore energy
-        agent.energy = min(100.0, agent.energy + 20.0)
+        """Handle rest/sleep. At night an agent with a home goes home to
+        sleep (unless exhausted), and sleeps better there (life/homes.py)."""
+        from life import homes
+        tick = self.sim.world.time.current_tick
+        night = homes.is_night(self.sim.world.time.hour)
+        dbs = self.sim.dynamic_building_system
+        away = homes.distance_home(dbs, agent)
+        if night and away is not None and away > homes.HOME_RADIUS and agent.energy > homes.EXHAUSTED_ENERGY:
+            home = homes.home_of(dbs, agent)
+            self.sim.infrastructure.step_toward(agent, self.sim.pathfinder, home.location[0], home.location[1], tick)
+            return {'success': True, 'emotional_impact': 0.05, 'message': f'Heading home to {home.name}'}
+        at_home = away is not None and away <= homes.HOME_RADIUS
+        if night:
+            self.sim.life_events['slept_home' if at_home else 'slept_out'] += 1
+
+        # Restore energy (better at home)
+        agent.energy = min(100.0, agent.energy + (homes.HOME_ENERGY if at_home else 20.0))
 
         # Satisfy sleep need
-        agent.needs.satisfy_need(NeedType.SLEEP, 0.5)
+        agent.needs.satisfy_need(NeedType.SLEEP, homes.HOME_SLEEP if at_home else 0.5)
+        if at_home:
+            agent.needs.satisfy_need(NeedType.SHELTER, 0.3)
+            agent.needs.satisfy_need(NeedType.SECURITY, 0.2)
 
         # Reduce stress
         agent.emotions.stress = max(0.0, agent.emotions.stress - 0.2)
@@ -875,12 +851,8 @@ class ActionHandlers:
                 )
             else:
                 # Navigate toward remembered location
-                next_step = self.sim.pathfinder.get_next_step(
-                    agent.location.x, agent.location.y,
-                    target_x, target_y
-                )
-                if next_step:
-                    agent.location = Position(next_step[0], next_step[1])
+                # One step (several along a road), and the walk is remembered
+                self.sim.infrastructure.step_toward(agent, self.sim.pathfinder, target_x, target_y, current_tick)
 
                 return {
                     'success': True,
@@ -929,13 +901,9 @@ class ActionHandlers:
 
         # If too far, navigate closer
         if distance > 3.0:
-            next_step = self.sim.pathfinder.get_next_step(
-                agent.location.x, agent.location.y,
-                resource.location.x, resource.location.y
-            )
-
-            if next_step:
-                agent.location = Position(next_step[0], next_step[1])
+            # One step (several along a road), and the walk is remembered
+            if self.sim.infrastructure.step_toward(agent, self.sim.pathfinder,
+                                                   resource.location.x, resource.location.y, current_tick):
                 # Remember this resource location
                 self.sim.resource_memory.remember_resource(
                     agent.id,

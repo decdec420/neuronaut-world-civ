@@ -22,6 +22,8 @@ Supported Providers:
 import requests
 import json
 import logging
+import threading
+import time
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import Dict, List, Optional, Any
@@ -153,9 +155,30 @@ class MultiLLMBrain:
     - Creative problem solving
     """
 
-    def __init__(self, api_keys: Dict[str, str] = None):
+    # The key each cloud provider needs (in api_keys); Ollama needs none
+    KEY_NAMES = {
+        LLMProvider.GROQ: 'groq', LLMProvider.TOGETHER_AI: 'together',
+        LLMProvider.GEMINI_FLASH: 'gemini', LLMProvider.HUGGING_FACE: 'huggingface',
+    }
+    OLLAMA_RETRY_AFTER = 30.0  # seconds to wait before trying a down Ollama again
+
+    def __init__(self, api_keys: Dict[str, str] = None, config=None):
         self.api_keys = api_keys or {}
         self.rate_limiter = RateLimiter()
+
+        # Local model (config.py: OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_NUM_CTX, LLM_TIMEOUT)
+        self.ollama_url = (getattr(config, 'ollama_host', None) or 'http://localhost:11434').rstrip('/')
+        self.ollama_model = getattr(config, 'ollama_model', None) or 'llama3.2:3b'
+        self.ollama_num_ctx = getattr(config, 'ollama_num_ctx', 4096)
+        self.timeout = getattr(config, 'llm_timeout', 60.0)
+        self.context_chars = getattr(config, 'llm_context_chars', 1800)
+        self._ollama_retry_at = 0.0
+
+        # Calls, failures and time spent (model calls can run in threads)
+        self._stats_lock = threading.Lock()
+        self.calls = 0
+        self.call_failures = 0
+        self.total_latency = 0.0
 
         # Provider priority (fastest/best first, fallback to local)
         self.provider_priority = [
@@ -170,6 +193,34 @@ class MultiLLMBrain:
         self.total_decisions = 0
         self.provider_usage = {p: 0 for p in LLMProvider}
 
+        # The action menu (set by the simulation from its handler registry) and
+        # how often answers could / couldn't be read as a listed action
+        self.action_menu = None
+        self.decisions_parsed = 0
+        self.parse_failures = 0
+        self.last_parse_failures: List[str] = []  # a few recent unreadable answers, for debugging
+
+    def __getstate__(self) -> Dict:
+        state = self.__dict__.copy()
+        state.pop('_stats_lock', None)  # a lock can't be saved; a new one is made on load
+        return state
+
+    def __setstate__(self, state: Dict) -> None:
+        self.__dict__.update(state)
+        self._stats_lock = threading.Lock()
+
+    def set_action_menu(self, menu) -> None:
+        """Use this menu (agents.action_menu.ActionMenu) in decision prompts."""
+        self.action_menu = menu
+
+    def record_parse(self, ok: bool, response: str = "") -> None:
+        if ok:
+            self.decisions_parsed += 1
+        else:
+            self.parse_failures += 1
+            self.last_parse_failures = (self.last_parse_failures + [response[:200]])[-5:]
+            logger.warning(f"Could not read an action from the AI answer: {response[:120]!r}")
+
     def get_available_provider(self, complexity: str = "simple") -> LLMProvider:
         """
         Get best available provider for this decision
@@ -179,32 +230,36 @@ class MultiLLMBrain:
         - Complex: Use smartest available provider
         """
 
-        # For complex decisions, prefer smarter models
+        candidates = self.providers_to_try(complexity)
+        return candidates[0] if candidates else LLMProvider.OLLAMA_LOCAL
+
+    def _configured(self, provider: LLMProvider) -> bool:
+        """A cloud provider counts only with its API key; Ollama unless it was
+        just found down."""
+        if provider == LLMProvider.OLLAMA_LOCAL:
+            return time.monotonic() >= self._ollama_retry_at
+        return bool(self.api_keys.get(self.KEY_NAMES[provider]))
+
+    def providers_to_try(self, complexity: str = "simple") -> List[LLMProvider]:
+        """Providers to ask, in order: configured ones within their rate limits.
+
+        (This used to pick the first provider within its rate limits whether or
+        not it had a key, so with no cloud keys every call went to Groq, failed,
+        and never reached Ollama.)"""
         if complexity == "complex":
-            priority = [
-                LLMProvider.GEMINI_FLASH,   # Smartest free option
-                LLMProvider.GROQ,            # Also good with 70B model
-                LLMProvider.TOGETHER_AI,
-                LLMProvider.HUGGING_FACE,
-                LLMProvider.OLLAMA_LOCAL
-            ]
+            priority = [LLMProvider.GEMINI_FLASH, LLMProvider.GROQ, LLMProvider.TOGETHER_AI,
+                        LLMProvider.HUGGING_FACE, LLMProvider.OLLAMA_LOCAL]
         else:
             priority = self.provider_priority
-
-        # Find first available provider
-        for provider in priority:
-            if self.rate_limiter.can_use(provider):
-                return provider
-
-        # Always fallback to local (unlimited)
-        return LLMProvider.OLLAMA_LOCAL
+        return [p for p in priority if self._configured(p) and self.rate_limiter.can_use(p)]
 
     def call_llm(
         self,
         provider: LLMProvider,
         prompt: str,
         temperature: float = 0.7,
-        max_tokens: int = 200
+        max_tokens: int = 200,
+        json_schema: Optional[Dict] = None
     ) -> Optional[LLMResponse]:
         """
         Make LLM call to specified provider
@@ -217,7 +272,7 @@ class MultiLLMBrain:
         try:
             # Route to appropriate provider
             if provider == LLMProvider.OLLAMA_LOCAL:
-                response_text = self._call_ollama(prompt, temperature, max_tokens)
+                response_text = self._call_ollama(prompt, temperature, max_tokens, json_schema)
             elif provider == LLMProvider.GROQ:
                 response_text = self._call_groq(prompt, temperature, max_tokens)
             elif provider == LLMProvider.GEMINI_FLASH:
@@ -230,12 +285,16 @@ class MultiLLMBrain:
                 logger.warning(f"Unknown provider: {provider}")
                 return None
 
+            response_time = (datetime.now() - start_time).total_seconds()
+            with self._stats_lock:
+                self.calls += 1
+                self.total_latency += response_time
+                if not response_text:
+                    self.call_failures += 1
             if response_text:
                 # Record usage
                 self.rate_limiter.record_usage(provider)
                 self.provider_usage[provider] += 1
-
-                response_time = (datetime.now() - start_time).total_seconds()
 
                 return LLMResponse(
                     text=response_text,
@@ -247,33 +306,48 @@ class MultiLLMBrain:
 
         except Exception as e:
             logger.error(f"LLM call failed for {provider.value}: {e}")
+            with self._stats_lock:
+                self.calls += 1
+                self.call_failures += 1
             return None
 
-    def _call_ollama(self, prompt: str, temperature: float, max_tokens: int) -> Optional[str]:
-        """Call local Ollama - unlimited, always works"""
+    def _call_ollama(self, prompt: str, temperature: float, max_tokens: int,
+                     json_schema: Optional[Dict] = None) -> Optional[str]:
+        """Call the local Ollama model set in .env (it used to ignore the
+        settings: always localhost and llama3.2:3b, with Ollama's default
+        context window, which can cut a decision prompt short)."""
+        body = {
+            "model": self.ollama_model,
+            "prompt": prompt,
+            "stream": False,
+            "keep_alive": "30m",  # stay loaded between ticks
+            "options": {
+                "temperature": temperature,
+                "num_predict": max_tokens,
+                "num_ctx": self.ollama_num_ctx,
+            }
+        }
+        if json_schema is not None:
+            # Structured output: the model can only answer with a listed action.
+            # Without it, small models write "EAT: None" or "Explore - follow"
+            # about half the time.
+            body["format"] = json_schema
         try:
-            response = requests.post(
-                'http://localhost:11434/api/generate',
-                json={
-                    "model": "llama3.2:3b",
-                    "prompt": prompt,
-                    "stream": False,
-                    "options": {
-                        "temperature": temperature,
-                        "num_predict": max_tokens
-                    }
-                },
-                timeout=15
-            )
+            response = requests.post(f'{self.ollama_url}/api/generate', json=body, timeout=self.timeout)
 
             if response.status_code == 200:
                 return response.json().get('response', '')
 
-            logger.warning(f"Ollama returned status {response.status_code}")
+            logger.warning(f"Ollama returned status {response.status_code}: {response.text[:200]}")
             return None
 
         except requests.exceptions.ConnectionError:
-            logger.warning("Ollama not running. Start with: ollama serve")
+            # Don't make every agent wait on a server that isn't there
+            self._ollama_retry_at = time.monotonic() + self.OLLAMA_RETRY_AFTER
+            logger.warning(f"Ollama not reachable at {self.ollama_url}. Start it with: ollama serve")
+            return None
+        except requests.exceptions.Timeout:
+            logger.warning(f"Ollama took longer than {self.timeout:.0f}s; the agent uses the rule-based brain")
             return None
         except Exception as e:
             logger.error(f"Ollama error: {e}")
@@ -424,21 +498,47 @@ class MultiLLMBrain:
         # Determine complexity
         complexity = self._assess_complexity(agent, perceptions, thinking_mode)
 
-        # Get best available provider
-        provider = self.get_available_provider(complexity)
-
         # Build prompt based on thinking mode
         prompt = self._build_thinking_prompt(agent, perceptions, thinking_mode)
+        schema = self.decision_schema() if thinking_mode == "decide_action" else None
+        return self.complete(prompt, complexity, label=f"{agent.name}: {thinking_mode}", json_schema=schema)
 
-        # Get AI response
-        response = self.call_llm(provider, prompt, temperature=0.8, max_tokens=300)
+    def think(self, prompt: str, schema: Optional[Dict] = None) -> Optional[str]:
+        """One agent thought (agents/thinking.py calls this from worker threads)."""
+        return self.complete(prompt, label="thought", json_schema=schema)
 
-        if response:
-            self.total_decisions += 1
-            logger.info(f"🧠 {agent.name} thinking via {provider.value}: {thinking_mode}")
-            return response.text
-
+    def complete(self, prompt: str, complexity: str = "simple", label: str = "",
+                 temperature: float = 0.8, max_tokens: int = 300,
+                 json_schema: Optional[Dict] = None) -> Optional[str]:
+        """Ask each configured provider in turn; the first answer wins.
+        json_schema: hold the answer to this shape where the provider can
+        (Ollama); others get the prompt's own format instructions.
+        Safe to call from worker threads."""
+        for provider in self.providers_to_try(complexity):
+            if json_schema is not None and provider == LLMProvider.OLLAMA_LOCAL:
+                response = self.call_llm(provider, prompt, temperature=temperature, max_tokens=max_tokens,
+                                         json_schema=json_schema)
+            else:
+                response = self.call_llm(provider, prompt, temperature=temperature, max_tokens=max_tokens)
+            if response:
+                with self._stats_lock:
+                    self.total_decisions += 1
+                logger.info(f"🧠 {label} via {provider.value} ({response.response_time:.1f}s)")
+                return response.text
         return None
+
+    def decision_preamble(self) -> str:
+        """The fixed opening of every decision prompt: the menu and the answer format."""
+        from agents.action_menu import RESPONSE_FORMAT
+        menu_text = self.action_menu.text if self.action_menu else "(no actions available)"
+        return ("You are a person living in a small village. Each turn you decide what to do next.\n\n"
+                "What you can do (write the action name exactly as listed):\n"
+                f"{menu_text}\n\n{RESPONSE_FORMAT}\n\n")
+
+    def decision_schema(self) -> Optional[Dict]:
+        """JSON schema holding a model's answer to the menu (where supported)."""
+        from agents.action_menu import decision_schema
+        return decision_schema(self.action_menu.names) if self.action_menu else None
 
     def _assess_complexity(self, agent, perceptions: Dict, thinking_mode: str) -> str:
         """Determine if this requires simple or complex reasoning"""
@@ -486,36 +586,7 @@ class MultiLLMBrain:
         else:
             resources_str = 'none visible'
 
-        # Base context about the agent
-        context = f"""You are {agent.name}, a {agent.age}-year-old {agent.gender.value}.
-
-Your Personality:
-- Ambitious: {agent.personality.ambition:.1f}/1.0
-- Creative: {agent.personality.creativity:.1f}/1.0
-- Social (Extraversion): {agent.personality.extraversion:.1f}/1.0
-- Risk-Taking: {agent.personality.risk_taking:.1f}/1.0
-- Conscientiousness: {agent.personality.conscientiousness:.1f}/1.0
-- Openness to new experiences: {agent.personality.openness:.1f}/1.0
-
-Current Needs (0=satisfied, 1=desperate):
-- Hunger: {agent.needs.needs[NeedType.HUNGER].level:.2f}
-- Thirst: {agent.needs.needs[NeedType.THIRST].level:.2f}
-- Energy/Sleep: {agent.energy:.0f}/100
-- Romance/Sex: {agent.needs.needs[NeedType.SEX].level:.2f}
-- Social Belonging: {agent.needs.needs[NeedType.BELONGING].level:.2f}
-- Meaning/Purpose: {agent.needs.needs[NeedType.MEANING].level:.2f}
-- Creativity: {agent.needs.needs[NeedType.CREATIVITY].level:.2f}
-
-Your Resources:
-- Wealth: ${agent.wealth}
-- Health: {agent.health}/100
-- Inventory: {', '.join(list(agent.inventory.items.keys())[:8]) or 'empty'}
-
-Current Situation:
-- Location: ({agent.location.x}, {agent.location.y})
-- Nearby people: {', '.join([a['name'] for a in nearby_agents[:5]]) or 'alone'}
-- Nearby resources: {resources_str}
-"""
+        context = self._describe_agent(agent, perceptions, resources_str)
 
         # Add thinking mode specific instructions
         if thinking_mode == "decide_action":
@@ -526,7 +597,7 @@ Current Situation:
             risk_warnings = self._get_risk_warnings(agent)
 
             # Add recent memories
-            memory_context = self._get_memory_context(agent)
+            memory_context = self._get_memory_context(agent, perceptions)
 
             # Add combat context if targets available
             combat_context = self._get_combat_context(agent)
@@ -567,23 +638,20 @@ Current Situation:
             # Add consequences context
             consequences_context = self._get_consequences_context(agent)
 
-            prompt = context + goal_context + memory_context + risk_warnings + combat_context + governance_context + scarcity_context + tech_context + weather_context + buildings_context + knowledge_context + disaster_context + experimentation_context + roles_context + innovations_context + fun_context + consequences_context + f"""
-What do you want to do RIGHT NOW? Think like a real person with desires, fears, and goals.
-
-Available actions: eat, drink, rest, gather_food, gather_water, explore, socialize, trade, fight, experiment, build, craft, seek_romance, play_game, celebrate, teach, learn, create_art, govern, make_law, vote
-
-Think about:
-1. What is most urgent for your survival?
-2. What would make you happy?
-3. What fits your personality?
-4. **What are you working toward? Which actions move you closer to your goals?**
-5. What opportunities are around you?
-6. **What have you learned from past mistakes and successes?**
-7. **Are you desperate enough to fight for resources? Is anyone vulnerable?**
-
-Respond with:
-ACTION: [chosen action]
-REASON: [why in 1 sentence, mention your goal if relevant]
+            # Most useful to a decision first: what the agent remembers and is
+            # aiming for, then dangers and its surroundings, then the rest
+            sections = [memory_context, goal_context, risk_warnings, disaster_context, scarcity_context,
+                        governance_context, buildings_context, weather_context, combat_context,
+                        roles_context, knowledge_context, experimentation_context, innovations_context,
+                        tech_context, fun_context, consequences_context]
+            # The same text opens every decision prompt, so a local model can
+            # reuse its work on it from one call to the next (Ollama caches a
+            # shared prompt prefix); what's particular to this agent follows.
+            prompt = self.decision_preamble() + "About you, right now:\n" + context + \
+                self._fit_sections(sections) + """
+What do you want to do right now? You decide: weigh your needs, your
+personality, the people in your life and what you're working toward.
+Answer in the format above.
 """
 
         elif thinking_mode == "long_term_planning":
@@ -662,6 +730,133 @@ Be bold! Think of something interesting to try.
 
         return prompt
 
+    def _fit_sections(self, sections: List[str]) -> str:
+        """As many context sections as fit in context_chars (LLM_CONTEXT_CHARS),
+        in order, each compacted. Prompt length is most of a local model's time
+        per decision: ~1,000 tokens take ~10 s on a 4-core CPU."""
+        out, used = [], 0
+        for section in sections:
+            text = self._compact(section)
+            if not text.strip():
+                continue
+            if used + len(text) > self.context_chars:
+                break
+            out.append(text)
+            used += len(text)
+        return "".join(out)
+
+    @staticmethod
+    def _compact(section: str, max_chars: int = 450) -> str:
+        """Trim a context section for the prompt: no markdown bold, no blank
+        lines, cut at a line boundary. Keeps the decision prompt small enough
+        for a local model's context window."""
+        lines = [line.replace("**", "").rstrip() for line in section.splitlines() if line.strip()]
+        kept, size = [], 0
+        for line in lines:
+            if size + len(line) > max_chars:
+                kept.append("  ...")
+                break
+            kept.append(line)
+            size += len(line) + 1
+        return ("\n".join(kept) + "\n") if kept else ""
+
+    def _describe_agent(self, agent, perceptions: Dict, resources_str: str) -> str:
+        """Who the agent is and what it knows about its world, compactly."""
+        p = agent.personality
+        traits = ", ".join(f"{t.replace('_', '-')} {getattr(p, t):.1f}" for t in (
+            "openness", "conscientiousness", "extraversion", "agreeableness", "neuroticism",
+            "ambition", "creativity", "empathy", "risk_taking", "aggression", "sexuality", "rationality"))
+        needs = ", ".join(f"{nt.value} {need.level:.2f}" for nt, need in agent.needs.needs.items())
+        carried = sorted(((k, v) for k, v in agent.inventory.items.items() if v > 0), key=lambda kv: -kv[1])
+        inventory = ", ".join(f"{k} {v}" for k, v in carried[:12]) or "nothing"
+        if len(carried) > 12:
+            inventory += f" (+{len(carried) - 12} other things)"
+
+        lines = [f"You are {agent.name}, a {agent.age}-year-old {agent.gender.value}."]
+        hour = perceptions.get("time_of_day")
+        if hour is not None:
+            lines.append(f"It is {hour:02d}:00.")
+        work_life = getattr(agent, "work_life", None)
+        if work_life is not None and work_life.job:
+            lines.append(f"Your work: {work_life.to_dict()['job_title']}.")
+        lines += [
+            f"Personality (0-1): {traits}",
+            f"Needs (0 = satisfied, 1 = desperate): {needs}",
+            f"Energy {agent.energy:.0f}/100, health {agent.health:.0f}/100, money {agent.wealth:.0f}",
+            f"You carry: {inventory} (capacity {agent.inventory.capacity})",
+        ]
+
+        nearby = perceptions.get("nearby_agents", [])
+        if nearby:
+            def seen(a):
+                doing = f", {a['doing'].replace('_', ' ')}" if a.get('doing') else ""
+                return f"{a['name']} ({a.get('distance', 0):.0f} away{doing})"
+            lines.append("Near you: " + "; ".join(seen(a) for a in nearby[:6]))
+        else:
+            lines.append("Nobody is near you.")
+        lines.append(f"Resources in sight: {resources_str}")
+        from agents import commitment
+        set_out = commitment.current(agent, perceptions.get("tick", 0))
+        if set_out is not None:
+            away = ((agent.location.x - set_out.x) ** 2 + (agent.location.y - set_out.y) ** 2) ** 0.5
+            hours = (perceptions.get("tick", set_out.since) - set_out.since) // 6
+            lines.append(f"You set out {hours} hours ago to {set_out.action.replace('_', ' ')}, heading for "
+                         f"({set_out.x:.0f}, {set_out.y:.0f}), {away:.0f} tiles from here. Carry on, or do something else.")
+
+        life = perceptions.get("life_info", {})
+        if life:
+            heart = [f"Partner: {life['partner']}." if life.get("partner") else "You have no partner."]
+            if life.get("admirers"):
+                heart.append(f"Courting you: {', '.join(life['admirers'][:4])} (court them back to become partners).")
+            if life.get("courting"):
+                heart.append(f"You courted {', '.join(life['courting'][:4])}; no answer yet.")
+            if life.get("is_pregnant"):
+                heart.append("You are expecting a child.")
+            if life.get("partner_wants_child"):
+                heart.append(f"{life['partner']} has said they want a child with you.")
+            if life.get("children"):
+                heart.append("Your children: " + "; ".join(
+                    f"{c['name']} ({c['age']}, {c['stage']}{', needs looking after' if c['needs_care'] else ''})"
+                    for c in life["children"][:6]) + ".")
+            if life.get("can_do"):
+                heart = [f"You are a {life['life_stage']}"
+                         + (f"; your parents are {' and '.join(life['parents'])}" if life.get("parents") else "")
+                         + f". You can only: {', '.join(life['can_do'])}."]
+            lines.append(" ".join(heart))
+
+        heard = perceptions.get("news")
+        if heard:
+            lines.append("News you've heard: " + "; ".join(heard) + ".")
+
+        works = perceptions.get("works")
+        if works:
+            parts = [f"{works['road_tiles']} road tiles", f"{works['wells']} wells", f"{works['street_lights']} street lights"]
+            notes = []
+            if works.get("lit_lamp_nearby"):
+                notes.append("a street light is lit near you")
+            elif works.get("lamp_needs_fuel"):
+                notes.append("the street light near you has no fuel")
+            if works.get("well_nearby"):
+                notes.append("there is a well nearby")
+            if works.get("walking_lately", 0) > 0.5:
+                notes.append("you have been walking a lot lately")
+            lines.append("The village has " + ", ".join(parts) + (" (" + "; ".join(notes) + ")" if notes else "") + ".")
+            if works.get("home"):
+                lines.append(f"Your home: {works['home']}, {works['home_distance']:.0f} tiles away.")
+            else:
+                lines.append("You have no home yet (a shelter you build becomes yours; partners share).")
+
+        known = perceptions.get("relationships", [])
+        if known:
+            lines.append("People you know: " + "; ".join(
+                f"{r['name']} ({r['type']}, {r['strength']:.1f})" for r in known[:8]))
+
+        community = perceptions.get("community", {})
+        for label, key in (("Governments", "governments"), ("Laws", "laws"), ("Religions", "religions")):
+            items = community.get(key) or []
+            lines.append(f"{label}: " + ("; ".join(items[:5]) if items else "none yet"))
+        return "\n".join(lines) + "\n"
+
     def _get_goal_context(self, agent) -> str:
         """
         CRITICAL FIX #1: Extract agent's active goals for decision-making
@@ -693,46 +888,76 @@ Be bold! Think of something interesting to try.
 
 """
 
-    def _get_memory_context(self, agent) -> str:
-        """
-        CRITICAL FIX #2: Extract structured memories for decision-making
-
-        Returns recent experiences that inform current choices
-        """
-
-        if not hasattr(agent, 'memory'):
+    def _get_memory_context(self, agent, perceptions: Optional[Dict] = None) -> str:
+        """The agent's most useful memories right now (agents/memory_stream.py:
+        recency + importance + relevance to its needs, people and work) and its
+        plan for today. (This used to read memory methods that don't exist, so
+        the model never saw a memory.)"""
+        stream = getattr(agent, 'memory_stream', None)
+        if stream is None:
             return ""
+        perceptions = perceptions or {}
+        now = perceptions.get('tick', max((r.tick for r in stream.records), default=0))
+        urgent = sorted(agent.needs.needs.items(), key=lambda kv: -kv[1].level)[:3]
+        about = [nt.value for nt, _ in urgent]
+        about += [a['name'] for a in perceptions.get('nearby_agents', [])[:4]]
+        life = perceptions.get('life_info', {})
+        if life.get('partner'):
+            about.append(life['partner'])
+        work = getattr(agent, 'work_life', None)
+        if work is not None and work.job:
+            about.append(work.to_dict().get('job_title', ''))
+        lines = [f"- {r.to_dict()['text']}" for r in stream.retrieve(" ".join(about), now, k=5)]
+        if stream.day_plan:
+            lines.append("Your plan for today: " + "; ".join(
+                f"{h:02d}:00 {a}" + (f" ({why})" if why else "") for h, a, why in stream.day_plan))
+        return ("What you remember:\n" + "\n".join(lines) + "\n") if lines else ""
 
-        memories = []
+    def plan_prompt(self, agent, perceptions: Dict, day: int):
+        """(prompt, schema): plan the day, Smallville-style."""
+        from agents.action_menu import plan_schema
+        prompt = (self.decision_preamble() + "About you, right now:\n"
+                  + self._describe_agent(agent, perceptions, "") + self._get_memory_context(agent, perceptions)
+                  + f"\nIt is the start of day {day}. Plan your day: up to 5 things you mean to do, "
+                    "each with the hour you'll start it (0-23), an action from the list, and why.\n"
+                    'This time, answer as JSON: {"plan": [{"hour": 8, "action": "<action>", "why": "<reason>"}]}\n')
+        return prompt, plan_schema(self.action_menu.names) if self.action_menu else None
 
-        # Get recent episodic memories (actual experiences)
-        if hasattr(agent.memory, 'get_recent_memories'):
-            recent = agent.memory.get_recent_memories(5)
-            for mem in recent:
-                # Format with importance indicators
-                importance_emoji = "⭐" * min(3, int(mem.importance * 3 + 1))
-                memories.append(f"{importance_emoji} [{mem.event_type}] {mem.description}")
+    def dialogue_prompt(self, agent, other, passed, current_tick: int):
+        """(prompt, schema): a few lines of conversation between two agents,
+        grounded in what each remembers about the other and the news they
+        just passed on (Smallville-style dialogue)."""
+        from agents.action_menu import dialogue_schema
 
-        # Also check for learned facts in semantic memory
-        if hasattr(agent.memory, 'semantic_memory'):
-            facts = []
-            for key, value in list(agent.memory.semantic_memory.items())[:3]:
-                if 'dangerous' in key or 'location' in key or 'successful' in key:
-                    facts.append(f"💡 {value}")
+        def who(a, b):
+            p = a.personality
+            memories = a.memory_stream.retrieve(b.name, current_tick, k=3) if hasattr(a, "memory_stream") else []
+            mood = a.emotions.get_dominant_emotion()[0].value
+            lines = [f"{a.name}, {a.age}, feeling {mood}; extraversion {p.extraversion:.1f}, "
+                     f"agreeableness {p.agreeableness:.1f}."]
+            if memories:
+                lines.append(f"{a.name} remembers: " + "; ".join(m.text[:120] for m in memories))
+            return "\n".join(lines)
 
-            if facts:
-                memories.extend(facts)
+        news = "; ".join(f"{t.name} tells {h.name}: {n.text}" for t, h, n in passed) or "nothing new"
+        prompt = (f"Two neighbours in a small village meet and talk.\n{who(agent, other)}\n{who(other, agent)}\n"
+                  f"What they pass on: {news}.\n"
+                  f"Write their short conversation: 2 to 4 lines, each one sentence, in their own voices, "
+                  f"starting with {agent.name}.\n"
+                  'Answer as JSON: {"lines": [{"speaker": "<name>", "text": "<what they say>"}]}\n')
+        return prompt, dialogue_schema({agent.name, other.name})
 
-        if not memories:
-            return ""
-
-        return f"""
-📚 **RECENT MEMORIES & LEARNED KNOWLEDGE:**
-{chr(10).join(memories)}
-
-Use what you've learned! Remember your successes and failures.
-
-"""
+    def reflection_prompt(self, agent, current_tick: int):
+        """(prompt, schema): what the agent makes of what has happened lately."""
+        from agents.action_menu import INSIGHTS_SCHEMA
+        recent = agent.memory_stream.recent(20)
+        lines = "\n".join(f"{i}. {r.to_dict()['text']}" for i, r in enumerate(recent, 1))
+        prompt = (f"You are {agent.name}, a {agent.age}-year-old living in a small village.\n"
+                  f"Things that happened to you lately, oldest first:\n{lines}\n\n"
+                  "What do these tell you about your life, the people around you or your village? "
+                  "Give 1 to 3 insights, one sentence each, in your own words.\n"
+                  'Answer as JSON: {"insights": ["..."]}\n')
+        return prompt, INSIGHTS_SCHEMA
 
     def _get_risk_warnings(self, agent) -> str:
         """
@@ -1450,11 +1675,18 @@ while supplies last. This could drive competition and conflict.
 
         active_disasters = disaster_info.get('active_disasters', [])
         in_danger = disaster_info.get('in_immediate_danger', False)
+        coming = disaster_info.get('warnings', [])
 
-        if not active_disasters:
+        if not active_disasters and not coming:
             return ""
 
         message_parts = []
+        for w in coming[:2]:
+            hours = w.get('ticks_until_impact', 0) / 6
+            where = "it will reach where you are" if w.get('will_reach_you') else \
+                f"its centre is {w.get('distance_from_epicenter', 0):.0f} tiles away, beyond where you are"
+            message_parts.append(f"⏳ Warning: a {w.get('severity', '')} {w.get('type', 'disaster')} is expected "
+                                 f"in about {hours:.1f} hours; {where}.")
 
         # Critical disasters first
         critical_disasters = [d for d in active_disasters if d.get('in_danger_zone')]
@@ -2050,6 +2282,12 @@ while supplies last. This could drive competition and conflict.
         """Get usage statistics"""
         return {
             "total_decisions": self.total_decisions,
+            "calls": self.calls,
+            "call_failures": self.call_failures,
+            "average_latency_s": round(self.total_latency / self.calls, 2) if self.calls else None,
+            "decisions_parsed": self.decisions_parsed,
+            "parse_failures": self.parse_failures,
+            "ollama": {"url": self.ollama_url, "model": self.ollama_model, "num_ctx": self.ollama_num_ctx},
             "provider_usage": {p.value: count for p, count in self.provider_usage.items()},
             "rate_limits": {
                 p.value: {

@@ -15,7 +15,7 @@ The progression from barter → commodity money → metal coins → paper money.
 """
 
 import random
-import uuid
+from engine.ids import new_uuid
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
 from enum import Enum
@@ -168,7 +168,7 @@ class MintingManager:
         ]
 
         for coin_type, name, metal, value, weight, cost, diff, discovered in denominations_data:
-            denom_id = str(uuid.uuid4())
+            denom_id = str(new_uuid())
             denom = CoinDenomination(
                 id=denom_id,
                 coin_type=coin_type,
@@ -196,7 +196,7 @@ class MintingManager:
     ) -> Mint:
         """Build a new minting facility"""
 
-        mint_id = str(uuid.uuid4())
+        mint_id = str(new_uuid())
 
         # Determine capabilities based on quality
         capabilities = self._get_mint_capabilities(quality)
@@ -354,7 +354,7 @@ class MintingManager:
     ) -> CounterfeitOperation:
         """Start an illegal counterfeiting operation"""
 
-        op_id = str(uuid.uuid4())
+        op_id = str(new_uuid())
 
         # Quality based on skill
         quality = min(0.8, skill_level)  # Max 80% quality for fakes

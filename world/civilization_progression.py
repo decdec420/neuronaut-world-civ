@@ -67,6 +67,7 @@ HOW TO CREATE "ROCKEFELLER" or "FORD":
 6. Changes civilization permanently
 """
 
+import copy
 from dataclasses import dataclass, field
 from typing import Dict, List, Set, Optional
 from datetime import datetime
@@ -280,7 +281,10 @@ class CivilizationProgressionEngine:
 
     def __init__(self):
         self.current_era = Era.STONE_AGE
-        self.milestones = CIVILIZATION_MILESTONES.copy()
+        # Each world gets its own milestones. A shallow copy shared the milestone
+        # objects, so once one world (a test, or the server before a reset) lit
+        # the first fire, every later world in the process found it already lit.
+        self.milestones = copy.deepcopy(CIVILIZATION_MILESTONES)
         self.discoveries_made: Set[str] = set()
         self.era_history: List[Dict] = []
 

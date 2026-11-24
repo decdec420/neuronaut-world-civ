@@ -1,0 +1,369 @@
+"""
+The AI brain's menu of actions, and how its answers are read.
+
+The menu is generated from the same things the engine uses to run actions:
+every ActionType that a handler runs, directly or through
+UNHANDLED_ACTION_FALLBACKS. So the brain can never be offered something the
+engine can't do, and nothing the engine can do is left off. Aliases ("gossip"
+runs socialize) are listed next to the action they run, to keep the prompt
+compact without dropping any word an agent might use.
+
+The answer format is strict:
+
+    ACTION: <an action name from the menu>
+    TARGET: <a person's name, or none>
+    DETAILS: <optional>
+    REASON: <one short sentence>
+
+and parsing is forgiving about formatting (markdown, quotes, case, spaces
+instead of underscores) but never guesses: if no listed action name is in the
+ACTION line, it is a parse failure and the caller falls back to the
+rule-based brain.
+"""
+
+import re
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Set
+
+# Not offered: an agent does these by default or as a bodily event, not by choice.
+INTERNAL_ACTIONS = frozenset({"idle", "wait", "give_birth"})
+
+CATEGORIES = [
+    "survival", "health", "building", "crafting and invention", "knowledge",
+    "social", "romance and family", "culture", "economy", "politics and land",
+    "religion", "conflict",
+]
+
+# canonical action -> (category, a few words). Actions missing here still go
+# on the menu (under "other"), so nothing the engine can run is ever dropped.
+ACTION_INFO = {
+    "eat": ("survival", "eat food you carry"),
+    "drink": ("survival", "drink water you carry"),
+    "rest": ("survival", "rest or sleep"),
+    "hide": ("survival", "take shelter in your home or the nearest standing building; "
+                         "when a disaster hits, a sturdy building protects you"),
+    "gather_food": ("survival", "pick wild food"),
+    "gather_water": ("survival", "fetch water"),
+    "hunt": ("survival", "hunt animals for food"),
+    "plant_crops": ("survival", "plant seeds you carry"),
+    "tend_crops": ("survival", "look after planted crops"),
+    "harvest": ("survival", "harvest ripe crops"),
+    "raise_animals": ("survival", "keep animals"),
+    "explore": ("survival", "look around new places"),
+    "move": ("survival", "walk somewhere"),
+    "heal": ("health", "treat someone who is sick (TARGET)"),
+    "cure": ("health", "cure someone's illness (TARGET)"),
+    "diagnose": ("health", "find out what ails someone (TARGET)"),
+    "gather_materials": ("building", "collect wood, stone, clay, fiber or sand"),
+    "build_road": ("building", "pave a road toward the place you walk to most (2 stone a tile); "
+                               "walking on roads is three times faster"),
+    "dig_well": ("building", "dig a well here (10 stone, 2 wood): water close at hand for everyone"),
+    "build_streetlight": ("building", "put up a street light here (glass, a post, fuel to burn) "
+                                      "or add fuel to one nearby; it lights the night"),
+    "chop_wood": ("building", "cut wood"),
+    "mine": ("building", "dig stone or ore"),
+    "build": ("building", "build a home, workshop, store or hall"),
+    "experiment": ("crafting and invention", "combine materials to discover things"),
+    "smelt_ore": ("crafting and invention", "smelt ore into metal"),
+    "refine_material": ("crafting and invention", "refine ore into metal or sand into glass "
+                                                   "(DETAILS: which; glass burns wood or coal)"),
+    "create_alloy": ("crafting and invention", "make an alloy"),
+    "perform_chemistry": ("crafting and invention", "try a chemical process"),
+    "discover_element": ("crafting and invention", "research new elements"),
+    "discover_material": ("crafting and invention", "research new materials"),
+    "discover_energy": ("crafting and invention", "look for new energy sources"),
+    "build_power_plant": ("crafting and invention", "build a power plant"),
+    "operate_power_plant": ("crafting and invention", "run a power plant"),
+    "teach": ("knowledge", "teach someone what you know (TARGET)"),
+    "write": ("knowledge", "write down what you know"),
+    "socialize": ("social", "spend time with someone (TARGET)"),
+    "seek_romance": ("romance and family", "court someone (TARGET), or spend time with your partner; "
+                                           "you become partners only if they court you too"),
+    "separate": ("romance and family", "end your partnership"),
+    "try_for_child": ("romance and family", "tell your partner you want a child; "
+                                            "one may come only if they want one too"),
+    "care_for_child": ("romance and family", "look after a baby or child: feed them, give them water, "
+                                             "keep them company (TARGET optional)"),
+    "celebrate": ("culture", "throw or join a celebration"),
+    "organize_event": ("culture", "invite the village to a gathering here (DETAILS: what and when, "
+                                  "e.g. a feast at 18:00); word spreads as people talk"),
+    "attend_event": ("culture", "go to a gathering you've heard about"),
+    "tell_story": ("culture", "tell someone a story (TARGET)"),
+    "play_game": ("culture", "play a game with someone (TARGET)"),
+    "create_art": ("culture", "make art"),
+    "gamble": ("culture", "bet with someone (TARGET)"),
+    "trade": ("economy", "trade with someone (TARGET)"),
+    "mint_coins": ("economy", "make coins from ore"),
+    "open_bank": ("economy", "open a bank"),
+    "apply_for_loan": ("economy", "borrow from a bank"),
+    "send_caravan": ("economy", "send goods to trade far away"),
+    "join_tax_revolt": ("economy", "protest taxes"),
+    "govern": ("politics and land", "found or lead a government"),
+    "make_law": ("politics and land", "propose a law (DETAILS: what it says)"),
+    "vote": ("politics and land", "vote on a law or in an election (DETAILS: yes or no)"),
+    "claim_territory": ("politics and land", "claim land as yours"),
+    "guard": ("politics and land", "guard your land"),
+    "patrol": ("politics and land", "patrol your land"),
+    "pray": ("religion", "pray"),
+    "worship": ("religion", "worship with your faith"),
+    "perform_ritual": ("religion", "lead a ritual"),
+    "build_temple": ("religion", "build a temple"),
+    "convert": ("religion", "tell someone about your faith; they may take it up (TARGET)"),
+    "fight": ("conflict", "fight someone (TARGET)"),
+}
+
+
+@dataclass
+class MenuEntry:
+    action: str
+    description: str
+    aliases: List[str] = field(default_factory=list)
+
+
+@dataclass
+class ActionMenu:
+    by_category: Dict[str, List[MenuEntry]]
+    names: Set[str]        # every name the brain may answer with (actions and aliases)
+    text: str              # the menu as it appears in the prompt
+
+
+def build_menu(registry, fallbacks: Dict[str, str]) -> ActionMenu:
+    """Build the menu from the handler registry and the alias table."""
+    from agents.agent import ActionType
+
+    entries: Dict[str, MenuEntry] = {}
+    alias_of: Dict[str, str] = {}
+    for action_type in ActionType:
+        name = action_type.value
+        if name in INTERNAL_ACTIONS:
+            continue
+        if registry.get_handler(action_type) is not None:
+            category, words = ACTION_INFO.get(name, ("other", ""))
+            entries.setdefault(name, MenuEntry(name, words))
+        else:
+            target = fallbacks.get(name)
+            if target and registry.get_handler(ActionType(target)) is not None:
+                alias_of[name] = target
+    for alias, target in alias_of.items():
+        if target not in entries:  # an alias whose action is itself internal
+            entries[target] = MenuEntry(target, ACTION_INFO.get(target, ("other", ""))[1])
+        entries[target].aliases.append(alias)
+
+    by_category: Dict[str, List[MenuEntry]] = {}
+    for entry in entries.values():
+        category = ACTION_INFO.get(entry.action, ("other", ""))[0]
+        by_category.setdefault(category, []).append(entry)
+
+    lines = []
+    for category in CATEGORIES + sorted(set(by_category) - set(CATEGORIES)):
+        if category not in by_category:
+            continue
+        lines.append(f"{category.capitalize()}:")
+        for entry in by_category[category]:
+            also = f" [also {', '.join(entry.aliases)}]" if entry.aliases else ""
+            words = f" - {entry.description}" if entry.description else ""
+            lines.append(f" {entry.action}{words}{also}")
+    names = set(entries) | set(alias_of)
+    return ActionMenu(by_category=by_category, names=names, text="\n".join(lines))
+
+
+RESPONSE_FORMAT = """Answer in exactly this format:
+ACTION: <one action name from the list, written exactly>
+TARGET: <a person's name, or none>
+DETAILS: <optional: e.g. what a law says, or yes/no for a vote>
+REASON: <one short sentence>"""
+
+
+# ---------------------------------------------------------------------------
+# Parsing the brain's answer
+# ---------------------------------------------------------------------------
+
+@dataclass
+class Decision:
+    action: str
+    target_id: Optional[str] = None
+    details: str = ""
+    reason: str = ""
+
+
+def _field(text: str, label: str) -> Optional[str]:
+    """Value of a 'LABEL: value' line, tolerating markdown and odd spacing."""
+    match = re.search(rf"^[\s*_#>`-]*{label}[\s*_`]*[:=]\s*(.+?)\s*$", text, re.IGNORECASE | re.MULTILINE)
+    return match.group(1).strip(" *_`\"'[]<>.") if match else None
+
+
+def _action_name(value: str, valid: Set[str]) -> Optional[str]:
+    normalized = re.sub(r"[\s\-]+", "_", value.strip().lower())
+    normalized = normalized.strip("_*`\"'[]<>.()")
+    if normalized in valid:
+        return normalized
+    # The value may carry extra words ("build_temple for my faith", "make law
+    # against theft"). Take the longest listed name that appears as a whole
+    # word, written with underscores or spaces, so build_temple wins over build.
+    # Underscores count as part of a word, so "eat" never matches inside
+    # "create_art".
+    spaced = value.strip().lower()
+    found = [name for name in valid
+             if re.search(rf"(?<![a-z_]){re.escape(name)}(?![a-z_])", spaced)
+             or re.search(rf"(?<![a-z_]){re.escape(name.replace('_', ' '))}(?![a-z_])", spaced)]
+    return max(found, key=len) if found else None
+
+
+def decision_schema(valid: Set[str]) -> Dict:
+    """JSON schema for an answer, for models that can be held to one (Ollama's
+    `format`): the action must be one of the listed names."""
+    return {
+        "type": "object",
+        "properties": {
+            "action": {"type": "string", "enum": sorted(valid)},
+            "target": {"type": "string"},
+            "details": {"type": "string"},
+            "reason": {"type": "string"},
+        },
+        "required": ["action", "target", "reason"],
+    }
+
+
+def _json_answer(text: str) -> Optional[Dict]:
+    import json
+    stripped = text.strip().strip("`")
+    if stripped.lower().startswith("json"):
+        stripped = stripped[4:]
+    start, end = stripped.find("{"), stripped.rfind("}")
+    if start < 0 or end <= start:
+        return None
+    try:
+        value = json.loads(stripped[start:end + 1])
+    except ValueError:
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _person(name: Optional[str], people_by_name: Dict[str, str]) -> Optional[str]:
+    if not name or name.lower() in ("none", "nobody", "no one", "-", "n/a", "myself", "self"):
+        return None
+    lowered = name.lower().strip(" .")
+    return people_by_name.get(lowered) or (people_by_name.get(lowered.split()[0]) if lowered.split() else None)
+
+
+def parse_decision(text: str, valid: Set[str], people_by_name: Dict[str, str]) -> Optional[Decision]:
+    """Read an answer: RESPONSE_FORMAT lines, or JSON with the same fields, or
+    a first line that starts with a listed action name ("explore: near").
+    Returns None if no listed action is named."""
+    if not text:
+        return None
+    answer = _json_answer(text)
+    if answer is not None and isinstance(answer.get("action"), str):
+        action = _action_name(answer["action"], valid)
+        if action is None:
+            return None
+        return Decision(action=action, target_id=_person(str(answer.get("target") or ""), people_by_name),
+                        details=str(answer.get("details") or ""), reason=str(answer.get("reason") or ""))
+
+    value = _field(text, "ACTION")
+    target = _field(text, "TARGET")
+    if value is None:
+        # Small models often write the action itself as the label:
+        # "EAT: None", "Explore - follow". Accept it only if the first word is
+        # exactly a listed name (never a guess from somewhere in the text).
+        first = text.strip().splitlines()[0]
+        match = re.match(r"^[\s*_#>`-]*([A-Za-z_ ]+?)\s*(?:[:\-]\s*(.*))?$", first)
+        if not match:
+            return None
+        name = re.sub(r"[\s\-]+", "_", match.group(1).strip().lower())
+        if name not in valid:
+            return None
+        rest = (match.group(2) or "").strip()
+        if target is None and _person(rest, people_by_name):
+            target = rest
+        return Decision(action=name, target_id=_person(target, people_by_name),
+                        details=_field(text, "DETAILS") or "", reason=_field(text, "REASON") or "")
+    action = _action_name(value, valid)
+    if action is None:
+        return None
+    return Decision(action=action, target_id=_person(target, people_by_name),
+                    details=_field(text, "DETAILS") or "", reason=_field(text, "REASON") or "")
+
+
+# ---------------------------------------------------------------------------
+# Day plans and reflections (agents/memory_stream.py)
+# ---------------------------------------------------------------------------
+
+def plan_schema(valid: Set[str]) -> Dict:
+    return {
+        "type": "object",
+        "properties": {"plan": {"type": "array", "maxItems": 5, "items": {
+            "type": "object",
+            "properties": {"hour": {"type": "integer", "minimum": 0, "maximum": 23},
+                           "action": {"type": "string", "enum": sorted(valid)},
+                           "why": {"type": "string"}},
+            "required": ["hour", "action", "why"]}}},
+        "required": ["plan"],
+    }
+
+
+INSIGHTS_SCHEMA = {
+    "type": "object",
+    "properties": {"insights": {"type": "array", "maxItems": 3, "items": {"type": "string"}}},
+    "required": ["insights"],
+}
+
+
+def parse_plan(text: str, valid: Set[str]) -> List[tuple]:
+    """[(hour, action, why)] from {"plan": [{"hour", "action", "why"}]}; items
+    with an unknown action or hour are dropped."""
+    answer = _json_answer(text or "")
+    items = answer.get("plan") if answer else None
+    plan = []
+    for item in items if isinstance(items, list) else []:
+        if not isinstance(item, dict):
+            continue
+        try:
+            hour = int(item.get("hour"))
+        except (TypeError, ValueError):
+            continue
+        action = _action_name(str(item.get("action") or ""), valid)
+        if action and 0 <= hour <= 23:
+            plan.append((hour, action, str(item.get("why") or "")[:120]))
+    return plan[:5]
+
+
+def parse_insights(text: str) -> List[str]:
+    """Up to 3 insights from {"insights": [...]}, or one per line."""
+    answer = _json_answer(text or "")
+    if answer is not None and isinstance(answer.get("insights"), list):
+        lines = [str(x) for x in answer["insights"]]
+    else:
+        lines = [line for line in (text or "").splitlines() if line.strip()]
+    return [_short(line.strip(" -•*\t\"")) for line in lines if line.strip(" -•*\t\"")][:3]
+
+
+def _short(text: str, limit: int = 200) -> str:
+    """At most `limit` characters, ending at a sentence end where possible."""
+    if len(text) <= limit:
+        return text
+    cut = max(text.rfind(". ", 0, limit), text.rfind("; ", 0, limit))
+    return text[:cut + 1] if cut > 40 else text[:limit].rsplit(" ", 1)[0] + "..."
+
+
+def dialogue_schema(names) -> Dict:
+    return {
+        "type": "object",
+        "properties": {"lines": {"type": "array", "minItems": 2, "maxItems": 4, "items": {
+            "type": "object",
+            "properties": {"speaker": {"type": "string", "enum": sorted(names)}, "text": {"type": "string"}},
+            "required": ["speaker", "text"]}}},
+        "required": ["lines"],
+    }
+
+
+def parse_dialogue(text: str, names) -> List[tuple]:
+    """[(speaker, line)] from {"lines": [{"speaker", "text"}]}; only the two
+    speakers, at most 4 lines, each kept short."""
+    answer = _json_answer(text or "")
+    lines = answer.get("lines") if answer else None
+    out = []
+    for item in lines if isinstance(lines, list) else []:
+        if isinstance(item, dict) and item.get("speaker") in names and str(item.get("text") or "").strip():
+            out.append((item["speaker"], _short(str(item["text"]).strip(), 160)))
+    return out[:4]

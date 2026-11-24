@@ -42,6 +42,49 @@ class Snapshot:
     compressed: bool = True
 
 
+FULL_STATE_VERSION = 1
+
+
+def save_full_state(simulation, path: str) -> None:
+    """Save everything needed to carry on exactly where the world is: the
+    whole simulation (agents, relationships, buildings, governments,
+    religions, economy, memories...), the random number generator and the
+    names in use. Gzipped pickle; only load files this program wrote."""
+    import random
+    from agents.agent import Agent
+    from engine import ids
+    state = {"version": FULL_STATE_VERSION, "random": random.getstate(), "ids": ids.get_state(),
+             "used_names": set(Agent._used_names), "simulation": simulation}
+    tmp = f"{path}.tmp"
+    with gzip.open(tmp, "wb") as f:
+        pickle.dump(state, f, protocol=pickle.HIGHEST_PROTOCOL)
+    os.replace(tmp, path)  # never leave a half-written save
+
+
+def load_full_state(path: str):
+    """Load a world saved with save_full_state and return its SimulationEngine,
+    ready to run (call .run() or .tick()). Only load files this program wrote:
+    unpickling runs code."""
+    import random
+    from agents.agent import Agent
+    with gzip.open(path, "rb") as f:
+        state = pickle.load(f)
+    if state.get("version") != FULL_STATE_VERSION:
+        raise ValueError(f"Unsupported save version {state.get('version')}")
+    random.setstate(state["random"])
+    from engine import ids
+    if "ids" in state:
+        ids.set_state(state["ids"])
+    else:   # saved before ids came from the world's dice
+        ids.seed(random.getrandbits(64))
+    Agent.reset_names(state["used_names"])
+    simulation = state["simulation"]
+    simulation.ensure_newer_systems()
+    simulation.running = False
+    simulation.persistence.simulation = simulation
+    return simulation
+
+
 class PersistenceEngine:
     """
     Manages persistent state for continuous runs.
@@ -147,15 +190,20 @@ class PersistenceEngine:
         )
 
         self.snapshots.append(snapshot)
-
-        # Clean old snapshots
-        if len(self.snapshots) > self.keep_last_n_snapshots:
-            old_snapshot = self.snapshots.pop(0)
-            # Delete old file
-            if os.path.exists(old_snapshot.full_state_path):
-                os.remove(old_snapshot.full_state_path)
+        del self.snapshots[:-self.keep_last_n_snapshots]
+        self._prune_snapshot_files()
 
         return snapshot
+
+    def _prune_snapshot_files(self) -> None:
+        """Keep the newest keep_last_n_snapshots auto-save files on disk. (This
+        used to remember only the files written by the current process, so
+        every run left its auto-saves behind: hundreds piled up.)"""
+        files = [os.path.join(self.save_dir, name) for name in os.listdir(self.save_dir)
+                 if name.startswith("snapshot_tick_") and name.endswith(".json.gz")]
+        files.sort(key=os.path.getmtime)
+        for old in files[:-self.keep_last_n_snapshots]:
+            os.remove(old)
 
     def _serialize_experimentation(self, exp_engine) -> Dict:
         """Serialize experimentation engine state"""
@@ -284,11 +332,15 @@ class PersistenceEngine:
                     "durability": building.durability,
                     "collapsed": building.collapsed,
                     "materials_used": building.materials_used,
-                    "purposes": building.purposes,
-                    "category": building.category,
-                    "built_by": building.built_by,
+                    # Purposes and category belong to the design; builders are a set.
+                    # (This read building.purposes/.category/.built_by, which don't
+                    # exist, so saving failed once any building was finished.)
+                    "purposes": list(getattr(designs.get(building.design_id), 'intended_purposes', [])),
+                    "category": getattr(designs.get(building.design_id), 'category', None),
+                    "built_by": sorted(building.builder_ids),
                     "built_date": building.built_date.isoformat() if building.built_date else None,
                 }
+                for designs in [simulation.dynamic_building_system.designs]
                 for building_id, building in simulation.dynamic_building_system.buildings.items()
             } if hasattr(simulation, 'dynamic_building_system') else {},
             "knowledge": self._serialize_knowledge(simulation.knowledge_system) if hasattr(simulation, 'knowledge_system') else {},
@@ -351,13 +403,10 @@ class PersistenceEngine:
         if not self.simulation:
             raise ValueError("Simulation reference not set")
 
-        # TODO: Implement full state restoration
-        # For now, this is a placeholder - full restoration requires
-        # reconstructing all objects from the saved state
-        print(f"⚠️ Loading saves not fully implemented yet")
-        print(f"   Snapshot from Day {state.get('world_day', 0)}")
-        print(f"   Agents: {len(state.get('agents', []))}")
-        print(f"   Buildings: {len(state.get('buildings', {}))}")
+        # A snapshot dict is a summary for listing and history; it can't
+        # rebuild a world. Full saves are save_full_state/load_full_state.
+        raise NotImplementedError(
+            "A summary snapshot can't be loaded; use load_full_state with a full save")
 
     def load_simulation_state(self, snapshot_id: str):
         """

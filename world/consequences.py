@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set
 from datetime import datetime
 import random
-import uuid
+from engine.ids import new_uuid
 
 
 @dataclass
@@ -173,7 +173,7 @@ class ConsequenceEngine:
         context = context or {}
 
         consequence = Consequence(
-            id=str(uuid.uuid4()),
+            id=str(new_uuid()),
             caused_by_action=action,
             affected_agents=affected_agents,
             timestamp=datetime.now(),

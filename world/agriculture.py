@@ -13,7 +13,7 @@ Without farming, no cities, no specialization, no progress.
 """
 
 import random
-import uuid
+from engine.ids import new_uuid
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
 from datetime import datetime
@@ -191,7 +191,7 @@ class AgricultureManager:
         location: Tuple[float, float]
     ) -> Farm:
         """Agent creates a farm"""
-        farm_id = str(uuid.uuid4())
+        farm_id = str(new_uuid())
 
         farm = Farm(
             id=farm_id,
@@ -227,7 +227,7 @@ class AgricultureManager:
             # Create farm automatically
             farm = self.create_farm(agent_id, f"Agent{agent_id[:8]}", location)
 
-        field_id = str(uuid.uuid4())
+        field_id = str(new_uuid())
 
         # Determine maturity time based on crop
         maturity_times = {
@@ -364,7 +364,7 @@ class AgricultureManager:
         if not farm:
             return None  # Need farm first
 
-        animal_id = str(uuid.uuid4())
+        animal_id = str(new_uuid())
 
         # Animal properties
         properties = {

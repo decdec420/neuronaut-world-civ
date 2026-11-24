@@ -12,6 +12,7 @@ REFACTORED: Now a clean orchestrator with single responsibility.
 All complex logic extracted to specialized modules.
 """
 
+import collections
 import time
 import asyncio
 import random
@@ -62,21 +63,29 @@ from engine.handlers import (
     EnergyHandler,
     MaterialsHandler,
     AdvancedEconomyHandler,
+    FamilyHandler,
+    InfrastructureHandler,
+    GatheringHandler,
+    ShelterHandler,
 )
 
 # UTILITIES
 from engine.utils.agent_helpers import AgentCacheHelper
 
 
+# How much of a resource enters the world when an era makes it available (same
+# scale as the other non-renewable pools: sand 1000, clay 1200)
+ERA_RESOURCE_AMOUNTS = {'metal_ore': 1000.0, 'iron_ore': 800.0}
+
 # Actions that need a partner agent; filled in automatically when missing.
-TARGETED_ACTIONS = {'socialize', 'seek_romance', 'trade', 'teach', 'heal', 'fight', 'tell_story'}
+TARGETED_ACTIONS = {'socialize', 'trade', 'teach', 'heal', 'fight', 'tell_story'}
 
 # Unimplemented action -> closest implemented action (see execute_action).
 UNHANDLED_ACTION_FALLBACKS = {
     # Movement / exploration
     'scout': 'explore', 'map_area': 'explore', 'search': 'explore', 'wander': 'explore',
     'explore_unknown': 'explore', 'chart_map': 'explore', 'survey_land': 'explore',
-    'find_resources': 'explore', 'follow': 'move', 'chase': 'move', 'hide': 'rest',
+    'find_resources': 'explore', 'follow': 'move', 'chase': 'move',
     'flee': 'move',
     # Food
     'fish': 'hunt', 'forage': 'gather_food', 'cook': 'eat', 'brew': 'drink',
@@ -100,7 +109,7 @@ UNHANDLED_ACTION_FALLBACKS = {
     # Romance / family
     'flirt': 'seek_romance', 'court': 'seek_romance', 'propose': 'seek_romance',
     'marry': 'seek_romance', 'have_sex': 'seek_romance', 'give_birth': 'rest',
-    'care_for_child': 'socialize', 'parent': 'socialize',
+    'parent': 'care_for_child',
     # Economy
     'sell': 'trade', 'buy': 'trade', 'barter': 'trade', 'work': 'gather_materials',
     'employ': 'trade', 'invest': 'trade', 'steal': 'trade', 'beg': 'socialize',
@@ -117,7 +126,7 @@ UNHANDLED_ACTION_FALLBACKS = {
     # Culture
     'paint': 'create_art', 'sculpt': 'create_art', 'compose_music': 'create_art',
     'sing': 'play_game', 'dance': 'celebrate', 'perform': 'tell_story',
-    'entertain': 'tell_story', 'organize_event': 'celebrate', 'attend_event': 'celebrate',
+    'entertain': 'tell_story',
     # Learning
     'learn_skill': 'experiment', 'study': 'write', 'practice': 'experiment',
     'mentor': 'teach', 'apprentice': 'teach', 'research': 'experiment',
@@ -129,7 +138,7 @@ UNHANDLED_ACTION_FALLBACKS = {
     'exile': 'govern',
     # Religion / health
     'bless': 'perform_ritual', 'curse': 'perform_ritual', 'prophesy': 'worship',
-    'convert': 'worship', 'treat': 'heal', 'midwife': 'heal', 'comfort_sick': 'heal',
+    'treat': 'heal', 'midwife': 'heal', 'comfort_sick': 'heal',
 }
 
 
@@ -151,6 +160,11 @@ class SimulationEngine:
         All system creation delegated to SystemFactory.
         All initialization logic delegated to specialized managers.
         """
+        # Ids come from the world's dice (engine/ids.py), seeded before any
+        # system makes one, so the same seed gives the same world
+        from engine import ids
+        ids.seed(random.getrandbits(64))
+
         # ===== SYSTEM INITIALIZATION (Delegated to SystemFactory) =====
         systems = SystemFactory.create_simulation_systems(world_width, world_height)
 
@@ -183,6 +197,12 @@ class SimulationEngine:
         self._handler_registry = ActionHandlerRegistry()
         self._register_action_handlers()
         print("⚙️  Action Handler System enabled - Modular action execution!")
+
+        # The AI brain's menu comes from the same registry and aliases the
+        # engine runs actions with, so the two can't drift apart.
+        if self.llm_brain is not None:
+            from agents.action_menu import build_menu
+            self.llm_brain.set_action_menu(build_menu(self._handler_registry, UNHANDLED_ACTION_FALLBACKS))
 
         # ===== AGENT UTILITIES =====
         # Agent lookup cache for O(1) performance
@@ -220,6 +240,19 @@ class SimulationEngine:
         self.births_this_day = 0
         self.deaths_this_day = 0
         self.death_causes = {}
+        # Partnerships formed, separations, births... (engine/handlers/family.py)
+        self.life_events = collections.Counter()
+        # Who knows what, and conversations that pass it on (world/news.py)
+        from world.news import NewsNetwork
+        self.news = NewsNetwork()
+        # Gatherings someone announces and others hear about (world/gatherings.py)
+        from world.gatherings import Gatherings
+        self.gatherings = Gatherings(self)
+        # Successful actions by kind, and the village's history (engine/chronicle.py)
+        self.action_successes = collections.Counter()
+        self.products = collections.Counter()  # things made (glass, steel, coins...), by name
+        from engine.chronicle import Chronicle
+        self.chronicle = Chronicle()
         self.last_tracked_day = 0
         print("📊 Population tracking enabled - track births/deaths over time!")
 
@@ -238,6 +271,8 @@ class SimulationEngine:
         self.group_manager = systems['group_manager']
         self.economy = systems['economy']
         self.event_logger = systems['event_logger']
+        # Everyone involved in an event remembers it (agents/memory_stream.py)
+        self.event_logger.listeners.append(self._remember_event)
 
         # Old systems
         self.building_manager = systems['building_manager']
@@ -282,6 +317,12 @@ class SimulationEngine:
 
         # Pathfinding
         self.pathfinder = systems['pathfinder']
+        # Roads, wells and street lights agents build (world/infrastructure.py);
+        # paths prefer road tiles
+        from world.infrastructure import Infrastructure
+        self.infrastructure = Infrastructure(self.world.map.width, self.world.map.height)
+        self.pathfinder.road_tiles = self.infrastructure.roads
+        self.pathfinder.set_terrain(self.world.map)  # water is impassable
         self.resource_memory = systems['resource_memory']
 
         # Weather and disasters
@@ -291,7 +332,6 @@ class SimulationEngine:
         # AI systems
         self.config = systems['config']
         self.llm_brain = systems['llm_brain']
-        self.swarm_intelligence = systems['swarm_intelligence']
 
     def _register_action_handlers(self) -> None:
         """
@@ -334,6 +374,16 @@ class SimulationEngine:
 
             # Advanced Economy
             AdvancedEconomyHandler(self._action_context),
+
+            # Romance and family
+            FamilyHandler(self._action_context),
+
+            # Public works: roads, wells, street lights
+            InfrastructureHandler(self._action_context),
+
+            # Gatherings people are invited to by word of mouth
+            GatheringHandler(self._action_context),
+            ShelterHandler(self._action_context),
         ]
 
         self._handler_registry.register_multiple(handlers)
@@ -365,10 +415,11 @@ class SimulationEngine:
         name: Optional[str] = None,
         age: int = 20,
         is_player: bool = False,
-        gender: Optional[Gender] = None
+        gender: Optional[Gender] = None,
+        personality=None
     ) -> Agent:
         """Create a new agent (delegated)."""
-        return self.world_initializer.create_agent(name, age, is_player, gender)
+        return self.world_initializer.create_agent(name, age, is_player, gender, personality)
 
     def get_population_statistics(self) -> Dict:
         """Get population statistics (delegated)."""
@@ -389,10 +440,9 @@ class SimulationEngine:
             if not self.paused:
                 try:
                     await self.tick()
-                except Exception as e:
-                    print(f"❌ ERROR in tick(): {e}")
-                    import traceback
-                    traceback.print_exc()
+                except Exception:
+                    # Logged with its traceback; the world carries on with the next tick
+                    logger.exception("Tick %d failed", self.world.time.current_tick)
 
             # Sleep until next tick
             await asyncio.sleep(self.tick_rate)
@@ -429,7 +479,17 @@ class SimulationEngine:
 
         # Update all managers
         self.building_manager.update_buildings()
-        self.governance_manager.update_governments()
+        self.governance_manager.update_governments(current_tick)
+        # A repealed tax law ends its tax
+        for policy_id in getattr(self.governance_manager, 'repealed_tax_policies', []):
+            self.economy.taxation.repeal_tax_policy(policy_id, current_tick)
+        self.governance_manager.repealed_tax_policies = []
+        # Resources a new era makes available enter the world (AUDIT.md #11:
+        # metal and iron ore pools stayed at 0 forever)
+        for resource in self.civilization.available_resources:
+            if self.world.resource_pools.get(resource, None) == 0.0 and resource not in self.world.unlocked_resources:
+                self.world.unlock_resource(resource, ERA_RESOURCE_AMOUNTS.get(resource, 500.0))
+                self.world.unlocked_resources.add(resource)
 
         # Update fun system (celebrations, games, etc.)
         completed_celebrations = self.fun_system.update_celebrations(delta_time=1.0)
@@ -451,6 +511,7 @@ class SimulationEngine:
             if agent and agent.alive:
                 agent.alive = False
                 agent.health = 0
+                agent.death_cause = "disease"
                 logger.warning(f"💀 {agent.name} died from disease!")
 
                 self.event_logger.log_event(
@@ -467,6 +528,7 @@ class SimulationEngine:
 
         # Update religion system (rituals)
         completed_rituals = self.religion.update_rituals(current_tick)
+        self.religion.lapse_inactive_followers(current_tick)
 
         # Apply spiritual benefits from completed rituals
         for ritual in completed_rituals:
@@ -518,7 +580,10 @@ class SimulationEngine:
 
         # Log major economic events
         if economic_events.get('defaulted_loans'):
-            for loan in economic_events['defaulted_loans']:
+            # check_for_defaults returns loan ids (this read attributes off the id
+            # string and raised once loans became possible)
+            for loan_id in economic_events['defaulted_loans']:
+                loan = self.economy.banking.loans[loan_id]
                 logger.warning(f"💸 Loan default: {loan.borrower_id} failed to repay {loan.amount_remaining:.0f}")
 
         if economic_events.get('crisis_events'):
@@ -529,8 +594,17 @@ class SimulationEngine:
         if current_tick % 50 == 0:
             self._update_role_emergence(current_tick)
 
-        # Remove dead agents (DELEGATED)
+        # Birthdays, life stages, old age; then every new death, once
+        self.lifecycle_manager.update_aging(current_tick)
         self.lifecycle_manager.handle_deaths()
+
+        # Street lights burn and light the night (world/infrastructure.py)
+        self.infrastructure.update_lights(self.world, current_tick)
+        # Gatherings start and end (world/gatherings.py)
+        self.gatherings.update(current_tick)
+
+        # Write down any firsts and milestones (engine/chronicle.py)
+        self.chronicle.observe(self, current_tick)
 
         # Check civilization milestones (DELEGATED)
         self.system_coordinator.check_civilization_milestones(current_tick)
@@ -589,18 +663,30 @@ class SimulationEngine:
             self.death_wipe_detected = True
             self._log_extinction_event(current_tick)
 
-        # Auto-save every 1000 ticks
-        elif alive_count > 0 and current_tick - self.last_auto_save_tick >= 1000:
+        # Autosave every AUTOSAVE_EVERY ticks (0 = off): a full save that can
+        # be loaded from the dashboard, keeping the newest AUTOSAVE_KEEP. (It
+        # used to write a summary that couldn't be loaded.)
+        elif alive_count > 0 and self.config.autosave_every > 0 \
+                and current_tick - self.last_auto_save_tick >= self.config.autosave_every:
+            from engine.save_manager import SaveManager
+            self.last_auto_save_tick = current_tick
             try:
-                snapshot = self.persistence.save_simulation_state(self)
-                self.last_auto_save_tick = current_tick
-                print(f"\n💾 Auto-save: {snapshot.snapshot_id} (Day {self.world.time.day}, {alive_count} alive)")
-            except Exception as e:
-                print(f"❌ Auto-save failed: {e}")
+                manager = SaveManager(self.config.save_dir)
+                manager.auto_save(self.persistence.create_snapshot(), simulation=self,
+                                  keep=self.config.autosave_keep)
+                logger.info("Autosaved (day %d, %d alive)", self.world.time.day, alive_count)
+            except OSError:
+                # a full disk or an unwritable folder: say so, and keep running
+                logger.exception("Autosave failed")
 
-        # Warning if population declining
-        if alive_count > 0 and alive_count < 10 and not self.death_wipe_detected:
-            print(f"\n⚠️  WARNING: Only {alive_count} agents remain! Civilization at risk!")
+        # Warn when the population falls below 10, once per new low (this
+        # printed on every tick while it stayed low)
+        if 0 < alive_count < 10 and not self.death_wipe_detected and \
+                alive_count < getattr(self, '_lowest_warned', 10):
+            self._lowest_warned = alive_count
+            logger.warning("Only %d agents remain: the village is at risk", alive_count)
+        elif alive_count >= 10:
+            self._lowest_warned = 10
 
     def _log_extinction_event(self, current_tick: int):
         """Log civilization extinction event."""
@@ -664,6 +750,15 @@ class SimulationEngine:
                 'message': f'Action type {action.action_type} not implemented'
             }
 
+        # Babies and children can do only some things (life/family.py)
+        from life.family import allowed_at_stage
+        if not allowed_at_stage(agent, action.action_type.value):
+            return {
+                'success': False,
+                'emotional_impact': 0.0,
+                'message': f"Too young to {action.action_type.value.replace('_', ' ')}"
+            }
+
         # Social actions chosen without a partner: pick the nearest living agent
         if action.target_agent is None and action.action_type.value in TARGETED_ACTIONS:
             others = [a for a in self.world.agents if a.alive and a.id != agent.id]
@@ -671,35 +766,67 @@ class SimulationEngine:
                 nearest = min(others, key=lambda o: agent.location.distance_to(o.location))
                 action.target_agent = nearest.id
 
+        from agents import commitment
+
         # Validate action can be performed
         can_execute, reason = handler.validate(agent, action)
         if not can_execute:
-            return {
+            failed = {
                 'success': False,
                 'emotional_impact': -0.05,
                 'message': reason
             }
+            commitment.note(agent, action.action_type.value, failed, current_tick)
+            return failed
 
-        # Execute via handler
-        result = handler.execute(agent, action)
+        # Execute via handler; a step it took toward somewhere starts or
+        # carries on a commitment, arriving ends it (agents/commitment.py)
+        agent.stepped_toward = None
+        result = handler.execute(agent, action).to_dict()
+        commitment.note(agent, action.action_type.value, result, current_tick)
+        return result
 
-        # Special post-processing for reproduction (SEEK_ROMANCE)
-        if action.action_type == ActionType.SEEK_ROMANCE and result.success:
-            result_dict = result.to_dict()
-            if result_dict.get('reproduction_attempted'):
-                target = self._get_agent_by_id(action.target_agent)
-                if target:
-                    child_data = self.life_system.attempt_reproduction(
-                        agent.id, target.id, agent.age, target.age,
-                        agent.wealth, target.wealth
-                    )
-                    if child_data:
-                        self.lifecycle_manager.handle_birth(agent, target, child_data, current_tick)
-                        result_dict['child_born'] = True
-                        result_dict['child_id'] = child_data['id']
-            return result_dict
+    def ensure_newer_systems(self) -> None:
+        """A world saved by an older version lacks systems added since; give it
+        fresh ones (as a new world would have) so it can carry on."""
+        import collections as _c
+        if not hasattr(self, 'products'):
+            self.products = _c.Counter()
+        if not hasattr(self, 'news'):
+            from world.news import NewsNetwork
+            self.news = NewsNetwork()
+        if not hasattr(self, 'gatherings'):
+            from world.gatherings import Gatherings
+            self.gatherings = Gatherings(self)
+        if not hasattr(self, 'infrastructure'):
+            from world.infrastructure import Infrastructure
+            self.infrastructure = Infrastructure(self.world.map.width, self.world.map.height)
+            self.pathfinder.road_tiles = self.infrastructure.roads
+        if not hasattr(self.world.map, 'land_component'):
+            self.world.map._label_land()
+        if not getattr(self.pathfinder, 'water', None):
+            self.pathfinder.set_terrain(self.world.map)
 
-        return result.to_dict()
+    EVENT_MEMORY_IMPORTANCE = {0: 0.1, 1: 0.3, 2: 0.5, 3: 0.8, 4: 1.0}
+
+    def _remember_event(self, event) -> None:
+        importance = self.EVENT_MEMORY_IMPORTANCE.get(event.importance.value, 0.3)
+        text = f"{event.title}: {event.description}" if event.description else event.title
+        involved = []
+        for agent_id in set(event.agents_involved or ()):
+            agent = self._get_agent_by_id(agent_id)
+            if agent is not None and agent.alive:
+                agent.memory_stream.add(event.tick, text, importance)
+                involved.append(agent)
+        # Something that matters becomes news: those involved know it, and so
+        # does anyone near enough to have seen it (world/news.py)
+        if event.importance.value >= 2:
+            places = [(event.location['x'], event.location['y'])] if event.location and 'x' in event.location \
+                else [(a.location.x, a.location.y) for a in involved]
+            knowers = {a.id for a in involved}
+            for x, y in places:
+                knowers.update(self.news.witnesses(self.world.agents, x, y))
+            self.news.publish(event.tick, event.title, importance, knowers, about=[a.id for a in involved])
 
     def _get_agent_by_id(self, agent_id: str) -> Optional[Agent]:
         """Get agent by ID."""
@@ -711,4 +838,6 @@ class SimulationEngine:
     def stop(self):
         """Stop simulation."""
         self.running = False
+        if getattr(self._agent_updater, 'thinking', None) is not None:
+            self._agent_updater.thinking.close()  # don't wait on model calls in flight
         print("Simulation stopped")

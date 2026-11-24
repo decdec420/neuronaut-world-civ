@@ -1,0 +1,14 @@
+.git
+.github
+**/__pycache__
+**/*.pyc
+.env
+.env.*
+!.env.example
+save_states
+data
+docs
+scripts/testing
+web/enhanced_backup*.html
+*.png
+*.log

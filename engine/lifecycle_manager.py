@@ -40,80 +40,132 @@ class LifecycleManager:
         """
         self.sim = simulation
 
-    def handle_birth(
-        self,
-        parent_a: Agent,
-        parent_b: Agent,
-        child_data: Dict,
-        current_tick: int
-    ):
+    def deliver_baby(self, mother: Agent, current_tick: int) -> Agent:
+        """A pregnancy comes to term: the one way a child enters the world.
+
+        The child blends both parents' personalities (plus a little variation;
+        only the mother's if the father is gone), starts as a baby beside its
+        mother, and has family ties to both parents. (There used to be two
+        birth paths: an instant one on a successful romance, and one that
+        made the baby twice and threw the father's traits away.)
         """
-        Handle birth of new child agent.
-
-        Creates the child, adds to world, inherits traits from parents.
-
-        Args:
-            parent_a: First parent agent
-            parent_b: Second parent agent
-            child_data: Dictionary containing child information from life_system
-            current_tick: Current simulation tick
-        """
-        # Create child agent (starts at age 0)
-        child = self.sim.create_agent(
-            name=None,  # Will get random name
-            age=0,  # Newborn!
-            is_player=False
-        )
-
-        # Place child near parents
-        child.location = Position(
-            (parent_a.location.x + parent_b.location.x) / 2,
-            (parent_a.location.y + parent_b.location.y) / 2
-        )
-
-        # Give child inherited wealth
-        child.wealth = child_data.get('inherited_wealth', 0.0)
-
-        # Add minimal starting items (babies don't have much!)
-        child.inventory.add_item('food', 2)
-        child.inventory.add_item('water', 2)
-
-        # Add to world
+        import random
+        from agents.agent import Gender
+        from social.relationships import RelationshipType
+        father = self.sim._get_agent_by_id(mother.pregnancy_partner_id) if mother.pregnancy_partner_id else None
+        personality = mother._create_inherited_personality(father.personality if father else None)
+        child = self.sim.create_agent(name=None, age=0, gender=random.choice([Gender.MALE, Gender.FEMALE]),
+                                      personality=personality)
+        child.location = Position(mother.location.x, mother.location.y)
+        child.mother_id = mother.id
+        child.father_id = father.id if father else None
+        child.life_stage = "baby"
         self.sim.world.agents.append(child)
 
-        # Create life profile with parents
-        personality_dict = {
-            'openness': child.personality.openness,
-            'conscientiousness': child.personality.conscientiousness,
-            'extraversion': child.personality.extraversion,
-            'agreeableness': child.personality.agreeableness,
-            'neuroticism': child.personality.neuroticism,
-        }
+        mother.is_pregnant = False
+        mother.pregnancy_partner_id = None
+        mother.pregnancy_start_tick = 0
+        parents = [p for p in (mother, father) if p is not None]
+        rm = self.sim.relationship_manager
+        for parent in parents:
+            parent.children_ids.append(child.id)
+            rel = rm.create_relationship(parent.id, child.id, RelationshipType.FAMILY, 0.8)
+            rel.relationship_type = RelationshipType.FAMILY
+            profile = self.sim.life_system.life_profiles.get(parent.id)
+            if profile is not None:
+                profile.children.append(child.id)
+                profile.children_born += 1
         self.sim.life_system.create_life_profile(
             child.id,
-            personality_dict,
-            parents=child_data.get('parents', []),
-            inherited_wealth=child_data.get('inherited_wealth', 0.0)
-        )
+            {t: getattr(personality, t) for t in ('openness', 'conscientiousness', 'extraversion',
+                                                  'agreeableness', 'neuroticism')},
+            parents=[p.id for p in parents])
 
-        # Log birth event!
-        title = f"👶 {child.name} is born!"
-        desc = f"{parent_a.name} and {parent_b.name} have a child! Welcome to the world, {child.name}. Generation {child_data.get('generation', 2)}."
-
-        self.sim.event_logger.log_event(
-            EventCategory.LIFE,
-            EventImportance.MAJOR,
-            title, desc,
-            current_tick,
-            [parent_a.id, parent_b.id, child.id]
-        )
-
-        print(f"\n👶 BIRTH! {parent_a.name} & {parent_b.name} → {child.name} (Gen {child_data.get('generation', 2)})")
-
-        self.sim.total_agents_created += 1
-
-        # Track birth for population history
+        from life import homes
+        mother_home = homes.home_of(self.sim.dynamic_building_system, mother)
+        if mother_home is not None:
+            homes.move_in(self.sim.dynamic_building_system, child, mother_home, current_tick, "born here",
+                          self.sim.life_events)
         self.sim.births_this_day += 1
+        self.sim.life_events['born'] += 1
+        father_name = father.name if father else "a father who is gone"
+        self.sim.event_logger.log_event(
+            EventCategory.LIFE, EventImportance.MAJOR, f"👶 {child.name} is born",
+            f"{mother.name} and {father_name} have a child, {child.name}.",
+            current_tick, [p.id for p in parents] + [child.id])
+
+        current_day = current_tick // 144
+        birth_story = self.sim.story_generator.generate_birth_story(
+            child.name, mother.name, father_name, current_day,
+            {'mother_id': mother.id, 'father_id': child.father_id,
+             'population': sum(1 for a in self.sim.world.agents if a.alive), 'generation': 2})
+        self.sim.story_feed.add_story(birth_story)
+
+        from engine.achievements import AchievementType
+        tracker = self.sim.achievement_tracker
+        tracker.track_agent(child.id, child.name)
+        for parent in parents:
+            tracker.track_agent(parent.id, parent.name)
+            tracker.update_agent_stat(parent.id, 'children_count', len(parent.children_ids))
+            tracker.check_agent_achievements(parent.id, current_day)
+        tracker.unlock_civilization_achievement(AchievementType.FIRST_BIRTH, current_day)
+        logger.info(f"👶 {mother.name} and {father_name} → {child.name}")
+        return child
+
+    def update_aging(self, current_tick: int) -> None:
+        """Birthdays, life stages and death of old age (life/aging.py)."""
+        import random
+        from life import aging
+        ticks_per_year = self.sim.config.ticks_per_life_year
+        for agent in self.sim.world.agents:
+            if not agent.alive:
+                continue
+            agent.age_ticks += 1
+            if agent.age_ticks >= ticks_per_year:
+                agent.age_ticks = 0
+                agent.age += 1
+                self.sim.life_system.update_life_stage(agent.id, agent.age)
+                stage = aging.life_stage(agent.age)
+                if stage != agent.life_stage:
+                    self._stage_changed(agent, stage, current_tick)
+            risk = aging.yearly_old_age_risk(agent.age)
+            if risk and random.random() < risk / ticks_per_year:
+                agent.alive = False
+                agent.health = 0.0
+                agent.death_cause = "old age"
+                agent.death_tick = current_tick
+
+    def _stage_changed(self, agent: Agent, stage: str, current_tick: int) -> None:
+        agent.life_stage = stage
+        self.sim.life_events[f"became_{stage}"] += 1
+        if stage == "adult":
+            title, importance = f"🎓 {agent.name} has come of age", EventImportance.MODERATE
+        elif stage == "elder":
+            title, importance = f"{agent.name} is now an elder", EventImportance.MINOR
+        else:
+            return
+        self.sim.event_logger.log_event(EventCategory.LIFE, importance, title,
+                                        f"{agent.name} turned {agent.age}.", current_tick, [agent.id])
+
+    def _widow(self, dead: Agent) -> None:
+        """A partnership ends when one partner dies; the other grieves."""
+        from engine.psychology import EmotionType
+        partner = self.sim._get_agent_by_id(dead.partner_id)
+        dead.partner_id = None
+        if partner is None or partner.partner_id != dead.id:
+            return
+        partner.partner_id = None
+        # A wish for a child was a wish for one with this partner (reported in
+        # review: it could carry over to a new partner who never heard it)
+        partner.child_wish_tick = dead.child_wish_tick = None
+        profile = self.sim.life_system.life_profiles.get(partner.id)
+        if profile is not None:
+            profile.spouse = None
+        partner.emotions.trigger_emotion(EmotionType.SADNESS, 0.8)
+        self.sim.event_logger.log_event(
+            EventCategory.LIFE, EventImportance.MODERATE,
+            f"{partner.name} lost their partner {dead.name}",
+            f"{partner.name} mourns {dead.name}.", self.sim.world.time.current_tick, [partner.id, dead.id])
 
     def handle_deaths(self):
         """
@@ -128,66 +180,75 @@ class LifecycleManager:
         current_tick = self.sim.world.time.current_tick
 
         for agent in self.sim.world.agents[:]:  # Copy list
-            if not agent.alive and agent.ticks_lived > 100:
-                # Determine death cause from agent
-                death_cause = getattr(agent, 'death_cause', None) or ("old age" if agent.age > 100 else "health")
+            # Each death is counted, logged and mourned once. (This used to
+            # re-log every dead agent every tick, and skip anyone who died in
+            # their first 100 ticks.)
+            if agent.alive or agent.death_recorded:
+                continue
+            agent.death_recorded = True
+            if agent.death_tick is None:
+                agent.death_tick = current_tick
+            if agent.partner_id:
+                self._widow(agent)
+            death_cause = agent.death_cause or "unknown causes"
+            agent.death_cause = death_cause
 
-                # Track death for population history
-                self.sim.deaths_this_day += 1
-                self.sim.death_causes[death_cause] = self.sim.death_causes.get(death_cause, 0) + 1
+            # Track death for population history
+            self.sim.deaths_this_day += 1
+            self.sim.death_causes[death_cause] = self.sim.death_causes.get(death_cause, 0) + 1
 
-                # Log death if not already logged
-                title, desc = EventGenerator.agent_died(
-                    agent.name,
-                    agent.age,
-                    death_cause
-                )
-                self.sim.event_logger.log_event(
-                    EventCategory.LIFE,
-                    EventImportance.MODERATE,
-                    title, desc,
-                    current_tick,
-                    [agent.id]
-                )
+            # Log death if not already logged
+            title, desc = EventGenerator.agent_died(
+                agent.name,
+                agent.age,
+                death_cause
+            )
+            self.sim.event_logger.log_event(
+                EventCategory.LIFE,
+                EventImportance.MODERATE,
+                title, desc,
+                current_tick,
+                [agent.id]
+            )
 
-                # ===== DEATH STORY - Create LEGENDARY memorial! =====
-                current_day = current_tick // 144
+            # ===== DEATH STORY - Create LEGENDARY memorial! =====
+            current_day = current_tick // 144
 
-                # Build legacy context for story
-                legacy_context = {
-                    'agent_id': agent.id,
-                    'achievement_count': len(self.sim.achievement_tracker.agent_achievements.get(agent.id, []).achievements) if agent.id in self.sim.achievement_tracker.agent_achievements else 0,
-                    'children_count': len(agent.children_ids),
-                    'grandchildren_count': 0,  # TODO: Calculate
-                    'buildings_built': getattr(agent, 'buildings_constructed', 0),
-                    'discoveries': 0,  # TODO: Track
-                    'wealth': agent.inventory.items.get('wealth', 0),
-                    'birth_day': 0,  # TODO: Track
-                    'generation': 1  # TODO: Track
-                }
+            # Build legacy context for story
+            legacy_context = {
+                'agent_id': agent.id,
+                'achievement_count': len(self.sim.achievement_tracker.agent_achievements.get(agent.id, []).achievements) if agent.id in self.sim.achievement_tracker.agent_achievements else 0,
+                'children_count': len(agent.children_ids),
+                'grandchildren_count': 0,  # TODO: Calculate
+                'buildings_built': getattr(agent, 'buildings_constructed', 0),
+                'discoveries': 0,  # TODO: Track
+                'wealth': agent.inventory.items.get('wealth', 0),
+                'birth_day': 0,  # TODO: Track
+                'generation': 1  # TODO: Track
+            }
 
-                death_story = self.sim.story_generator.generate_death_story(
-                    agent.name, agent.age, death_cause, current_day, legacy_context
-                )
-                self.sim.story_feed.add_story(death_story)
-                logger.info(f"💀 STORY: {death_story.title}")
+            death_story = self.sim.story_generator.generate_death_story(
+                agent.name, agent.age, death_cause, current_day, legacy_context
+            )
+            self.sim.story_feed.add_story(death_story)
+            logger.info(f"💀 STORY: {death_story.title}")
 
-                # ===== ACHIEVEMENTS - Final check =====
-                # Update days survived for elder achievements
-                if agent.id in self.sim.achievement_tracker.agent_achievements:
-                    self.sim.achievement_tracker.update_agent_stat(agent.id, 'days_survived', agent.ticks_lived)
-                    final_achievements = self.sim.achievement_tracker.check_agent_achievements(agent.id, current_day)
-                    for ach in final_achievements:
-                        logger.info(f"🏆 {agent.name} earned posthumous achievement: {ach.name}")
+            # ===== ACHIEVEMENTS - Final check =====
+            # Update days survived for elder achievements
+            if agent.id in self.sim.achievement_tracker.agent_achievements:
+                self.sim.achievement_tracker.update_agent_stat(agent.id, 'days_survived', agent.ticks_lived)
+                final_achievements = self.sim.achievement_tracker.check_agent_achievements(agent.id, current_day)
+                for ach in final_achievements:
+                    logger.info(f"🏆 {agent.name} earned posthumous achievement: {ach.name}")
 
-                # Civilization achievement - FIRST DEATH
-                from engine.achievements import AchievementType
-                first_death_ach = self.sim.achievement_tracker.unlock_civilization_achievement(
-                    AchievementType.FIRST_DEATH, current_day
-                )
-                if first_death_ach:
-                    logger.info(f"🎆 CIVILIZATION: {first_death_ach.name}")
+            # Civilization achievement - FIRST DEATH
+            from engine.achievements import AchievementType
+            first_death_ach = self.sim.achievement_tracker.unlock_civilization_achievement(
+                AchievementType.FIRST_DEATH, current_day
+            )
+            if first_death_ach:
+                logger.info(f"🎆 CIVILIZATION: {first_death_ach.name}")
 
-                # Remove from world (after delay)
-                # In production, would archive agent data
-                # For now, keep in list as dead
+            # Remove from world (after delay)
+            # In production, would archive agent data
+            # For now, keep in list as dead

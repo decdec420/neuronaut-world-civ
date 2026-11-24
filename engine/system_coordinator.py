@@ -137,12 +137,7 @@ class SystemCoordinator:
                     agent.alive = False
                     agent.death_tick = self.sim.world.time.current_tick
                     agent.death_cause = f"{disaster.disaster_type.value}"
-                    casualties += 1
-                    self.sim.deaths_this_day += 1
-
-                    # Track death cause
-                    cause_key = f"disaster_{disaster.disaster_type.value}"
-                    self.sim.death_causes[cause_key] = self.sim.death_causes.get(cause_key, 0) + 1
+                    casualties += 1  # counted in death_causes by LifecycleManager.handle_deaths
 
                     logger.info(f"💀 {agent.name} killed by {disaster.disaster_type.value}!")
 

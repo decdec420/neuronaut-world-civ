@@ -12,6 +12,8 @@ Extracted from simulation.py to enforce Single Responsibility Principle.
 import logging
 from typing import Dict, TYPE_CHECKING
 
+from world.town_view import town_snapshot
+
 if TYPE_CHECKING:
     from engine.simulation import SimulationEngine
 
@@ -114,6 +116,10 @@ class StatisticsExporter:
         return {
             'world': self.sim.world.get_statistics(),
             'agents': [agent.to_dict() for agent in self.sim.world.agents if agent.alive],
+            'infrastructure': self.sim.infrastructure.to_dict(),
+            # The town as the map draws it: buildings where they stand, homes,
+            # gatherings, weather (world/town_view.py)
+            'town': town_snapshot(self.sim),
             # COMPLETE ECONOMIC SYSTEM - All financial subsystems!
             'economy': economic_stats.get('wealth', {}),  # Backward compatibility
             'market': economic_stats.get('market', {}),  # Backward compatibility

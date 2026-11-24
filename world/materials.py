@@ -15,7 +15,7 @@ Stone Age → Bronze Age → Iron Age → Steel Age → Silicon Age
 """
 
 import random
-import uuid
+from engine.ids import new_uuid
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
 from enum import Enum
@@ -215,7 +215,7 @@ class MaterialsManager:
              elec_cond, therm_cond, transparency, magnetic, melt_point, requires_smelt,
              requires_refine, recipe, discovered, unlocks_era) in materials_data:
 
-            material_id = str(uuid.uuid4())
+            material_id = str(new_uuid())
             material = Material(
                 id=material_id,
                 name=name,
@@ -254,7 +254,7 @@ class MaterialsManager:
 
         for alloy_id, name, formula, components, strength, hardness, melt_point in alloys_data:
             alloy = Alloy(
-                id=str(uuid.uuid4()),
+                id=str(new_uuid()),
                 name=name,
                 formula=formula,
                 components=components,

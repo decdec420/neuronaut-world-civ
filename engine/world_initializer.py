@@ -56,6 +56,7 @@ class WorldInitializer:
             num_agents: Number of starting agents to create
         """
         print(f"Initializing Neuronaut World with {num_agents} agents...")
+        Agent.reset_names()  # a new world: every name is free again
 
         # Create initial agents with balanced genders
         num_male = num_agents // 2
@@ -69,12 +70,11 @@ class WorldInitializer:
                 age=random.randint(18, 40),
                 gender=gender
             )
+            # Birthdays spread through the year (life/aging.py)
+            agent.age_ticks = random.randrange(self.sim.config.ticks_per_life_year)
 
-            # Random starting position
-            agent.location = Position(
-                random.uniform(20, 80),
-                random.uniform(20, 80)
-            )
+            # A random starting place on the mainland (never in a lake)
+            agent.location = self.sim.world.map.random_mainland_position()
 
             # Give starting resources
             # NO FREE WEALTH - This is a survival world! Must discover economy from scratch.
@@ -136,7 +136,8 @@ class WorldInitializer:
         name: Optional[str] = None,
         age: int = 20,
         is_player: bool = False,
-        gender: Optional[Gender] = None
+        gender: Optional[Gender] = None,
+        personality=None
     ) -> Agent:
         """
         Create a new agent with proper setup.
@@ -160,7 +161,8 @@ class WorldInitializer:
             name=name,
             age=age,
             is_player=is_player,
-            gender=gender
+            gender=gender,
+            personality=personality
         )
 
         # Initialize value learning system with current market prices
@@ -170,21 +172,8 @@ class WorldInitializer:
         # ===== ADD AUTONOMOUS AI CAPABILITIES =====
         # Dynamically add autonomous methods to agent if LLM is enabled
         if self.sim.config.use_llm_decisions:
-            import types
-            from agents.autonomous_agent import AutonomousAgentMixin
-
-            # Bind all mixin methods from the class (not instance) to the agent
-            for method_name in dir(AutonomousAgentMixin):
-                # Skip magic methods (__ __) but include all others including _private methods
-                if not method_name.startswith('__'):
-                    method = getattr(AutonomousAgentMixin, method_name, None)
-                    if callable(method):
-                        # Bind method to agent instance
-                        setattr(agent, method_name, types.MethodType(method, agent))
-
-            # Initialize autonomous systems (overwrites agent.memory with enhanced version)
-            agent.init_autonomous_systems(llm_brain=self.sim.llm_brain)
-            # Now agent.memory is the autonomous MemorySystem with add_memory() compatibility
+            from agents.autonomous_agent import bind_autonomous_methods
+            bind_autonomous_methods(agent, llm_brain=self.sim.llm_brain)
 
             # Track last planning/reflection tick (used in simulation loop)
             agent.last_planning_tick = 0

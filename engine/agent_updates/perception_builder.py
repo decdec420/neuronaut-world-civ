@@ -50,6 +50,7 @@ class PerceptionBuilder:
         """
         # Start with basic perception from agent
         perceptions = agent.perceive(world_state)
+        perceptions['tick'] = world_state.get('tick', self.sim.world.time.current_tick)
 
         # === REFACTORED SECTIONS (implemented in PerceptionBuilder) ===
         perceptions = self._add_combat_info(agent, perceptions)
@@ -77,7 +78,78 @@ class PerceptionBuilder:
         perceptions = self._add_economic_info(agent, perceptions)
         perceptions = self._add_religious_info(agent, perceptions)
         perceptions = self._add_strategic_info(agent, perceptions)
+        perceptions = self._add_social_info(agent, perceptions)
+        perceptions = self._add_works_info(agent, perceptions)
 
+        return perceptions
+
+    def _add_works_info(self, agent, perceptions: Dict) -> Dict:
+        """Roads, wells and street lights (world/infrastructure.py), as the agent
+        would see them: what's near, what the village has, how much it walks."""
+        from world import infrastructure as infra
+        works = self.sim.infrastructure
+        x, y, tick = agent.location.x, agent.location.y, self.sim.world.time.current_tick
+        lamp = works.light_near(x, y, infra.LIGHT_RADIUS)
+        perceptions['news'] = [n.text for n in self.sim.news.heard_by(agent.id, tick, 3)]
+        perceptions['works'] = {
+            'road_tiles': len(works.roads),
+            'on_road': (int(x), int(y)) in works.roads,
+            'wells': len(works.wells),
+            'well_nearby': works.well_near(x, y, infra.WELL_SPACING) is not None,
+            'street_lights': len(works.lights),
+            'lit_lamp_nearby': bool(lamp and lamp.lit),
+            'lamp_needs_fuel': bool(lamp and lamp.fuel == 0),
+            'walking_lately': round(works.walking_burden(agent.id, tick), 2),
+        }
+        from life import homes
+        dbs = self.sim.dynamic_building_system
+        home = homes.home_of(dbs, agent)
+        perceptions['works']['home'] = home.name if home else None
+        perceptions['works']['home_distance'] = round(homes.distance_home(dbs, agent), 1) if home else None
+        return perceptions
+
+    def _add_social_info(self, agent, perceptions: Dict) -> Dict:
+        """The people an agent knows, and what its village has built socially.
+
+        Adds 'relationships' (name, type, strength; strongest first),
+        'people_by_name' (lower-case first name -> id, so the AI brain can
+        name anyone in the village as a target) and 'community' (governments,
+        laws and religions as short descriptions).
+        """
+        sim = self.sim
+        by_id = {a.id: a for a in sim.world.agents if a.alive}
+        perceptions['people_by_name'] = {a.name.lower(): a.id for a in by_id.values() if a.id != agent.id}
+
+        known = []
+        for rel in sim.relationship_manager.get_agent_relationships(agent.id):
+            other = by_id.get(rel.agent_b if rel.agent_a == agent.id else rel.agent_a)
+            if other is not None:
+                known.append({'name': other.name, 'type': rel.relationship_type.value, 'strength': rel.strength})
+        perceptions['relationships'] = sorted(known, key=lambda r: -r['strength'])
+
+        def name_of(agent_id):
+            other = by_id.get(agent_id)
+            return other.name if other else 'someone gone'
+
+        governance = sim.governance_manager
+        governments = [f"{g.name} ({g.government_type.value}, led by {name_of(g.leader_id)}, "
+                       f"{len(g.citizens)} citizens{', you are one' if agent.id in g.citizens else ''})"
+                       for g in governance.governments.values()]
+        laws = [f"{law.name}: {law.description} ({'in force' if law.active else 'repealed'})"
+                for law in governance.laws.values()]
+        def mine(r):
+            """For its own faith: when it last practised, and that faiths fade."""
+            if agent.id not in r.followers:
+                return ''
+            last = getattr(sim.religion, 'last_practice', {}).get(agent.id)
+            hours = (sim.world.time.current_tick - last) // 6 if last is not None else None
+            when = f"you last prayed, worshipped or held a ritual {hours} hours ago" if hours is not None else ''
+            days = sim.religion.LAPSE_TICKS // 144
+            return f", you are one; {when}{'; ' if when else ''}a faith unpractised for {days} days lapses"
+        religions = [f"{r.name} (founded by {r.founder_name or name_of(r.founder_id)}, "
+                     f"{len(r.followers)} followers{mine(r)})"
+                     for r in sim.religion.religions.values()]
+        perceptions['community'] = {'governments': governments, 'laws': laws, 'religions': religions}
         return perceptions
 
     def _add_combat_info(self, agent, perceptions: Dict) -> Dict:
@@ -195,7 +267,9 @@ class PerceptionBuilder:
         # Add political power
         governance_info['political_power'] = self.sim.governance_manager.political_power.get(agent.id, 0.0)
 
-        perceptions['governance'] = governance_info
+        # The prompt reads 'governance_info' (it used to be written as 'governance'
+        # and never reached the AI brain)
+        perceptions['governance_info'] = governance_info
         return perceptions
 
     def _add_scarcity_info(self, agent, perceptions: Dict) -> Dict:
@@ -288,63 +362,45 @@ class PerceptionBuilder:
         return perceptions
 
     def _add_life_info(self, agent, perceptions: Dict) -> Dict:
+        """Partner, courtships and family, as names the agent would know.
+
+        'partner': the partner's name or None; 'admirers': people who courted
+        this agent recently and are free (it can court them back); 'courting':
+        people it courted who haven't answered yet; plus age, life stage and
+        pregnancy. (This used to list opposite-sex strangers as "potential
+        partners" and read a spouse field nothing ever set.)
         """
-        Add life/romance/family information to perceptions.
-
-        Includes:
-        - Marital status
-        - Pregnancy status
-        - Children information
-        - Romantic opportunities
-        """
-        life_info = {}
-
-        # Agent's life profile (access dict directly)
-        life_profile = self.sim.life_system.life_profiles.get(agent.id)
-        if life_profile:
-            life_info['age'] = agent.age
-            life_info['life_stage'] = life_profile.life_stage.value
-            life_info['is_pregnant'] = agent.is_pregnant  # From Agent, not LifeProfile
-            life_info['children_count'] = len(life_profile.children)
-            life_info['partner_id'] = life_profile.spouse  # spouse, not partner_id
-            life_info['is_in_relationship'] = life_profile.spouse is not None
-
-            # Pregnancy info (from Agent attributes)
-            if agent.is_pregnant:
-                current_tick = self.sim.world.time.current_tick
-                ticks_pregnant = current_tick - agent.pregnancy_start_tick
-                life_info['pregnancy_duration'] = agent.pregnancy_duration_ticks
-                life_info['pregnancy_progress'] = ticks_pregnant
-                life_info['due_in_ticks'] = agent.pregnancy_duration_ticks - ticks_pregnant
-
-            # Fertility (use LifeProfile fertility attribute)
-            life_info['is_fertile'] = life_profile.fertility > 0.3
-        else:
-            life_info['age'] = agent.age
-            life_info['is_fertile'] = False
-
-        # Nearby potential partners
-        potential_partners = []
-        if not life_profile or not life_profile.spouse:
-            for other_agent in self.sim.world.agents:
-                if other_agent.id == agent.id or not other_agent.alive:
-                    continue
-                dist = agent.location.distance_to(other_agent.location)
-                if dist < 20:  # Within romance range
-                    other_profile = self.sim.life_system.life_profiles.get(other_agent.id)
-                    if other_profile and not other_profile.spouse:
-                        # Check basic reproduction compatibility (opposite sex, adult age)
-                        if agent.gender != other_agent.gender and other_agent.age >= 18:
-                            potential_partners.append({
-                                'agent_id': other_agent.id,
-                                'agent_name': other_agent.name,
-                                'distance': round(dist, 1),
-                                'age': other_agent.age
-                            })
-
-        life_info['potential_partners_nearby'] = len(potential_partners)
-        life_info['can_seek_romance'] = len(potential_partners) > 0
-
+        from life import family
+        now = self.sim.world.time.current_tick
+        partner = family.partner_of(agent, self.sim._get_agent_by_id)
+        life_info = {
+            'age': agent.age,
+            'life_stage': agent.life_stage,
+            'partner': partner.name if partner else None,
+            'is_pregnant': agent.is_pregnant,
+            'admirers': [],
+            'courting': [],
+        }
+        for other in self.sim.world.agents:
+            if not other.alive or other.id == agent.id:
+                continue
+            if family.recently(agent.admirers, other.id, now) and family.free_to_court(agent, other)[0]:
+                life_info['admirers'].append(other.name)
+            if family.recently(other.admirers, agent.id, now):
+                life_info['courting'].append(other.name)
+        if agent.is_pregnant:
+            life_info['due_in_ticks'] = max(0, agent.pregnancy_duration_ticks - (now - agent.pregnancy_start_tick))
+        if partner is not None and partner.child_wish_tick is not None and \
+                now - partner.child_wish_tick <= family.INTEREST_MEMORY_TICKS:
+            life_info['partner_wants_child'] = True
+        children = [self.sim._get_agent_by_id(cid) for cid in agent.children_ids]
+        life_info['children'] = [{'name': c.name, 'age': c.age, 'stage': c.life_stage,
+                                  'needs_care': family.is_young(c) and family.neediness(c) > 0.5}
+                                 for c in children if c is not None and c.alive]
+        if family.is_young(agent):
+            parents = [self.sim._get_agent_by_id(pid) for pid in (agent.mother_id, agent.father_id) if pid]
+            life_info['parents'] = [p.name for p in parents if p is not None and p.alive]
+            life_info['can_do'] = sorted(family.BABY_ACTIONS if agent.life_stage == "baby" else family.CHILD_ACTIONS)
         perceptions['life_info'] = life_info
         return perceptions
 
@@ -662,6 +718,19 @@ class PerceptionBuilder:
         perceptions['buildings_info'] = buildings_info
         return perceptions
 
+    def _knowledge_by_agent(self) -> Dict:
+        """agent id -> knowledge records it knows, rebuilt once per tick."""
+        tick = self.sim.world.time.current_tick
+        records = self.sim.knowledge_system.knowledge_records
+        cached = getattr(self, '_knowledge_index', None)
+        if cached is None or cached[0] != tick or cached[1] != len(records):
+            index = {}
+            for record in records.values():
+                for agent_id in record.known_by:
+                    index.setdefault(agent_id, []).append(record)
+            self._knowledge_index = cached = (tick, len(records), index)
+        return cached[2]
+
     def _add_knowledge_info(self, agent, perceptions: Dict) -> Dict:
         """
         Add knowledge system information to perceptions.
@@ -672,31 +741,21 @@ class PerceptionBuilder:
         - Learning opportunities (what others can teach me)
         """
         knowledge_info = {}
+        # Who knows what, built once per tick (this rescanned every record for
+        # every agent, and again for every pair of nearby agents, every tick)
+        known = self._knowledge_by_agent()
+        mine = known.get(agent.id, [])
 
-        # What knowledge does this agent know?
-        agent_knowledge = []
-        unknown_knowledge = []
+        knowledge_info['known_knowledge'] = [{
+            'id': k.id,
+            'name': k.name,
+            'type': k.knowledge_type,
+            'accuracy': k.accuracy,
+            'mastery': 'expert' if k.original_author == agent.id else 'learned'
+        } for k in mine]
+        knowledge_info['knowledge_count'] = len(mine)
 
-        for k_id, knowledge in self.sim.knowledge_system.knowledge_records.items():
-            if agent.id in knowledge.known_by:
-                agent_knowledge.append({
-                    'id': k_id,
-                    'name': knowledge.name,
-                    'type': knowledge.knowledge_type,
-                    'accuracy': knowledge.accuracy,
-                    'mastery': 'expert' if knowledge.original_author == agent.id else 'learned'
-                })
-            else:
-                unknown_knowledge.append({
-                    'id': k_id,
-                    'name': knowledge.name,
-                    'type': knowledge.knowledge_type
-                })
-
-        knowledge_info['known_knowledge'] = agent_knowledge
-        knowledge_info['knowledge_count'] = len(agent_knowledge)
-
-        # Find teaching opportunities (nearby agents who don't know what I know)
+        # Teaching and learning opportunities with agents nearby
         teaching_opportunities = []
         learning_opportunities = []
 
@@ -704,32 +763,21 @@ class PerceptionBuilder:
             if other_agent.id != agent.id and other_agent.alive:
                 dist = agent.location.distance_to(other_agent.location)
                 if dist < 30:  # Within teaching range
-                    # What can I teach them?
-                    can_teach = []
-                    for knowledge in self.sim.knowledge_system.knowledge_records.values():
-                        if agent.id in knowledge.known_by and other_agent.id not in knowledge.known_by:
-                            can_teach.append(knowledge.name)
-
+                    can_teach = [k.name for k in mine if other_agent.id not in k.known_by][:3]
                     if can_teach:
                         teaching_opportunities.append({
                             'agent_id': other_agent.id,
                             'agent_name': other_agent.name,
                             'distance': round(dist, 1),
-                            'can_teach': can_teach[:3]  # Top 3 things they could learn
+                            'can_teach': can_teach  # Top 3 things they could learn
                         })
-
-                    # What can they teach me?
-                    can_learn = []
-                    for knowledge in self.sim.knowledge_system.knowledge_records.values():
-                        if other_agent.id in knowledge.known_by and agent.id not in knowledge.known_by:
-                            can_learn.append(knowledge.name)
-
+                    can_learn = [k.name for k in known.get(other_agent.id, []) if agent.id not in k.known_by][:3]
                     if can_learn:
                         learning_opportunities.append({
                             'agent_id': other_agent.id,
                             'agent_name': other_agent.name,
                             'distance': round(dist, 1),
-                            'can_learn': can_learn[:3]  # Top 3 things I could learn
+                            'can_learn': can_learn  # Top 3 things I could learn
                         })
 
         knowledge_info['teaching_opportunities'] = teaching_opportunities[:5]
@@ -801,6 +849,24 @@ class PerceptionBuilder:
         disaster_info['active_disasters'] = active_disasters_nearby
         disaster_info['disaster_count'] = len(active_disasters_nearby)
         disaster_info['in_immediate_danger'] = any(d['in_danger_zone'] for d in active_disasters_nearby)
+
+        # Disasters that were warned of: what is coming, when, and whether
+        # this agent is where it will hit. What to do about it is up to them.
+        coming = []
+        now = self.sim.world.time.current_tick
+        for warning in getattr(self.sim.disasters, 'pending_warnings', []):
+            disaster = warning['disaster']
+            dist = ((agent.location.x - disaster.location_x) ** 2 +
+                    (agent.location.y - disaster.location_y) ** 2) ** 0.5
+            coming.append({
+                'type': disaster.disaster_type.value,
+                'severity': disaster.severity.value,
+                'ticks_until_impact': max(0, warning['impact_tick'] - now),
+                'distance_from_epicenter': round(dist, 1),
+                'radius': disaster.radius,
+                'will_reach_you': dist < disaster.radius,
+            })
+        disaster_info['warnings'] = coming
 
         perceptions['disaster_info'] = disaster_info
         return perceptions
@@ -1162,10 +1228,10 @@ class PerceptionBuilder:
 
         fun_info['nearby_games'] = nearby_games[:5]
 
-        # Nearby art to view
+        # The best art this agent hasn't seen yet (walking the pieces in order of
+        # quality, so this doesn't build a record for every piece ever made)
         nearby_art = []
-        for art_piece in self.sim.fun_system.art_pieces.values():
-            # Show art that hasn't been viewed yet
+        for art_piece in self.sim.fun_system.art_by_quality():
             if agent.id not in art_piece.viewers:
                 nearby_art.append({
                     'id': art_piece.id,
@@ -1175,10 +1241,9 @@ class PerceptionBuilder:
                     'viewers_count': len(art_piece.viewers),
                     'cultural_value': round(art_piece.cultural_value, 2)
                 })
-
-        # Sort by quality
-        nearby_art.sort(key=lambda a: a['quality'], reverse=True)
-        fun_info['art_to_view'] = nearby_art[:5]
+                if len(nearby_art) == 5:
+                    break
+        fun_info['art_to_view'] = nearby_art
 
         # Can agent create art?
         can_create_art = False
@@ -1385,7 +1450,9 @@ class PerceptionBuilder:
         agriculture_info['crops_ready_to_harvest'] = len(mature_crops)
 
         # Animal products ready
-        animals_ready = [a for a in agent_livestock if a.can_harvest_product]
+        # An animal has something to give once its production interval has passed
+        tick = self.sim.world.time.current_tick
+        animals_ready = [a for a in agent_livestock if tick - a.last_production >= a.production_rate]
         agriculture_info['animals_ready_for_harvest'] = len(animals_ready)
 
         # Can plant crops?

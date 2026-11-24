@@ -12,7 +12,7 @@ Philosophy: Fun is a psychological NEED for happiness and culture.
 """
 
 import random
-import uuid
+from engine.ids import new_uuid
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
 from datetime import datetime
@@ -115,6 +115,8 @@ class FunSystem:
     - Emotional variety
     """
     
+    HISTORY_LIMIT = 1000  # finished games and celebrations remembered
+
     def __init__(self):
         self.active_celebrations: Dict[str, Celebration] = {}
         self.celebration_history: List[Celebration] = []
@@ -123,6 +125,12 @@ class FunSystem:
         self.game_history: List[Game] = []
         
         self.art_pieces: Dict[str, ArtPiece] = {}
+        self._art_sorted: List[ArtPiece] = []  # art_pieces by quality, best first
+
+        # Per agent: celebrations attended, games played and won, art made.
+        # Counted as they happen (get_agent_fun_stats used to rescan the whole
+        # history for every agent, every tick)
+        self.agent_counts: Dict[str, Dict[str, int]] = {}
         
         # Traditions that emerge from repeated celebrations
         self.traditions: Dict[str, int] = {}  # tradition_name -> times_performed
@@ -150,7 +158,7 @@ class FunSystem:
         
         Nearby agents will be invited to join.
         """
-        celebration_id = str(uuid.uuid4())
+        celebration_id = str(new_uuid())
         
         # Generate celebration name
         celebration_names = {
@@ -197,6 +205,9 @@ class FunSystem:
             if celebration.duration_ticks <= 0:
                 # Celebration complete!
                 self.celebration_history.append(celebration)
+                del self.celebration_history[:-self.HISTORY_LIMIT]
+                for agent_id in celebration.participants:
+                    self._count(agent_id, 'celebrations_attended')
                 completed.append(celebration)
                 del self.active_celebrations[cel_id]
                 
@@ -220,7 +231,7 @@ class FunSystem:
         
         Simple: Each player rolls, highest wins all the stakes.
         """
-        game_id = str(uuid.uuid4())
+        game_id = str(new_uuid())
         
         game = Game(
             id=game_id,
@@ -236,6 +247,29 @@ class FunSystem:
         
         return game
     
+    def _finish_game(self, game: Game) -> None:
+        """A finished game leaves active_games for the (bounded) history. It
+        used to stay "active" forever: every agent's perception looped over
+        every game ever played, every tick."""
+        game.completed = True
+        self.active_games.pop(game.id, None)
+        self.game_history.append(game)
+        del self.game_history[:-self.HISTORY_LIMIT]
+        for agent_id in game.players:
+            self._count(agent_id, 'games_played')
+        if game.winner:
+            self._count(game.winner, 'games_won')
+
+    def _count(self, agent_id: str, what: str) -> None:
+        counts = self.agent_counts.setdefault(agent_id, {})
+        counts[what] = counts.get(what, 0) + 1
+
+    def art_by_quality(self) -> List[ArtPiece]:
+        """Every art piece, best first (re-sorted only when art is added)."""
+        if len(self._art_sorted) != len(self.art_pieces):
+            self._art_sorted = sorted(self.art_pieces.values(), key=lambda a: a.quality, reverse=True)
+        return self._art_sorted
+
     def resolve_dice_game(self, game: Game) -> Dict:
         """
         Resolve a dice game - determine winner!
@@ -261,7 +295,7 @@ class FunSystem:
         # Reputation changes
         game.reputation_changes[winner_id] = 0.05  # Small fame boost
         
-        game.completed = True
+        self._finish_game(game)
         
         return {
             'winner': winner_id,
@@ -276,7 +310,7 @@ class FunSystem:
         distance: float = 100.0
     ) -> Game:
         """Start a racing competition"""
-        game_id = str(uuid.uuid4())
+        game_id = str(new_uuid())
         
         game = Game(
             id=game_id,
@@ -310,7 +344,7 @@ class FunSystem:
         # Rewards: Fame and status
         game.reputation_changes[winner_id] = 0.1
         
-        game.completed = True
+        self._finish_game(game)
         
         return {
             'winner': winner_id,
@@ -335,7 +369,7 @@ class FunSystem:
         
         Quality depends on creativity + relevant skill.
         """
-        art_id = str(uuid.uuid4())
+        art_id = str(new_uuid())
         
         # Generate title
         titles = {
@@ -364,6 +398,7 @@ class FunSystem:
         )
         
         self.art_pieces[art_id] = art
+        self._count(creator_id, 'art_created')
         self.total_art_created += 1
         
         return art
@@ -408,10 +443,11 @@ class FunSystem:
     
     def get_agent_fun_stats(self, agent_id: str) -> Dict:
         """Get fun statistics for specific agent"""
-        celebrations_attended = sum(1 for c in self.celebration_history if agent_id in c.participants)
-        games_played = sum(1 for g in self.game_history if agent_id in g.players)
-        games_won = sum(1 for g in self.game_history if g.winner == agent_id)
-        art_created = sum(1 for a in self.art_pieces.values() if a.creator_id == agent_id)
+        counts = self.agent_counts.get(agent_id, {})
+        celebrations_attended = counts.get('celebrations_attended', 0)
+        games_played = counts.get('games_played', 0)
+        games_won = counts.get('games_won', 0)
+        art_created = counts.get('art_created', 0)
         
         return {
             'celebrations_attended': celebrations_attended,

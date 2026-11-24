@@ -207,7 +207,7 @@ class SurvivalActionHandler(ActionHandler):
                 hunger_after = agent.needs.needs[NeedType.HUNGER].level
 
                 # Log the action with detailed state changes
-                logger.info(
+                logger.debug(
                     f"[{agent.name}] EXECUTED EAT: food {food_before}→{food_before-1}, "
                     f"hunger {hunger_before:.2f}→{hunger_after:.2f}"
                 )

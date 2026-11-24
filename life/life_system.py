@@ -16,7 +16,7 @@ from typing import Dict, List, Optional, Set, Tuple
 from datetime import datetime
 from enum import Enum
 import random
-import uuid
+from engine.ids import new_uuid
 
 
 class LifeStage(Enum):
@@ -242,7 +242,7 @@ class LifeSystem:
 
         if philosophy == LifePhilosophy.WEALTH_BUILDER:
             goals.append(LifeGoal(
-                id=str(uuid.uuid4()),
+                id=str(new_uuid()),
                 goal_type="wealth",
                 description="Accumulate 1000 wealth",
                 target_value=1000,
@@ -250,7 +250,7 @@ class LifeSystem:
                 deadline_age=50
             ))
             goals.append(LifeGoal(
-                id=str(uuid.uuid4()),
+                id=str(new_uuid()),
                 goal_type="family",
                 description="Raise successful children",
                 target_value=2,
@@ -260,14 +260,14 @@ class LifeSystem:
 
         elif philosophy == LifePhilosophy.ADVENTURE_SEEKER:
             goals.append(LifeGoal(
-                id=str(uuid.uuid4()),
+                id=str(new_uuid()),
                 goal_type="adventure",
                 description="Make 50 discoveries",
                 target_value=50,
                 priority=0.9
             ))
             goals.append(LifeGoal(
-                id=str(uuid.uuid4()),
+                id=str(new_uuid()),
                 goal_type="experience",
                 description="Master experimentation",
                 target_value=1.0,
@@ -276,7 +276,7 @@ class LifeSystem:
 
         elif philosophy == LifePhilosophy.LEGACY_SEEKER:
             goals.append(LifeGoal(
-                id=str(uuid.uuid4()),
+                id=str(new_uuid()),
                 goal_type="legacy",
                 description="Build 10 lasting structures",
                 target_value=10,
@@ -284,7 +284,7 @@ class LifeSystem:
                 deadline_age=60
             ))
             goals.append(LifeGoal(
-                id=str(uuid.uuid4()),
+                id=str(new_uuid()),
                 goal_type="legacy",
                 description="Teach 100 lessons",
                 target_value=100,
@@ -293,7 +293,7 @@ class LifeSystem:
 
         elif philosophy == LifePhilosophy.PLEASURE_SEEKER:
             goals.append(LifeGoal(
-                id=str(uuid.uuid4()),
+                id=str(new_uuid()),
                 goal_type="experience",
                 description="Live every moment fully",
                 target_value=1000,  # Life satisfaction points
@@ -302,7 +302,7 @@ class LifeSystem:
 
         # Add career goal (emerges from discovered role later)
         goals.append(LifeGoal(
-            id=str(uuid.uuid4()),
+            id=str(new_uuid()),
             goal_type="career",
             description="Master my craft",
             target_value=1.0,  # Skill level
@@ -311,106 +311,10 @@ class LifeSystem:
 
         return goals
 
-    def attempt_reproduction(
-        self,
-        parent_a_id: str,
-        parent_b_id: str,
-        parent_a_age: int,
-        parent_b_age: int,
-        parent_a_wealth: float,
-        parent_b_wealth: float
-    ) -> Optional[Dict]:
-        """
-        Attempt to create a child.
-
-        Returns child data if successful, None otherwise.
-        """
-
-        profile_a = self.life_profiles.get(parent_a_id)
-        profile_b = self.life_profiles.get(parent_b_id)
-
-        if not profile_a or not profile_b:
-            return None
-
-        # Check if both want children
-        if not profile_a.wants_children or not profile_b.wants_children:
-            return None
-
-        # Check if reached ideal count
-        if (profile_a.children_born >= profile_a.ideal_children_count and
-            profile_b.children_born >= profile_b.ideal_children_count):
-            if random.random() > 0.1:  # 10% chance of unplanned child
-                return None
-
-        # Age-based fertility
-        fertility_a = self._calculate_fertility(parent_a_age)
-        fertility_b = self._calculate_fertility(parent_b_age)
-        combined_fertility = (fertility_a + fertility_b) / 2
-
-        # Wealth affects reproduction (more stable = more likely)
-        combined_wealth = parent_a_wealth + parent_b_wealth
-        wealth_factor = min(1.0, combined_wealth / 200)  # Stable at 200+ combined wealth
-
-        # Base reproduction chance
-        reproduction_chance = combined_fertility * wealth_factor * 0.05  # 5% per tick at peak
-
-        if random.random() > reproduction_chance:
-            return None
-
-        # CREATE CHILD!
-        child_id = str(uuid.uuid4())
-
-        # Inheritance - split between children
-        total_children = profile_a.children_born + profile_b.children_born + 1
-        inheritance_share = (combined_wealth * 0.5) / total_children  # 50% of wealth inherited
-
-        # Child inherits mixed personality traits
-        # TODO: Will create actual child agent in simulation
-        child_data = {
-            'id': child_id,
-            'parents': [parent_a_id, parent_b_id],
-            'inherited_wealth': inheritance_share,
-            'generation': max(
-                profile_a.major_life_events[0].get('generation', 1) if profile_a.major_life_events else 1,
-                profile_b.major_life_events[0].get('generation', 1) if profile_b.major_life_events else 1
-            ) + 1
-        }
-
-        # Update parent profiles
-        profile_a.children.append(child_id)
-        profile_a.children_born += 1
-        profile_b.children.append(child_id)
-        profile_b.children_born += 1
-
-        # Record life event
-        event = {
-            'type': 'birth',
-            'age': parent_a_age,
-            'description': f"Had child with {parent_b_id}",
-            'child_id': child_id,
-            'timestamp': datetime.now()
-        }
-        profile_a.major_life_events.append(event)
-        profile_b.major_life_events.append(event.copy())
-
-        self.total_births += 1
-
-        return child_data
-
     def _calculate_fertility(self, age: int) -> float:
-        """Calculate fertility based on age"""
-        if age < 18:
-            return 0.0
-        elif age < 25:
-            return 0.8
-        elif age < 35:
-            return 1.0  # Peak fertility
-        elif age < 45:
-            return 0.6
-        elif age < 55:
-            return 0.2
-        else:
-            return 0.0
+        """Calculate fertility based on age (life/family.py)"""
+        from life.family import fertility
+        return fertility(age)
 
     def update_life_stage(self, agent_id: str, current_age: int):
         """Update agent's life stage"""

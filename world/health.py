@@ -14,7 +14,7 @@ Without health challenges, no healers, no medicine, no public health systems.
 """
 
 import random
-import uuid
+from engine.ids import new_uuid
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
 from datetime import datetime
@@ -155,6 +155,16 @@ class HealthManager:
         self.total_cured: int = 0
         self.total_medicines_discovered: int = 0
 
+        # Acquired immunity: (agent_id, disease type) -> tick it wears off.
+        # Without it, recovered agents caught the same flu straight back from
+        # their neighbours and epidemics never ended (63 flu infections among
+        # 12 agents in 8 days).
+        self.immune_until: Dict[tuple, int] = {}
+
+    # How long recovering from a contagious disease protects against it (ticks;
+    # a day is 144)
+    IMMUNITY_TICKS = 1440
+
     # ===== DISEASE SYSTEM =====
 
     def infect_agent(
@@ -164,15 +174,18 @@ class HealthManager:
         severity: Severity,
         current_tick: int,
         source: str = "natural"
-    ) -> Disease:
-        """Infect an agent with a disease"""
+    ) -> Optional[Disease]:
+        """Infect an agent with a disease. Returns None if the agent is immune."""
+
+        if current_tick < self.immune_until.get((agent_id, disease_type), -1):
+            return None
 
         # Check if already infected with this disease
         for disease in self.active_diseases.values():
             if disease.infected_agent_id == agent_id and disease.disease_type == disease_type:
                 return disease  # Already infected
 
-        disease_id = str(uuid.uuid4())
+        disease_id = str(new_uuid())
 
         # Disease properties based on type
         properties = self._get_disease_properties(disease_type, severity)
@@ -299,6 +312,9 @@ class HealthManager:
                     recovered.append(disease_id)
                     if disease.treated:
                         self.total_cured += 1
+                    if disease.contagious:
+                        self.immune_until[(disease.infected_agent_id, disease.disease_type)] = \
+                            current_tick + self.IMMUNITY_TICKS
 
                 del self.active_diseases[disease_id]
 
@@ -356,7 +372,7 @@ class HealthManager:
     ) -> Optional[Medicine]:
         """Agent discovers a new medicine through experimentation"""
 
-        medicine_id = str(uuid.uuid4())
+        medicine_id = str(new_uuid())
 
         # Determine what diseases this might cure based on ingredients
         # (Simplified - in reality would need actual material properties)

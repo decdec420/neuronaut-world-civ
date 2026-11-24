@@ -13,7 +13,7 @@ From cooking fires to nuclear reactors, energy drives progress.
 """
 
 import random
-import uuid
+from engine.ids import new_uuid
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
 from enum import Enum
@@ -184,7 +184,7 @@ class EnergyManager:
         ]
 
         for energy_type, name, density, burn_rate, efficiency, discovered, pollution, renewable in sources_data:
-            source_id = str(uuid.uuid4())
+            source_id = str(new_uuid())
             source = EnergySource(
                 id=source_id,
                 energy_type=energy_type,
@@ -244,7 +244,7 @@ class EnergyManager:
         if fuel_type not in self.discovered_energy_types:
             return None
 
-        plant_id = str(uuid.uuid4())
+        plant_id = str(new_uuid())
 
         # Get plant specifications
         specs = self._get_plant_specs(plant_type)
@@ -374,7 +374,7 @@ class EnergyManager:
     ) -> EnergyGrid:
         """Create an electricity distribution grid"""
 
-        grid_id = str(uuid.uuid4())
+        grid_id = str(new_uuid())
 
         grid = EnergyGrid(
             id=grid_id,
@@ -404,7 +404,7 @@ class EnergyManager:
         for grid in self.energy_grids.values():
             # Calculate total generation
             total_gen = 0.0
-            for plant_id in grid.power_plants:
+            for plant_id in sorted(grid.power_plants):
                 plant = self.power_plants.get(plant_id)
                 if plant and plant.operational:
                     total_gen += plant.current_output

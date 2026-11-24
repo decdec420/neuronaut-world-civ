@@ -68,7 +68,7 @@ Every agent has:
 
 ```bash
 cd neuronaut-world
-pip install -r requirements.txt
+pip install -r requirements-minimal.txt
 ```
 
 ### 2. Run the World
@@ -83,7 +83,52 @@ Open your browser to:
 - **http://localhost:8000/app** - Watch the world live
 - **http://localhost:8000/docs** - API documentation
 
-That's it! The world is now running with 50 AI agents.
+That's it! The world is now running with 12 agents (set `NUM_AGENTS` to change that).
+
+## Running It for Real
+
+### With Docker
+
+```bash
+docker build -t neuronaut-world .
+```
+
+```bash
+docker run -d -p 8000:8000 -v neuronaut-data:/data -e NEURONAUT_ADMIN_TOKEN=change-me neuronaut-world
+```
+
+The image runs as an unprivileged user. It writes only to `/data` (saves go
+to `/data/saves`), works with `--read-only`, and has a health check. Behind a
+proxy that re-signs TLS, add `--secret id=ca,src=/path/to/ca.crt` to the build.
+
+### Settings
+
+All settings are environment variables (or a `.env` file; see `.env.example`).
+
+| Variable | Default | What it does |
+|---|---|---|
+| `HOST` | `127.0.0.1` | Interface to serve on. `0.0.0.0` serves other machines (the Docker image sets it). |
+| `PORT` | `8000` | Port to serve on. |
+| `NEURONAUT_ADMIN_TOKEN` | none | If set, pausing, speed, saves, loading, reset, disasters and new characters need `Authorization: Bearer <token>`. The dashboard asks for it once per tab. Set it whenever `HOST` isn't local. |
+| `CORS_ORIGINS` | none | Other origins allowed to call the API, comma separated. The dashboard needs none. |
+| `NUM_AGENTS` | `12` | Agents in a new world. |
+| `WORLD_SEED` | none | The same number gives the same world every run (with the rule-based brain; a model's answers can't be replayed). Unset: a new world each time. |
+| `SAVE_DIR` | `save_states` | Where saves go (relative to the repository). |
+| `AUTOSAVE_EVERY` / `AUTOSAVE_KEEP` | `1000` / `3` | Autosave every N ticks (0 = off), keeping the newest few. Autosaves show in Save/Load. |
+| `LOG_LEVEL` | `INFO` | `DEBUG` logs every action. |
+| `USE_LLM_DECISIONS` | `true` | Let agents think with a model (Ollama or an API key; see `.env.example`). Without one they use the rule-based brain. |
+
+Requests that change the world must also carry the header
+`X-Neuronaut-Control: 1`. The dashboard sends it, and it stops other websites
+from controlling your world through your browser.
+
+### Health and checks
+
+- `GET /health` returns 200 while the world runs and 503 if its loop stopped.
+- `pip install -r requirements-dev.txt`, then `pytest` runs the test suite.
+- `python scripts/sim_check.py` runs 3 worlds headless and must print `OVERALL: PASS`.
+
+CI (`.github/workflows/ci.yml`) runs both, then builds the image and checks it serves.
 
 ## What You'll See
 
@@ -327,7 +372,7 @@ Web Browser (Observer)
 - `engine/events.py` - Event logging and narration
 - `engine/simulation.py` - Main simulation loop
 - `api/server.py` - FastAPI backend
-- `web/index.html` - Live observation interface
+- `web/enhanced.html`, `web/town_map.js` - the dashboard and its 2D map (served at `/app`)
 
 **Total: 5,000+ lines of code**
 
