@@ -198,3 +198,11 @@ def test_a_dawn_world_starts_with_a_band_of_25_and_settlers_with_12(monkeypatch)
         assert config.load_config().num_agents == 40
     finally:
         config.reset_config()
+
+
+def test_the_history_counts_the_living_by_generation():
+    sim, roles = dawn_world()
+    roles["actor"].generation = 2
+    snap = sim.knowhow.snapshot()
+    alive = sum(1 for a in sim.world.agents if a.alive)
+    assert snap["generations"] == {"1": alive - 1, "2": 1} and snap["day"] >= 1

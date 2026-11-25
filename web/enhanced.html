@@ -2623,6 +2623,7 @@
                 <div id="dawn-panel" style="display: none; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border: 2px solid #22c55e; border-radius: 12px; padding: 20px; margin-bottom: 20px;">
                     <h3 style="margin: 0 0 6px 0; color: #22c55e; font-size: 18px;">🕰️ From the Beginning of Time</h3>
                     <p style="color: #94a3b8; font-size: 12px; margin: 0 0 14px 0;">They started knowing only what comes with being human. Each thing below someone worked out, and others learned by watching or being taught. A sim day is a year of their lives; a generation is about 25 days.</p>
+                    <div id="dawn-generations" style="font-size: 13px; color: #cbd5e1; margin-bottom: 12px;"></div>
                     <div id="dawn-firsts"></div>
                     <div id="dawn-lost"></div>
                     <div id="dawn-not-yet" style="margin-top: 12px;"></div>
@@ -8001,6 +8002,10 @@
             panel.style.display = '';
             const knowers = history.knowers || {};
             const firsts = history.firsts || [];
+            const gens = Object.entries(history.generations || {});
+            $safe('dawn-generations').innerHTML = gens.length === 0 ? '' :
+                `Day ${escHtml(history.day)}. Alive now: ` + gens.map(([g, n]) =>
+                    `<strong style="color: #f8fafc;">${escHtml(n)}</strong> of generation ${escHtml(g)}`).join(', ');
             $safe('dawn-firsts').innerHTML = firsts.length === 0
                 ? emptyNote('Nobody has worked anything out yet')
                 : `<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; font-size: 13px;">
