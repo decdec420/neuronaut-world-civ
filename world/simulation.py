@@ -529,6 +529,14 @@ class World:
                     # lost food whenever the tile held less (about a third of it).
                     resource_type_name = resource.resource_type.value
                     tile_harvested = resource.harvest(amount)
+                    if resource.resource_type == ResourceType.WATER:
+                        # A lake, river or well is the water: it holds its own
+                        # amount and refills. The global water pool was sized
+                        # for 12 people ("12 agents drink ~8/tick"); with a band
+                        # of 25 growing to 40 it ran dry, every attempt to fetch
+                        # water failed beside full lakes, and people who carried
+                        # none died (seed 3: 10,135 failed fetches by day 32)
+                        return tile_harvested
                     available_in_pool = self.harvest_from_pool(resource_type_name, tile_harvested)
 
                     # Return the LESSER of the two (global pool constrains)
