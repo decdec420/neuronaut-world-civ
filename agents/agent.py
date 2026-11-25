@@ -771,12 +771,25 @@ class Agent:
                     'doing': doing.action_type.value if doing is not None else None,
                 })
 
-        # Get nearby resources
-        all_resources = world_state.get('resources', [])
-        for resource in all_resources:
-            distance = self.location.distance_to(resource.get('location'))
-            if distance <= perception_range:
-                perceptions['nearby_resources'].append(resource)
+        # Get nearby resources: only the tiles within range (in the order of the
+        # full list, so the result is exactly what scanning it all gave)
+        by_tile = world_state.get('resources_by_tile')
+        if by_tile is not None:
+            import math
+            x, y = self.location.x, self.location.y
+            found = []
+            for tx in range(math.floor(x - perception_range), math.floor(x + perception_range) + 1):
+                for ty in range(math.floor(y - perception_range), math.floor(y + perception_range) + 1):
+                    for order, resource in by_tile.get((tx, ty), ()):
+                        if self.location.distance_to(resource['location']) <= perception_range:
+                            found.append((order, resource))
+            found.sort(key=lambda item: item[0])
+            perceptions['nearby_resources'] = [resource for _, resource in found]
+        else:
+            for resource in world_state.get('resources', []):
+                distance = self.location.distance_to(resource.get('location'))
+                if distance <= perception_range:
+                    perceptions['nearby_resources'].append(resource)
 
         return perceptions
 
