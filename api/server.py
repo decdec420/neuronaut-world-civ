@@ -211,7 +211,7 @@ async def startup_event():
     _seed_world()
     simulation = SimulationEngine(world_width=100, world_height=100)
 
-    # NUM_AGENTS agents (default 12), half of each sex
+    # NUM_AGENTS agents (default 25 at the dawn, 12 settlers), half of each sex
     simulation.initialize_world(num_agents=load_config().num_agents)
 
     # Start simulation loop in background

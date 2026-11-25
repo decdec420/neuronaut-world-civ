@@ -1,6 +1,7 @@
 # Neuronaut World — instructions for Claude Code
 
-An autonomous AI civilization sim: ~12 agents with needs, memory, personalities,
+An autonomous AI civilization sim: a band of 25 agents (12 in a settlers'
+world) with needs, memory, personalities,
 an economy, buildings, culture and (optionally) LLM-driven decisions, shown live
 in a browser dashboard. The goal is a society you can sit back and watch grow.
 

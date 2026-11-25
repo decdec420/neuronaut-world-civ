@@ -13,7 +13,7 @@ can gate any change.
 
 PASS means, for every seed:
   - zero exceptions raised from tick()
-  - at most NUM_AGENTS - MIN_ALIVE (2) deaths the agents could have prevented
+  - at most MAX_PREVENTABLE (2) deaths the agents could have prevented
     (hunger, thirst, exhaustion, illness, fights...), and somebody still alive.
     Natural disasters and old age are printed with every death but don't
     count: a catastrophic earthquake (5% of quakes) kills ~17% of a village
@@ -48,7 +48,6 @@ import resource
 import sys
 import time
 
-MIN_ALIVE = 10
 
 
 def natural_causes() -> set:
@@ -57,7 +56,15 @@ def natural_causes() -> set:
     from world.disasters import DisasterType
     return {"old age"} | {d.value for d in DisasterType}
 MIN_HEALTH = 70.0
-NUM_AGENTS = 12
+MAX_PREVENTABLE = 2
+
+
+def band_size() -> int:
+    """People in a new world, as the server would start it (config NUM_AGENTS:
+    25 at the dawn, 12 settlers, unless set)."""
+    import config
+    config.reset_config()
+    return config.load_config().num_agents
 
 
 def max_rss_mb() -> float:
@@ -180,7 +187,7 @@ def run_seed(ticks: int, seed: int, use_llm: bool) -> dict:
         from engine.simulation import SimulationEngine
         from agents.agent import NeedType
         sim = SimulationEngine(world_width=100, world_height=100)
-        sim.initialize_world(num_agents=NUM_AGENTS)
+        sim.initialize_world(num_agents=band_size())
     initial_ids = {a.id for a in sim.world.agents}
 
     actions, failures, errors = collections.Counter(), collections.Counter(), collections.Counter()
@@ -231,6 +238,7 @@ def run_seed(ticks: int, seed: int, use_llm: bool) -> dict:
         "seed": seed,
         "seconds": time.time() - start,
         "alive": len(alive),
+        "started": len(initial_ids),
         "health": avg(a.health for a in alive),
         "hunger": avg(need(a, NeedType.HUNGER) for a in alive),
         "thirst": avg(need(a, NeedType.THIRST) for a in alive),
@@ -295,7 +303,7 @@ def main() -> int:
         problems = []
         if r["errors"]:
             problems.append(f"{sum(r['errors'].values())} exceptions")
-        if r["preventable_deaths"] > NUM_AGENTS - MIN_ALIVE:
+        if r["preventable_deaths"] > MAX_PREVENTABLE:
             problems.append(f"{r['preventable_deaths']} preventable deaths")
         if r["alive"] == 0:
             problems.append("nobody alive")
@@ -307,7 +315,7 @@ def main() -> int:
         all_ok &= ok
 
         print(f"[{'PASS' if ok else 'FAIL'}] seed {seed}: {args.ticks} ticks in {r['seconds']:.0f}s | "
-              f"alive {r['alive']}/{NUM_AGENTS} | preventable deaths {r['preventable_deaths']} | health {r['health']:.0f} | "
+              f"alive {r['alive']}/{r['started']} | preventable deaths {r['preventable_deaths']} | health {r['health']:.0f} | "
               f"hunger {r['hunger']:.2f} thirst {r['thirst']:.2f} | buildings {r['buildings']}"
               + (f" | {'; '.join(problems)}" if problems else ""))
         if r["deaths"]:

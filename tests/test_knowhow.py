@@ -181,3 +181,20 @@ def test_worlds_start_at_the_dawn_unless_told_otherwise(monkeypatch):
         assert config.load_config().world_start == "settlers"
     finally:
         config.reset_config()
+
+
+def test_a_dawn_world_starts_with_a_band_of_25_and_settlers_with_12(monkeypatch):
+    import config
+    monkeypatch.delenv("NUM_AGENTS", raising=False)
+    try:
+        monkeypatch.setenv("WORLD_START", "dawn")
+        config.reset_config()
+        assert config.load_config().num_agents == 25
+        monkeypatch.setenv("WORLD_START", "settlers")
+        config.reset_config()
+        assert config.load_config().num_agents == 12
+        monkeypatch.setenv("NUM_AGENTS", "40")
+        config.reset_config()
+        assert config.load_config().num_agents == 40
+    finally:
+        config.reset_config()

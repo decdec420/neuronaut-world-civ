@@ -55,7 +55,6 @@ class Config:
         # set NEURONAUT_ADMIN_TOKEN so only you can change the world.
         self.host = os.getenv('HOST', '127.0.0.1').strip() or '127.0.0.1'
         self.port = _int_env('PORT', 8000)
-        self.num_agents = _int_env('NUM_AGENTS', 12)
         # WORLD_SEED: the same number gives the same world, run after run (with
         # the rule-based brain; a model's answers can't be replayed). Unset:
         # a new world each time.
@@ -75,6 +74,10 @@ class Config:
             print(f"⚠️  Invalid WORLD_START={start!r} (dawn or settlers), using dawn")
             start = 'dawn'
         self.world_start = start
+        # NUM_AGENTS: people in a new world. Unset: a band of 25 at the dawn (as
+        # hunter-gatherer bands often were: more minds for ideas, more people to
+        # find a partner among) and a village of 12 settlers.
+        self.num_agents = _int_env('NUM_AGENTS', 25 if start == 'dawn' else 12)
         level = os.getenv('LOG_LEVEL', 'INFO').strip().upper()
         if level not in ('DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'):
             print(f"⚠️  Invalid LOG_LEVEL={level!r}, using INFO")
