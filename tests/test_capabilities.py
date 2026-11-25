@@ -397,7 +397,9 @@ def test_partnership_needs_both_to_choose_and_either_can_end_it():
     # D courts C: interest on one side makes nobody a partner
     assert act(sim, d, "seek_romance", target=c).success
     assert d.partner_id is None and c.partner_id is None
-    assert not act(sim, d, "seek_romance", target=c).success  # still no answer
+    with quiet():                                             # still no answer: it's up to C
+        ok, why = romance.validate(d, Action(ActionType.SEEK_ROMANCE, target_agent=c.id))
+    assert not ok and "up to them" in why
 
     # C, on its own turn, courts D back: both chose it, but they've only just
     # met (bond 0.4), so they're getting to know each other

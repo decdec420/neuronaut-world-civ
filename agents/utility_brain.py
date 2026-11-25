@@ -207,7 +207,6 @@ MEMORY_WEIGHT = 0.8
 FRIEND_WEIGHT = 0.3
 ROMANCE_WEIGHT = 0.8     # how much being drawn to someone counts for romance
 ADMIRER_PULL = 1.0       # someone who courted you: answering them draws you more
-UNANSWERED_PENALTY = 0.5 # someone you courted who never answered: less
 FAMILY_WEIGHT = 1.0      # wanting a child (or not), and a partner who does
 CARE_WEIGHT = 1.5        # a child who needs looking after
 OTHERS_CHILD_BOND = 0.3  # someone else's child pulls less than your own
@@ -421,8 +420,8 @@ class UtilityBrain:
         """The partner (for time together, or to leave); for someone single, a
         person it has met and is free to court, picked by how drawn the agent
         is to them. Someone
-        who courted the agent pulls more; someone it courted who never answered
-        pulls less. Returns (agent id, pull)."""
+        who courted the agent pulls more; someone it courted who hasn't
+        answered yet is left to answer. Returns (agent id, pull)."""
         from life import family
         rm = self.sim.relationship_manager
         partner = family.partner_of(agent, self.sim._get_agent_by_id)
@@ -437,11 +436,11 @@ class UtilityBrain:
                 continue
             if not family.drawn_to(agent, other):
                 continue
+            if family.recently(other.admirers, agent.id, now) and not family.recently(agent.admirers, other.id, now):
+                continue    # courted, no answer yet: it's up to them
             pull = family.attraction(rm, agent, other)
             if family.recently(agent.admirers, other.id, now):
                 pull += ADMIRER_PULL * pull
-            elif family.recently(other.admirers, agent.id, now):
-                pull -= UNANSWERED_PENALTY
             people.append(other.id)
             pulls.append(pull)
         if not people:
