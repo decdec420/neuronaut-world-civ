@@ -80,6 +80,15 @@ def emergence_metrics(sim, initial_ids, actions, successes) -> dict:
     religion_stats = sim.religion.get_statistics()
     # Partnerships both agents chose (life/family.py), living ones now
     couples = sum(1 for a in alive if a.partner_id and any(b.id == a.partner_id for b in alive)) // 2
+    # ... and of those, how many could have children together now (life/family.py)
+    from life import family
+    by_id = {a.id: a for a in alive}
+    could = 0
+    for a in alive:
+        b = by_id.get(a.partner_id)
+        pair = family.mother_and_father(a, b) if b is not None and a.id < b.id else None
+        if pair and family.fertility(pair[0].age) > 0 and family.fertility(pair[1].age) > 0:
+            could += 1
     trades_ok = sum(n for action, n in successes.items()
                     if UNHANDLED_ACTION_FALLBACKS.get(action, action) == "trade")
     return {
@@ -91,6 +100,7 @@ def emergence_metrics(sim, initial_ids, actions, successes) -> dict:
         "innovations": len(sim.innovation_manager.innovations),
         "discoveries": len(sim.experimentation_engine.discoveries),
         "couples": couples,
+        "couples_could_have_children": could,
         "partnerships_formed": sim.life_events["partnered"],
         "separations": sim.life_events["separated"],
         "conceptions": sim.life_events["conceived"],

@@ -59,7 +59,8 @@ class FamilyHandler(ActionHandler):
             return partner
         now = self.context.current_tick
         free = [o for o in self.context.world.agents
-                if o.alive and o.id != agent.id and family.free_to_court(agent, o, self.relationships)[0]]
+                if o.alive and o.id != agent.id and family.drawn_to(agent, o)
+                and family.free_to_court(agent, o, self.relationships)[0]]
         if not free:
             return None
         return max(free, key=lambda o: family.attraction(self.relationships, agent, o)

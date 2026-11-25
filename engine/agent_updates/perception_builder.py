@@ -398,6 +398,7 @@ class PerceptionBuilder:
             'age': agent.age,
             'life_stage': agent.life_stage,
             'partner': partner.name if partner else None,
+            'drawn_to': family.ORIENTATION_WORDS.get(getattr(agent, 'orientation', None) or 'both'),
             'is_pregnant': agent.is_pregnant,
             'admirers': [],
             'courting': [],

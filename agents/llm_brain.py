@@ -805,7 +805,8 @@ Be bold! Think of something interesting to try.
 
         life = perceptions.get("life_info", {})
         if life:
-            heart = [f"Partner: {life['partner']}." if life.get("partner") else "You have no partner."]
+            heart = [f"Partner: {life['partner']}." if life.get("partner")
+                     else "You have no partner" + (f"; you are drawn to {life['drawn_to']}." if life.get("drawn_to") else ".")]
             if life.get("admirers"):
                 heart.append(f"Courting you: {', '.join(life['admirers'][:4])} (court them back; once you've grown close, you'll be partners).")
             if life.get("courting"):

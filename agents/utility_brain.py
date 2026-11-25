@@ -435,6 +435,8 @@ class UtilityBrain:
         for other in self.sim.world.agents:
             if not other.alive or other.id == agent.id or not family.free_to_court(agent, other, rm)[0]:
                 continue
+            if not family.drawn_to(agent, other):
+                continue
             pull = family.attraction(rm, agent, other)
             if family.recently(agent.admirers, other.id, now):
                 pull += ADMIRER_PULL * pull

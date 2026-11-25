@@ -453,6 +453,8 @@ class Agent:
         self.name = name or self._generate_name()  # THEN generate name based on gender
         Agent._used_names.add(self.name)
         self.age = age
+        from life.family import draw_orientation
+        self.orientation: str = draw_orientation()   # whom it's drawn to (life/family.py)
 
         # Psychology
         self.needs = NeedState.create_default()
