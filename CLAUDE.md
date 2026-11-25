@@ -128,39 +128,46 @@ python3 scripts/sim_check.py --start settlers # the other kind of world (default
 
 ## Known open issues (good places to start)
 
-Measured on 8 seeds after Round 7 (PR #6). Fixed in that round: worlds start
-at the dawn of time (`world/knowhow.py`; settlers is the other start);
-thirsty agents drink what they carry and gather close food and water (thirst
-0.29 -> 0.18, hunger 0.24 -> 0.12); courtship takes days, between people
-who've met, in person, and bonds grow with time together (they used to max
-out by day 8); the profile tells each agent's story (and no longer shows NaN);
-claimed land is refused before the turn is spent. Earlier rounds: commitments,
-`convert`, dashboard-only serving, tell_story dominance, lapsing faiths,
-clashing gatherings, ids from the seed, disaster rate, stale docs.
+Measured after Round 8 (PR #7): 100-day dawn runs, seeds 1-4. Fixed in that
+round: each person has an orientation, roughly as in human populations
+(attraction ignored gender, so half of all couples could never have
+children); the dawn begins with a band of 25; water comes from its lake or
+well, not a global pool sized for 12 (with 40 people it ran dry and people
+died beside full lakes); courting someone who hasn't answered is refused;
+perception looks only at nearby tiles (a third less CPU per tick); the
+Chronicle shows the living by generation. Alive on day 100: 25, 19, 17, 40
+(baseline 8, 2, 3, 2), up to 6 generations, every death old age but one
+wildfire. Round 7 started worlds at the dawn of time (`world/knowhow.py`).
 
-1. **Couples never separate, and the first pairings decide the future.**
-   Separations are 0 in every run: it's possible, but nothing makes a
-   partnership sour. Founders age past fertility in ~2 weeks (a sim day is a
-   life year), so whether a village has children rests on who paired with
-   whom in the first days. Settlers, seeds 1-4, 42 days: births 29 -> 13
-   after courtship took days (seed 3's only mixed couple was 45).
-2. **Liking ignores personality.** With enough contact every relationship
-   reaches 1.0 in about a week (social/relationships.py growth is paced but
-   not shaped by compatibility, and nothing fades without contact).
-3. **Content agents have little to do:** rest is ~39% of actions (night
+1. **Births don't quite replace old age.** Seeds 1-3 shrink slowly from day
+   40 (100 days: born 36/35/26, died 36/41/34); seed 4 grows (59 born).
+   Couples who could have children are 1-7 at a time; about a quarter of
+   people don't want children (life profile: agreeableness > 0.4), and
+   try_for_child seldom wins against time with a partner (utility_brain:
+   FAMILY_WEIGHT x family_priority ~0.5 vs ROMANCE_WEIGHT x liking ~0.8).
+   A year of life per sim day leaves a short fertile window. Measure on
+   100-day runs before changing any of it.
+2. **Couples never separate** (0 in every run) and **liking ignores
+   personality** (every bond reaches 1.0 with enough contact). Tried in
+   Round 8 and reverted: exchanges that go badly by fit and stress, couples'
+   quarrels, bonds that fade without contact: births 37 -> 19 over 8 dawn
+   seeds, still no separations (the diff is described in PR #7).
+3. **Content agents have little to do:** rest is ~40% of actions (night
    sleep is about 30%); much of the day goes to patrol and gatherings.
 4. **Resources have no maximum** (`world/simulation.py` Resource.regenerate):
-   food tiles grow +0.5 a tick forever. A balance change: measure first.
-5. **Dawn pacing is a first calibration** (`KnowHow.chance`): stone tools
-   ~week 1, fire ~2 weeks, farming in generation 2; some worlds go 26+ days
-   without shelter. Tune against long runs (`--ticks 6000 --start dawn`).
-6. **Far guests can't reach a gathering.** One may set off only two hours
-   early (LEAD_TICKS), and walking is a tile a tick, so anyone more than ~20
-   tiles away arrives after the end. Letting them set off in time lowered
-   attendance in every test. Measure before trying again.
-7. Faiths stay small (median 2 followers); disasters are large (radius 40-60
-   on a 100x100 map for major ones); the design PDFs in `docs/references/`
-   predate most of this.
+   food tiles grow +0.5 a tick forever; and since water stopped drawing on
+   the global pool, droughts no longer affect water (they only lowered that
+   pool's refill). Measure before changing.
+5. **Dawn pacing is a first calibration** (`KnowHow.chance`): with 25, most
+   worlds have stone tools, fire and shelter in the first 1-2 weeks, farming
+   by day 13-53, writing by day 15-64; knowledge is still lost sometimes
+   (writing on day 85 in seed 1).
+6. **Far guests can't reach a gathering** (LEAD_TICKS): anyone more than
+   ~20 tiles away arrives after the end. Letting them set off in time
+   lowered attendance in every test. Measure before trying again.
+7. A tick costs ~80 ms of CPU with 30-40 people (profile: the rule brain
+   weighing ~65 options per agent is the largest part). Faiths stay small;
+   disasters are large; the PDFs in `docs/references/` predate most of this.
 
 ## How to work
 
