@@ -97,6 +97,15 @@ Open your browser to:
 
 That's it! The world is now running with 12 agents (set `NUM_AGENTS` to change that).
 
+It starts at **the beginning of time**: the first people know only what comes
+with being human (finding food and water, resting, talking, love, play) and
+carry almost nothing. Fire, stone tools, shelter, farming, metal, writing and
+the rest have to be worked out by someone, and spread only when people watch
+or teach each other; when the last person who knew something dies, it's lost.
+The **Chronicle** tab sets each first beside when humans first did it. Set
+`WORLD_START=settlers` to start instead with a village that knows everything
+and carries supplies.
+
 ## Running It for Real
 
 ### With Docker

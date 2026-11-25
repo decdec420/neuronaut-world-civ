@@ -807,7 +807,7 @@ Be bold! Think of something interesting to try.
         if life:
             heart = [f"Partner: {life['partner']}." if life.get("partner") else "You have no partner."]
             if life.get("admirers"):
-                heart.append(f"Courting you: {', '.join(life['admirers'][:4])} (court them back to become partners).")
+                heart.append(f"Courting you: {', '.join(life['admirers'][:4])} (court them back; once you've grown close, you'll be partners).")
             if life.get("courting"):
                 heart.append(f"You courted {', '.join(life['courting'][:4])}; no answer yet.")
             if life.get("is_pregnant"):
@@ -823,6 +823,15 @@ Be bold! Think of something interesting to try.
                          + (f"; your parents are {' and '.join(life['parents'])}" if life.get("parents") else "")
                          + f". You can only: {', '.join(life['can_do'])}."]
             lines.append(" ".join(heart))
+
+        known = perceptions.get("knowhow")
+        if known is not None:
+            skills = ", ".join(known["knows"]) if known["knows"] else "nothing beyond what comes with being human"
+            line = (f"You know how to do: {skills}. What else is on the menu nobody has shown you: "
+                    "it fails until you work it out yourself (experimenting helps), see it done, or are taught.")
+            if known.get("could_teach"):
+                line += " You could teach " + "; ".join(f"{who} {what}" for who, what in known["could_teach"].items()) + "."
+            lines.append(line)
 
         heard = perceptions.get("news")
         if heard:

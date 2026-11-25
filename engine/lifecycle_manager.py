@@ -59,6 +59,11 @@ class LifecycleManager:
         child.location = Position(mother.location.x, mother.location.y)
         child.mother_id = mother.id
         child.father_id = father.id if father else None
+        child.generation = 1 + max(getattr(mother, 'generation', 1), getattr(father, 'generation', 1) if father else 0)
+        # Born knowing only what comes with being human; it learns from the
+        # people around it (world/knowhow.py). In a settlers' world, everything.
+        ledger = getattr(self.sim, 'knowhow', None)
+        child.knowhow = set() if ledger is not None and ledger.active else None
         child.life_stage = "baby"
         self.sim.world.agents.append(child)
 
@@ -98,7 +103,7 @@ class LifecycleManager:
         birth_story = self.sim.story_generator.generate_birth_story(
             child.name, mother.name, father_name, current_day,
             {'mother_id': mother.id, 'father_id': child.father_id,
-             'population': sum(1 for a in self.sim.world.agents if a.alive), 'generation': 2})
+             'population': sum(1 for a in self.sim.world.agents if a.alive), 'generation': child.generation})
         self.sim.story_feed.add_story(birth_story)
 
         from engine.achievements import AchievementType

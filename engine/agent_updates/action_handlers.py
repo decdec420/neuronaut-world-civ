@@ -22,6 +22,8 @@ from engine.psychology import NeedType, EmotionType
 from engine.storytelling import StoryGenerator, StoryType
 
 # A gathered harvest is eaten on the spot: hunger drops by amount / FOOD_PER_HUNGER.
+# Food or water this close is simply seen and used, before any remembered place
+NEAR_SOURCE = 10.0
 FOOD_PER_HUNGER = 8.0
 FOOD_PER_HARVEST = 12.0
 
@@ -315,6 +317,24 @@ class ActionHandlers:
                 'message': 'Awkward interaction'
             }
 
+    def _close_or_remembered(self, agent: Agent, kind: str, resource_type, current_tick: int):
+        """Where to get food or water: (resource, None) for some within
+        NEAR_SOURCE tiles, else (None, memory) for the closest place the agent
+        remembers finding it, else (the nearest it can perceive, or None, None).
+
+        Memory used to come first, and it was the most visited place wherever
+        the agent stood: with food on the next tile, agents walked half the
+        map back to an old spot (seed 1: 79% of gather_water turns, and most
+        gather_food turns, were walking)."""
+        close = self.sim.world.find_nearest_resource(agent.location, resource_type, radius=NEAR_SOURCE)
+        if close is not None:
+            return close, None
+        memory = self.sim.resource_memory.recall_resource(agent.id, kind, current_tick,
+                                                          max_age=500, near=agent.location)
+        if memory:
+            return None, memory
+        return self.sim.world.find_nearest_resource(agent.location, resource_type), None
+
     def handle_gather_food(
         self,
         agent: Agent,
@@ -322,15 +342,7 @@ class ActionHandlers:
         current_tick: int
     ) -> Dict:
         """Handle food gathering with intelligent pathfinding"""
-        # Check if agent remembers a food location
-        memory = self.sim.resource_memory.recall_resource(
-            agent.id,
-            'food',
-            current_tick,
-            max_age=500  # Remember for 500 ticks
-        )
-
-        # Find food resource (use memory if available, otherwise search)
+        resource, memory = self._close_or_remembered(agent, 'food', ResourceType.FOOD, current_tick)
         if memory:
             # Try to navigate to remembered location
             target_x, target_y = memory['x'], memory['y']
@@ -352,12 +364,6 @@ class ActionHandlers:
                     'emotional_impact': 0.05,
                     'message': f'Navigating to food source (distance: {distance:.1f})'
                 }
-        else:
-            # Search for food
-            resource = self.sim.world.find_nearest_resource(
-                agent.location,
-                ResourceType.FOOD
-            )
 
         if not resource or resource.quantity <= 0:
             return {
@@ -829,15 +835,7 @@ class ActionHandlers:
 
     def handle_gather_water(self, agent: Agent, current_tick: int) -> Dict:
         """Handle gathering water with intelligent pathfinding"""
-        # Check if agent remembers a water location
-        memory = self.sim.resource_memory.recall_resource(
-            agent.id,
-            'water',
-            current_tick,
-            max_age=500
-        )
-
-        # Find water resource (use memory if available, otherwise search)
+        resource, memory = self._close_or_remembered(agent, 'water', ResourceType.WATER, current_tick)
         if memory:
             # Try to navigate to remembered location
             target_x, target_y = memory['x'], memory['y']
@@ -859,12 +857,6 @@ class ActionHandlers:
                     'emotional_impact': 0.05,
                     'message': f'Navigating to water source (distance: {distance:.1f})'
                 }
-        else:
-            # Search for water
-            resource = self.sim.world.find_nearest_resource(
-                agent.location,
-                ResourceType.WATER
-            )
 
         if not resource or resource.quantity <= 0:
             # No nearby water source - try resource pools

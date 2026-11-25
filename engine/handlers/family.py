@@ -3,9 +3,12 @@ Romance and partnership, by consent.
 
 SEEK_ROMANCE (flirt, court, propose and marry run it too):
   - toward your partner: time together; both feel it, the bond grows
-  - toward someone free: you court them. That alone makes nobody a partner.
-    If they court you back on their own turn while you're still remembered
-    (life/family.py, INTEREST_MEMORY_TICKS), you become partners.
+  - toward someone free whom you have met: you court them. That alone makes
+    nobody a partner. If they court you too, on their own turn, while you're
+    still remembered (life/family.py, INTEREST_MEMORY_TICKS), you're getting
+    to know each other: every visit deepens the bond, and once it's deep
+    enough (PARTNER_BOND) you become partners.
+  Both are done in person: farther than COURT_REACH, you walk to them first.
 SEPARATE: either partner can end the partnership on their own.
 TRY_FOR_CHILD: say you want a child with your partner. Only once both have
   said so (each on its own turn, within INTEREST_MEMORY_TICKS) is there a
@@ -48,7 +51,7 @@ class FamilyHandler(ActionHandler):
 
     def _romance_target(self, agent, action) -> Optional['Agent']:
         """The named person; else the partner; else whoever the agent is most
-        drawn to among those free to court (admirers first)."""
+        drawn to among those it has met and is free to court (admirers first)."""
         if action.target_agent:
             return self.context.get_agent_by_id(action.target_agent)
         partner = self._partner(agent)
@@ -56,7 +59,7 @@ class FamilyHandler(ActionHandler):
             return partner
         now = self.context.current_tick
         free = [o for o in self.context.world.agents
-                if o.alive and o.id != agent.id and family.free_to_court(agent, o)[0]]
+                if o.alive and o.id != agent.id and family.free_to_court(agent, o, self.relationships)[0]]
         if not free:
             return None
         return max(free, key=lambda o: family.attraction(self.relationships, agent, o)
@@ -116,8 +119,8 @@ class FamilyHandler(ActionHandler):
             return True, ""
         target = self._romance_target(agent, action)
         if target is None:
-            return False, "Nobody free to court" if family.is_adult(agent) else "Too young for romance"
-        return family.free_to_court(agent, target)
+            return False, "Nobody you know is free to court" if family.is_adult(agent) else "Too young for romance"
+        return family.free_to_court(agent, target, self.relationships)
 
     def _can_try_for_child(self, agent) -> tuple[bool, str]:
         if not family.is_adult(agent):
@@ -153,6 +156,15 @@ class FamilyHandler(ActionHandler):
             return self._care_for(agent, child)
         target = self._romance_target(agent, action)
         action.target_agent = target.id
+        distance = agent.location.distance_to(target.location)
+        if distance > family.COURT_REACH:
+            # In person: go to them first (a long walk takes a few turns)
+            works = self.context.get_system('infrastructure')
+            works.step_toward(agent, self.context.get_system('pathfinder'),
+                              target.location.x, target.location.y, self.context.current_tick)
+            return ActionResult(success=True, emotional_impact=0.05,
+                                message=f"On your way to see {target.name}",
+                                metadata={'underway': True, 'target': target.id})
         if agent.partner_id == target.id:
             return self._time_together(agent, target)
         return self._court(agent, target)
@@ -178,11 +190,23 @@ class FamilyHandler(ActionHandler):
         family.forget_old(target.admirers, now)
 
         if family.recently(agent.admirers, target.id, now):
-            # They courted us and we answer: both chose this
-            self._form_partnership(agent, target)
-            return ActionResult(success=True, emotional_impact=0.9,
-                                message=f"You and {target.name} are now partners",
-                                metadata={'partnership_formed': True, 'partner_id': target.id})
+            # They court us and we court them: both chose this
+            if family.liking(self.relationships, agent, target) >= family.PARTNER_BOND:
+                self._form_partnership(agent, target)
+                return ActionResult(success=True, emotional_impact=0.9,
+                                    message=f"You and {target.name} are now partners",
+                                    metadata={'partnership_formed': True, 'partner_id': target.id})
+            # Still getting to know each other: the visit deepens the bond
+            # (as time together does: social/relationships.py BOND_SPACING)
+            self.relationships.update_relationship(agent.id, target.id, 'romance', True)
+            target.admirers[agent.id] = now
+            for who in (agent, target):
+                who.needs.satisfy_need(NeedType.ROMANCE, 0.2)
+            agent.emotions.trigger_emotion(EmotionType.JOY, 0.2)
+            target.emotions.trigger_emotion(EmotionType.JOY, 0.1)
+            return ActionResult(success=True, emotional_impact=0.4,
+                                message=f"You and {target.name} are getting to know each other",
+                                metadata={'courting': target.id, 'mutual': True})
 
         first_time = not family.recently(target.admirers, agent.id, now)
         target.admirers[agent.id] = now

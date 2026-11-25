@@ -428,7 +428,12 @@ async def get_agent_full_profile(agent_id: str):
     if not profile:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    return profile.to_dict()
+    out = profile.to_dict()
+    agent = simulation._get_agent_by_id(agent_id)
+    if agent is not None:
+        from agents.profiles import agent_story
+        out['story'] = agent_story(simulation, agent)   # doing, family, know-how, memories
+    return out
 
 
 @app.get("/events")

@@ -10,7 +10,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from test_capabilities import act  # noqa: E402
+from test_capabilities import act, court_until_partners  # noqa: E402
 from test_reachability import make_world, quiet  # noqa: E402
 
 
@@ -69,8 +69,7 @@ def test_partners_share_a_home_and_a_collapsed_home_is_gone():
     c, d = roles["sick"], roles["neighbour"]
     hut = _hut(sim, c)
     c.home_id = hut.id
-    act(sim, d, "seek_romance", target=c)
-    act(sim, c, "seek_romance", target=d)
+    court_until_partners(sim, d, c)
     assert d.home_id == hut.id  # moved in with c
     hut.collapsed = True
     from life import homes

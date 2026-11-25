@@ -485,13 +485,14 @@ class World:
     def find_nearest_resource(
         self,
         position: Position,
-        resource_type: ResourceType
+        resource_type: ResourceType,
+        radius: float = 50.0
     ) -> Optional[Resource]:
-        """Find nearest resource of type"""
+        """Find nearest resource of type, within radius"""
         nearest = None
         min_dist = float('inf')
 
-        resources = self.map.get_resources_near(position, radius=50.0)
+        resources = self.map.get_resources_near(position, radius=radius)
 
         for resource in resources:
             if resource.resource_type == resource_type and resource.quantity > 0:

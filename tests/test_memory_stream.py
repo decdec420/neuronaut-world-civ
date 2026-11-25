@@ -43,11 +43,10 @@ def test_the_stream_is_bounded_and_repeats_are_one_memory():
 
 def test_events_and_own_actions_become_memories():
     from test_reachability import make_world, quiet
-    from test_capabilities import act
+    from test_capabilities import act, court_until_partners
     sim, roles = make_world()
     c, d = roles["sick"], roles["neighbour"]
-    act(sim, d, "seek_romance", target=c)
-    act(sim, c, "seek_romance", target=d)  # they become partners: an event both remember
+    court_until_partners(sim, d, c)  # they become partners: an event both remember
     assert any("partners" in r.text for r in c.memory_stream.records)
     assert any("partners" in r.text for r in d.memory_stream.records)
 

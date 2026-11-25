@@ -75,6 +75,7 @@ class PerceptionBuilder:
         perceptions = self._add_energy_info(agent, perceptions)
         perceptions = self._add_materials_info(agent, perceptions)
         perceptions = self._add_life_info(agent, perceptions)
+        perceptions = self._add_knowhow_info(agent, perceptions)
         perceptions = self._add_economic_info(agent, perceptions)
         perceptions = self._add_religious_info(agent, perceptions)
         perceptions = self._add_strategic_info(agent, perceptions)
@@ -361,6 +362,26 @@ class PerceptionBuilder:
         perceptions['scarcity_info'] = scarcity_info
         return perceptions
 
+    def _add_knowhow_info(self, agent, perceptions: Dict) -> Dict:
+        """In a world where know-how has to be learned (world/knowhow.py):
+        what the agent knows how to do, and what it could show people near it
+        who don't know yet. Nothing about know-how nobody has worked out."""
+        if not self.sim.knowhow.active or getattr(agent, 'knowhow', None) is None:
+            return perceptions
+        from world.knowhow import KNOWHOW
+        could_teach = {}
+        for other in self.sim.world.agents:
+            if other is agent or not other.alive or agent.location.distance_to(other.location) > 15:
+                continue
+            lesson = self.sim.knowhow.lesson(agent, other)
+            if lesson is not None:
+                could_teach[other.name] = KNOWHOW[lesson].label
+        perceptions['knowhow'] = {
+            'knows': [KNOWHOW[n].label for n in sorted(agent.knowhow)],
+            'could_teach': dict(list(sorted(could_teach.items()))[:4]),
+        }
+        return perceptions
+
     def _add_life_info(self, agent, perceptions: Dict) -> Dict:
         """Partner, courtships and family, as names the agent would know.
 
@@ -384,7 +405,8 @@ class PerceptionBuilder:
         for other in self.sim.world.agents:
             if not other.alive or other.id == agent.id:
                 continue
-            if family.recently(agent.admirers, other.id, now) and family.free_to_court(agent, other)[0]:
+            if family.recently(agent.admirers, other.id, now) and \
+                    family.free_to_court(agent, other, self.sim.relationship_manager)[0]:
                 life_info['admirers'].append(other.name)
             if family.recently(other.admirers, agent.id, now):
                 life_info['courting'].append(other.name)

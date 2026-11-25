@@ -139,6 +139,8 @@ def make_world(seed: int = 0, use_llm: bool = False):
         rel_mgr.create_relationship(a.id, b.id, RelationshipType.ROMANCE, 0.9)
         rel_mgr.create_relationship(a.id, d.id, RelationshipType.FRIENDSHIP, 0.8)
         rel_mgr.create_relationship(a.id, c.id, RelationshipType.FRIENDSHIP, 0.8)
+        # C and D are neighbours who have met (courting needs that: life/family.py)
+        rel_mgr.create_relationship(c.id, d.id, RelationshipType.FRIENDSHIP, 0.4)
 
     # A and B court each other, so they are partners: both chose it
     from agents.agent import Action, ActionType

@@ -65,6 +65,16 @@ class Config:
         except ValueError:
             print(f"⚠️  Invalid WORLD_SEED={raw_seed!r}, starting an unseeded world")
             self.world_seed = None
+        # WORLD_START: "dawn", the beginning of time: the first people know only
+        # what comes with being human and carry almost nothing; everything else
+        # (fire, tools, shelter, farming, metal, writing...) has to be worked
+        # out and passed on (world/knowhow.py). "settlers": everything is known
+        # from the start and everyone carries supplies.
+        start = os.getenv('WORLD_START', 'dawn').strip().lower()
+        if start not in ('dawn', 'settlers'):
+            print(f"⚠️  Invalid WORLD_START={start!r} (dawn or settlers), using dawn")
+            start = 'dawn'
+        self.world_start = start
         level = os.getenv('LOG_LEVEL', 'INFO').strip().upper()
         if level not in ('DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'):
             print(f"⚠️  Invalid LOG_LEVEL={level!r}, using INFO")
