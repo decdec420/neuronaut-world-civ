@@ -57,6 +57,8 @@ class Story:
     importance: int  # 1-5, how memorable
     tags: List[str] = field(default_factory=list)
     timestamp: datetime = field(default_factory=datetime.now)
+    tick: Optional[int] = None          # sim time it was told
+    source: Optional[str] = None        # the memory it was told from
 
 
 class StoryGenerator:
@@ -363,19 +365,23 @@ class StoryGenerator:
             ],
         }
         
+        name = context.get('name') or achievement.replace('_', ' ').title()
+        what = (context.get('description') or '').strip()
+        built = f" with {context['building']}" if context.get('building') else ""
         narratives = achievement_narratives.get(achievement, [
-            f"{agent_name} achieved something remarkable on Day {day}: {achievement}. "
-            f"This moment will be remembered."
+            f"Day {day}: {agent_name}{built}: {name}." + (f" {what}" if what else "")
         ])
-        
+        personal = context.get('personal', False)
+
         return Story(
             story_type=StoryType.ACHIEVEMENT,
-            title=f"🏆 ACHIEVEMENT UNLOCKED: {achievement.replace('_', ' ').title()}",
+            title=f"🏆 {agent_name}: {name}",
             narrative=random.choice(narratives),
             tone=StoryTone.EPIC,
             agent_ids=[context.get('agent_id', '')],
             day=day,
-            importance=5 if "first" in achievement else 3,
+            # a first for the whole world is epic; someone's own first is not
+            importance=3 if personal else (5 if "first" in achievement else 3),
             tags=["achievement", achievement, "milestone"]
         )
 
@@ -411,6 +417,98 @@ class StoryGenerator:
             importance=3,
             tags=["weekly", "summary", "recap"]
         )
+
+
+# What memories each kind of story is told from (agents/memory_stream.py text)
+_STORY_WORDS = {
+    StoryType.WARNING: ('died', 'death', 'starv', 'hurt', 'injur', 'flood', 'quake', 'storm', 'wildfire',
+                        'lost', 'separated', 'collapsed', 'sick', 'drought', 'fight', 'killed', 'burn', 'failed'),
+    StoryType.LEGEND: ('worked out', 'invented', 'built', 'first', 'founded', 'discovered', 'won'),
+    StoryType.SONG: ('gathering', 'born', 'partner', 'came', 'feast', 'together', 'celebrat', 'child', 'married'),
+    StoryType.MYTH: ('flood', 'quake', 'storm', 'rain', 'drought', 'wildfire', 'fire', 'lake', 'disaster', 'sky', 'died'),
+}
+_MYTH_CAUSES = ("the spirits of the land were restless", "the sky grew jealous of the people",
+                "someone forgot to thank the earth", "the old ones beneath the hills turned in their sleep",
+                "the water remembered a wrong done to it long ago")
+_ICONS = {StoryType.WARNING: '⚠️', StoryType.LEGEND: '⚔️', StoryType.SONG: '🎵', StoryType.MYTH: '🌟',
+          StoryType.TEACHING: '📚'}
+
+
+def _clean(text: str) -> str:
+    """A memory as it would be said aloud: no leading emoji, no trailing tally."""
+    text = text.strip()
+    while text and not text[0].isalnum():
+        text = text[1:].lstrip()
+    return text.rstrip('.')
+
+
+def story_from_memory(agent, story_type: 'StoryType', tick: int, ledger=None) -> Optional[Story]:
+    """A story the agent tells from its own memories (or, for a teaching,
+    from what it knows how to do and how it learned it). None when it has
+    nothing to tell of that kind: stories are never made up from nothing.
+
+    Stories used to be picked from fixed templates ("I once saw someone
+    wander too far... they never returned"), whatever had happened."""
+    name = agent.name
+    day = tick // 144 + 1
+    importance = 3 + int(agent.personality.get_trait('openness') * 2) if hasattr(agent, 'personality') else 3
+    if story_type == StoryType.TEACHING:
+        known = sorted(getattr(agent, 'knowhow', None) or ())
+        if not known or ledger is None:
+            return None
+        from world.knowhow import KNOWHOW
+        learned = {}
+        for entry in getattr(ledger, 'log', ()):
+            if entry[2] == agent.id:
+                learned[entry[1]] = entry
+        # what it learned most recently that isn't innate, else anything it knows
+        pick = max((k for k in known if k in learned), key=lambda k: learned[k][0], default=None)
+        if pick is None or pick not in KNOWHOW:
+            return None
+        _, _, _, how, teacher = learned[pick]
+        label = KNOWHOW[pick].label
+        whence = {'taught': f"as {teacher_name(ledger, teacher)} taught it to them", 'watched': "as they learned it by watching",
+                  'insight': "as they worked it out themselves"}.get(how, "as they came to know it")
+        return Story(story_type, f"📚 Teaching: {label}, from {name}",
+                     f"{name} passes on {label}, {whence}.", StoryTone.INSPIRING, [agent.id], day, importance,
+                     ["agent_created", "culture", "teaching"], tick=tick, source=f"knows {label}")
+    stream = getattr(agent, 'memory_stream', None)
+    words = _STORY_WORDS.get(story_type)
+    if stream is None or not words:
+        return None
+    candidates = [r for r in stream.records if r.kind != 'plan' and any(w in r.text.lower() for w in words)]
+    if not candidates:
+        return None
+    memory = max(candidates, key=lambda r: (r.importance, r.tick))
+    said = _clean(memory.text)
+    when = f"day {memory.tick // 144 + 1}"
+    heard = said.split(' told me: ', 1)
+    told_by = heard[0] if len(heard) == 2 else None
+    what = heard[1] if told_by else said
+    what = _clean(what)
+    if story_type == StoryType.WARNING:
+        title, tone = f"⚠️ Warning: what {name} {'heard' if told_by else 'saw'}", StoryTone.TRAGIC
+        text = (f"{name} passes on, as a warning, what {told_by} told them on {when}: “{what}.” Take care."
+                if told_by else f"{name} tells, as a warning, of {when}: “{what}.” Take care.")
+    elif story_type == StoryType.LEGEND:
+        title, tone = f"⚔️ Legend, told by {name}", StoryTone.EPIC
+        text = (f"{name} tells, as {told_by} told it, how {what[:1].lower() + what[1:]}. Each telling makes it a little grander."
+                if told_by else f"{name} tells how, on {when}, {what[:1].lower() + what[1:]}. Each telling makes it a little grander.")
+    elif story_type == StoryType.SONG:
+        title, tone = f"🎵 Song: {name} sings of {when}", StoryTone.ROMANTIC
+        text = f"{name} makes a song of {when}: “{what}.”"
+    else:
+        cause = _MYTH_CAUSES[sum(map(ord, agent.id + str(memory.tick))) % len(_MYTH_CAUSES)]
+        title, tone = f"🌟 Myth, told by {name}", StoryTone.DRAMATIC
+        text = f"Of {when} (“{what}”), {name} says it happened because {cause}."
+    return Story(story_type, title, text, tone, [agent.id], day, importance,
+                 ["agent_created", "culture", story_type.value], tick=tick, source=memory.text)
+
+
+def teacher_name(ledger, teacher_id) -> str:
+    sim = getattr(ledger, 'sim', None)
+    other = sim._get_agent_by_id(teacher_id) if sim is not None and teacher_id else None
+    return other.name if other is not None else "someone"
 
 
 class StoryFeed:
@@ -453,7 +551,9 @@ class StoryFeed:
                     'day': s.day,
                     'importance': s.importance,
                     'tags': s.tags,
-                    'timestamp': s.timestamp.isoformat()
+                    'timestamp': s.timestamp.isoformat(),
+                    'tellers': list(s.agent_ids),
+                    'source': getattr(s, 'source', None),
                 }
                 for s in self.get_recent_stories(20)
             ],

@@ -2456,7 +2456,7 @@
                         📖 The Chronicles
                     </h2>
                     <p style="color: #94a3b8; font-size: 14px; margin: 0;">
-                        Every moment becomes a legend. Agents CREATE cultural stories - myths, legends, teachings emerge from their experiences!
+                        Stories people tell, each from something the teller remembers: warnings from losses they saw or heard of, legends from others' firsts, songs from good days, teachings from what they know and who taught them, myths that explain what they witnessed. Someone with nothing of that kind to tell tells nothing.
                     </p>
                 </div>
 
@@ -5831,7 +5831,7 @@
                 // Combine all stories (recent and epic) and remove duplicates
                 const allStoriesMap = new Map();
                 [...(data.recent_stories || []), ...(data.epic_stories || [])].forEach(story => {
-                    allStoriesMap.set(story.title + story.day, story);  // Use title+day as unique key
+                    allStoriesMap.set(story.title + story.day + (story.narrative || ''), story);
                 });
                 window.allStories = Array.from(allStoriesMap.values());
 
@@ -5941,7 +5941,7 @@
                         <div style="background: ${isEpic ? 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)' : '#0f172a'}; border: 2px solid ${borderColor}; border-radius: 12px; padding: 18px; margin-bottom: 14px;">
                             <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px; gap: 12px;">
                                 <div style="font-weight: ${isEpic ? '700' : '600'}; color: ${isEpic ? '#f59e0b' : '#cbd5e1'}; font-size: ${isEpic ? '17px' : '15px'}; flex: 1;">
-                                    ${story.title}
+                                    ${escHtml(story.title)}
                                 </div>
                                 <div style="display: flex; gap: 6px; flex-shrink: 0;">
                                     <div style="font-size: 10px; padding: 4px 8px; background: ${style.bg}; color: ${style.color}; border-radius: 6px; font-weight: 600;">
@@ -5951,10 +5951,12 @@
                                 </div>
                             </div>
                             <div style="font-size: ${isEpic ? '14px' : '13px'}; color: ${isEpic ? '#e2e8f0' : '#94a3b8'}; line-height: 1.6; margin-bottom: 12px; white-space: pre-wrap;">
-                                ${story.narrative}
+                                ${escHtml(story.narrative)}
                             </div>
+                            ${story.source ? `<div style="font-size: 11px; color: #64748b; margin: -4px 0 10px; font-style: italic;">From their memory: ${escHtml(story.source)}</div>` : ''}
                             <div style="display: flex; gap: 12px; font-size: 11px; color: #64748b; flex-wrap: wrap;">
-                                <span>📅 Day ${story.day}</span>
+                                ${(story.tellers || []).map(id => { const a = (window.allAgents || []).find(x => x.id === id); return a ? `<span>🗣️ ${dlink('agent', id, a.name)}</span>` : ''; }).join('')}
+                                <span>📅 Day ${escHtml(story.day)}</span>
                                 <span>🎭 ${story.tone}</span>
                                 <span>⭐ ${story.importance}/5</span>
                                 ${story.tags && story.tags.length > 0 ? `<span>🏷️ ${story.tags.slice(0, 3).join(', ')}</span>` : ''}
@@ -6007,7 +6009,10 @@
 
                 // Render agent achievements
                 const agentContainer = document.getElementById('agent-achievements-list');
-                const agentAchList = Object.entries(agentAchievements);
+                // Only people who have earned something, most first
+                const agentAchList = Object.entries(agentAchievements)
+                    .filter(([, a]) => (a.total_count || 0) > 0)
+                    .sort((x, y) => y[1].total_count - x[1].total_count || String(x[1].agent_name).localeCompare(y[1].agent_name));
 
                 if (agentAchList.length === 0) {
                     agentContainer.innerHTML = '<div style="text-align: center; color: #64748b; padding: 20px;">No agent achievements yet</div>';
@@ -6017,7 +6022,7 @@
                     agentContainer.innerHTML = agentAchList.map(([agentId, agentData]) => `
                         <div style="background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 16px; margin-bottom: 12px;">
                             <div style="font-weight: 600; color: #cbd5e1; font-size: 14px; margin-bottom: 12px;">
-                                👤 ${agentData.agent_name} - ${agentData.total_count} Achievement${agentData.total_count !== 1 ? 's' : ''}
+                                👤 ${dlink('agent', agentId, agentData.agent_name)} - ${agentData.total_count} Achievement${agentData.total_count !== 1 ? 's' : ''}
                             </div>
                             <div style="display: grid; gap: 8px;">
                                 ${agentData.achievements.map(ach => `
