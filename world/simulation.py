@@ -459,17 +459,24 @@ class World:
 
     def get_state(self) -> Dict:
         """Get current world state for agents to perceive"""
-        # Collect all resources
+        # Collect all resources, and the same ones by tile (their place in the
+        # list kept) so an agent can look only at what's near it
+        # (Agent.perceive: scanning every resource for every agent each tick
+        # was half of all tick time with a band of 30)
         all_resources = []
+        by_tile: Dict[Tuple[int, int], List[Tuple[int, Dict]]] = {}
         for tile in self.map.tiles.values():
             for resource in tile.resources:
                 if resource.quantity > 0:
-                    all_resources.append({
+                    entry = {
                         'id': resource.id,
                         'type': resource.resource_type.value,
                         'location': resource.location,
                         'quantity': resource.quantity,
-                    })
+                    }
+                    key = (math.floor(resource.location.x), math.floor(resource.location.y))
+                    by_tile.setdefault(key, []).append((len(all_resources), entry))
+                    all_resources.append(entry)
 
         return {
             'time_of_day': self.time.hour,
@@ -479,6 +486,7 @@ class World:
             'tick': self.time.current_tick,
             'agents': self.agents,
             'resources': all_resources,
+            'resources_by_tile': by_tile,
             'buildings': list(self.buildings.values()),
         }
 
@@ -521,6 +529,14 @@ class World:
                     # lost food whenever the tile held less (about a third of it).
                     resource_type_name = resource.resource_type.value
                     tile_harvested = resource.harvest(amount)
+                    if resource.resource_type == ResourceType.WATER:
+                        # A lake, river or well is the water: it holds its own
+                        # amount and refills. The global water pool was sized
+                        # for 12 people ("12 agents drink ~8/tick"); with a band
+                        # of 25 growing to 40 it ran dry, every attempt to fetch
+                        # water failed beside full lakes, and people who carried
+                        # none died (seed 3: 10,135 failed fetches by day 32)
+                        return tile_harvested
                     available_in_pool = self.harvest_from_pool(resource_type_name, tile_harvested)
 
                     # Return the LESSER of the two (global pool constrains)

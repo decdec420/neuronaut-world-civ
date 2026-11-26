@@ -25,6 +25,7 @@ Actions no know-how unlocks are innate. Children start knowing nothing more
 than that, and learn from the people around them.
 """
 
+import collections
 import random
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
@@ -279,4 +280,8 @@ class KnowHowLedger:
             'not_yet': [{'knowhow': k.name, 'label': k.label, 'humans': k.humans}
                         for k in KNOWHOW.values() if k.name not in now],
             'counts': dict(self.counts),
+            # people alive now, by generation (founders are 1)
+            'generations': {str(g): n for g, n in sorted(collections.Counter(
+                getattr(a, 'generation', 1) for a in alive).items())},
+            'day': self.sim.world.time.current_tick // TICKS_PER_DAY + 1,
         }

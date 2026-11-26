@@ -19,6 +19,7 @@ explore and make things. Anyone grown can look after a child
 pull most.
 """
 
+import random
 from typing import Dict, Optional, Tuple
 
 ADULT_AGE = 16
@@ -136,9 +137,41 @@ def liking(relationships, agent, other) -> float:
     return -rel.strength if rel.relationship_type.value == "rivalry" else rel.strength
 
 
+# Whom someone is drawn to, drawn once for each person, roughly as population
+# surveys report: most adults attracted to the other sex, a few percent to both,
+# a few to the same sex. Attraction used to ignore gender for everyone, so in a
+# band of 12 about half the couples could never have children (26 of 48 couples
+# over 8 worlds were same-sex) and dawn villages died out.
+ORIENTATIONS = (("other", 0.90), ("both", 0.06), ("same", 0.04))
+ORIENTATION_WORDS = {"other": "the other sex", "same": "your own sex", "both": "both men and women"}
+
+
+def draw_orientation() -> str:
+    roll, total = random.random(), 0.0
+    for name, share in ORIENTATIONS:
+        total += share
+        if roll < total:
+            return name
+    return ORIENTATIONS[-1][0]
+
+
+def drawn_to(agent, other) -> bool:
+    """Whether agent is drawn to someone of other's gender. Someone without an
+    orientation (saved before there was one) is drawn to anyone, as everyone
+    was then; so is anyone with or toward a non-binary person."""
+    orientation = getattr(agent, 'orientation', None)
+    if orientation in (None, "both") or "non_binary" in (agent.gender.value, other.gender.value):
+        return True
+    same = agent.gender == other.gender
+    return same if orientation == "same" else not same
+
+
 def attraction(relationships, agent, other) -> float:
-    """0-1: how drawn `agent` is to `other`: how well they'd get on, its own
-    romantic drive, and how much it already likes them."""
+    """0-1: how drawn `agent` is to `other`: whether it is drawn to their sex at
+    all, how well they'd get on, its own romantic drive, and how much it
+    already likes them."""
+    if not drawn_to(agent, other):
+        return 0.0
     compatibility = agent.personality.compatibility_with(other.personality)
     value = 0.4 * compatibility + 0.3 * agent.personality.sexuality + 0.3 * max(0.0, liking(relationships, agent, other))
     return max(0.0, min(1.0, value))

@@ -59,7 +59,8 @@ class FamilyHandler(ActionHandler):
             return partner
         now = self.context.current_tick
         free = [o for o in self.context.world.agents
-                if o.alive and o.id != agent.id and family.free_to_court(agent, o, self.relationships)[0]]
+                if o.alive and o.id != agent.id and family.drawn_to(agent, o)
+                and family.free_to_court(agent, o, self.relationships)[0]]
         if not free:
             return None
         return max(free, key=lambda o: family.attraction(self.relationships, agent, o)
@@ -120,6 +121,12 @@ class FamilyHandler(ActionHandler):
         target = self._romance_target(agent, action)
         if target is None:
             return False, "Nobody you know is free to court" if family.is_adult(agent) else "Too young for romance"
+        now = self.context.current_tick
+        if (agent.partner_id != target.id and family.recently(target.admirers, agent.id, now)
+                and not family.recently(agent.admirers, target.id, now)):
+            # Courting again before they answer changes nothing: one agent
+            # courted someone who never answered 544 times in 1200 ticks
+            return False, f"You've let {target.name} know you're interested; it's up to them now"
         return family.free_to_court(agent, target, self.relationships)
 
     def _can_try_for_child(self, agent) -> tuple[bool, str]:

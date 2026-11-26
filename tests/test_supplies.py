@@ -65,3 +65,21 @@ def test_food_close_by_is_gathered_before_walking_to_a_remembered_place():
     assert result["success"] and "Gathered" in result["message"], result
     assert agent.inventory.items.get("food", 0) > before
     assert (agent.location.x, agent.location.y) == (50.0, 50.0)   # it didn't set off for the old place
+
+
+def test_water_comes_from_the_lake_not_a_global_pool():
+    """The world's water pool was sized for 12 people; with a bigger band it
+    ran dry and fetching water failed beside full lakes, so people carrying
+    none died (world/simulation.py harvest_resource)."""
+    from agents.agent import Position
+    from world.simulation import ResourceType
+    sim, roles = make_world()
+    agent, tick = roles["actor"], sim.world.time.current_tick
+    sim.world.resource_pools["water"] = 0.0                   # the global pool is dry
+    lake = next(r for t in sim.world.map.tiles.values() for r in t.resources
+                if r.resource_type == ResourceType.WATER and r.quantity > 100)
+    agent.location = Position(lake.location.x, lake.location.y)
+    agent.inventory.items.pop("water", None)
+    result = sim.interaction_handler.handle_gather_water(agent, tick)
+    assert result["success"] and "Gathered" in result["message"], result
+    assert agent.inventory.items.get("water", 0) > 0
