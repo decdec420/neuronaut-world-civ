@@ -914,28 +914,34 @@ async def get_buildings():
     if not simulation:
         raise HTTPException(status_code=503, detail="Simulation not running")
 
-    # Get buildings from the dynamic building system (completed buildings only)
+    # Every building: finished, going up, and fallen (the tab counts each);
+    # condition is 0-1, and age is in sim days (built_date is wall-clock)
+    now = simulation.world.time.current_tick
+    homes = {}
+    for a in simulation.world.agents:
+        if a.alive and getattr(a, 'home_id', None):
+            homes.setdefault(a.home_id, []).append({'id': a.id, 'name': a.name})
     buildings = []
     for building in simulation.dynamic_building_system.buildings.values():
-        if building.is_complete and not building.collapsed:
-            # Get design to find category and purposes
-            design = simulation.dynamic_building_system.designs.get(building.design_id)
-            category = design.category if design else "Unknown"
-            purposes = design.intended_purposes if design else []
-
-            buildings.append({
-                'id': building.id,
-                'name': building.name,
-                'category': category,  # NEW!
-                'purposes': purposes,  # NEW!
-                'location': {'x': building.location[0], 'y': building.location[1]},
-                'builders': list(building.builder_ids),
-                'materials_used': building.materials_used,
-                'built_date': building.built_date.isoformat() if building.built_date else None,
-                'is_complete': building.is_complete,
-                'construction_progress': building.construction_progress,
-                'collapsed': building.collapsed
-            })
+        design = simulation.dynamic_building_system.designs.get(building.design_id)
+        built = getattr(building, 'built_tick', None)
+        buildings.append({
+            'id': building.id,
+            'name': building.name,
+            'category': design.category if design else "Unknown",
+            'purposes': design.intended_purposes if design else [],
+            'location': {'x': building.location[0], 'y': building.location[1]},
+            'builders': [{'id': i, 'name': _name_of(i)} for i in sorted(building.builder_ids)],
+            'residents': homes.get(building.id, []),
+            'materials_used': building.materials_used,
+            'built_day': built // 144 + 1 if built is not None else None,
+            'age_days': (now - built) // 144 if built is not None else None,
+            'durability': round(max(0.0, min(1.0, building.durability)), 3),
+            'shelter_value': building.shelter_value,
+            'is_complete': building.is_complete,
+            'construction_progress': building.construction_progress,
+            'collapsed': building.collapsed
+        })
 
     return {"buildings": buildings, "total": len(buildings)}
 

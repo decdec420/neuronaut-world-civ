@@ -5388,9 +5388,10 @@
                 const primaryPurpose = building.purposes && building.purposes.length > 0 ? building.purposes[0] : 'shelter';
                 const style = purposeStyles[primaryPurpose] || purposeStyles['shelter'];
 
-                // Calculate age of building
-                const ageInDays = building.built_date ?
-                    Math.floor((new Date() - new Date(building.built_date)) / (1000 * 60 * 60 * 24)) : 0;
+                // Age in sim days; condition 0-1
+                const ageText = building.age_days == null ? (building.is_complete ? 'built before dates were kept' : 'not finished')
+                    : building.age_days === 0 ? `built today (day ${building.built_day})` : `${building.age_days} day${building.age_days === 1 ? '' : 's'} old`;
+                const condition = building.durability ?? 1;
 
                 // Status color
                 let statusColor = style.color;
@@ -5417,8 +5418,8 @@
                          data-purpose="${primaryPurpose}"
                          data-collapsed="${building.collapsed}"
                          data-complete="${building.is_complete}"
-                         data-building-id="${building.id}"
-                         onclick="openBuildingDetail('${building.id}')"
+                         data-building-id="${escHtml(building.id)}"
+                         ${openAttr('building', building.id)}
                          style="background: linear-gradient(135deg, ${style.bg} 0%, #0f172a 100%);
                                 border: 2px solid ${style.border};
                                 border-radius: 12px;
@@ -5433,7 +5434,7 @@
                         <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
                             <div style="flex: 1;">
                                 <div style="font-size: 16px; font-weight: 700; color: #f1f5f9; margin-bottom: 4px;">
-                                    ${style.icon} ${building.name}
+                                    ${style.icon} ${escHtml(building.name)}
                                 </div>
                                 <div style="font-size: 11px; color: #94a3b8;">
                                     ${building.category || 'Residential'} • ${building.purposes?.join(', ') || 'General'}
@@ -5462,12 +5463,12 @@
                             <div style="margin-bottom: 12px;">
                                 <div style="display: flex; justify-content: space-between; font-size: 11px; color: #94a3b8; margin-bottom: 4px;">
                                     <span>🏗️ Structural Integrity</span>
-                                    <span style="font-weight: 700; color: ${(building.durability || 100) > 60 ? '#10b981' : (building.durability || 100) > 30 ? '#f59e0b' : '#ef4444'};">${((building.durability || 100) * 100).toFixed(0)}%</span>
+                                    <span style="font-weight: 700; color: ${condition > 0.6 ? '#10b981' : condition > 0.3 ? '#f59e0b' : '#ef4444'};">${(condition * 100).toFixed(0)}%</span>
                                 </div>
                                 <div style="background: #0f172a; border-radius: 4px; height: 6px; overflow: hidden;">
-                                    <div style="width: ${((building.durability || 100) * 100).toFixed(0)}%; height: 100%; background: ${(building.durability || 100) > 0.6 ? 'linear-gradient(90deg, #10b981 0%, #3b82f6 100%)' : (building.durability || 100) > 0.3 ? 'linear-gradient(90deg, #f59e0b 0%, #f97316 100%)' : 'linear-gradient(90deg, #ef4444 0%, #dc2626 100%)'}; transition: width 0.3s;"></div>
+                                    <div style="width: ${(condition * 100).toFixed(0)}%; height: 100%; background: ${condition > 0.6 ? 'linear-gradient(90deg, #10b981 0%, #3b82f6 100%)' : condition > 0.3 ? 'linear-gradient(90deg, #f59e0b 0%, #f97316 100%)' : 'linear-gradient(90deg, #ef4444 0%, #dc2626 100%)'}; transition: width 0.3s;"></div>
                                 </div>
-                                ${(building.durability || 100) < 0.3 ? `<div style="font-size: 10px; color: #ef4444; margin-top: 4px; font-weight: 600;">⚠️ AT RISK OF COLLAPSE!</div>` : ''}
+                                ${condition < 0.2 ? `<div style="font-size: 10px; color: #ef4444; margin-top: 4px; font-weight: 600;">⚠️ At risk of collapse (below 20% it may fall)</div>` : condition < 0.5 ? `<div style="font-size: 10px; color: #f59e0b; margin-top: 4px;">Needs repair</div>` : ''}
                             </div>
                         ` : ''}
 
@@ -5477,13 +5478,16 @@
                                 <span style="color: #64748b;">📍</span> (${building.location?.x?.toFixed(0) || 0}, ${building.location?.y?.toFixed(0) || 0})
                             </div>
                             <div style="color: #94a3b8;">
-                                <span style="color: #64748b;">👷</span> ${building.builders?.length || 0} builder${building.builders?.length !== 1 ? 's' : ''}
+                                <span style="color: #64748b;">👷</span> ${(building.builders || []).map(b => dlink('agent', b.id, b.name)).join(', ') || 'unknown'}
                             </div>
                             <div style="color: #94a3b8;">
                                 <span style="color: #64748b;">📦</span> ${totalMaterials} materials
                             </div>
                             <div style="color: #94a3b8;">
-                                <span style="color: #64748b;">📅</span> ${ageInDays}d old
+                                <span style="color: #64748b;">📅</span> ${ageText}
+                            </div>
+                            <div style="color: #94a3b8; grid-column: 1 / -1;">
+                                <span style="color: #64748b;">🏠</span> ${(building.residents || []).length ? 'Home to ' + building.residents.map(r => dlink('agent', r.id, r.name)).join(', ') : 'Nobody lives here'}
                             </div>
                         </div>
 
