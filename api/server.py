@@ -647,7 +647,15 @@ async def get_chronicle(limit: int = 100):
     """The village's history: firsts, milestones, and agents' own words (engine/chronicle.py)."""
     if not simulation:
         raise HTTPException(status_code=503, detail="Simulation not running")
-    return simulation.chronicle.to_dict(limit=max(1, min(limit, 300)))
+    data = simulation.chronicle.to_dict(limit=max(1, min(limit, 300)))
+    # Entries name people as they were then; give the dashboard their ids to
+    # open them (the living first when two share a name)
+    ids = {}
+    for a in sorted(simulation.world.agents, key=lambda a: (a.alive, a.id)):
+        ids[a.name] = a.id
+    for entry in data["entries"] + data["voices"]:
+        entry["people"] = [{"name": n, "id": ids[n]} for n in entry.get("agents") or [] if n in ids]
+    return data
 
 
 @app.get("/society")
@@ -1138,20 +1146,19 @@ async def get_governments():
     if not simulation:
         raise HTTPException(status_code=503, detail="Simulation not running")
 
-    governments = [
-        {
-            "id": g.id,
-            "name": g.name,
-            "type": g.government_type.value,
-            "citizens": len(g.citizens),
-            "approval": g.approval_rating,
-            "leader": _name_of(g.leader_id),
-            "leader_id": g.leader_id,
-        }
-        for g in simulation.governance_manager.governments.values()
-        if g.active
-    ]
-    return {"governments": governments, "total": len(governments)}
+    # Standing governments, then the fallen; each with how it's run, its laws,
+    # elections and latest events (engine/details.py); /details/government/{id}
+    # tells the rest
+    from engine.details import government_cards
+    cards = government_cards(simulation)
+    standing = [c for c in cards if c["active"]]
+    alive = {a.id for a in simulation.world.agents if a.alive}
+    under = set()
+    for g in simulation.governance_manager.governments.values():
+        if g.active:
+            under |= set(g.citizens) & alive
+    return {"governments": standing, "fallen": [c for c in cards if not c["active"]], "total": len(standing),
+            "under_government": len(under), "alive": len(alive)}
 
 
 @app.get("/knowledge")

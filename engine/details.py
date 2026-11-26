@@ -258,6 +258,37 @@ def government(sim, gov_id: str) -> Optional[Dict]:
             "facts": facts, "sections": sections}
 
 
+def government_cards(sim) -> List[Dict]:
+    """What the Politics tab lists for each government, standing or fallen:
+    enough to see at a glance how it's run, with ids to open the rest."""
+    gm = sim.governance_manager
+    names = _Names(sim)
+    cards = []
+    for g in gm.governments.values():
+        kind = g.government_type.value
+        laws = [gm.laws[l] for l in g.laws if l in gm.laws]
+        founded = getattr(g, 'founded_tick', None)
+        history = getattr(g, 'history', [])
+        open_elections = [e for e in gm.elections.values() if e.government_id == g.id and not e.complete]
+        cards.append({
+            "id": g.id, "name": g.name, "type": kind, "active": g.active,
+            "leader": names.name(g.leader_id) if g.leader_id else None, "leader_id": g.leader_id,
+            "council": [names.person(c) for c in sorted(g.council_ids) if names.person(c)],
+            "citizens": len(g.citizens), "approval": round(g.approval_rating, 2),
+            "stability": round(g.stability, 2), "treasury": round(g.treasury, 1),
+            "founded_day": founded // TICKS_PER_DAY + 1 if founded is not None else None,
+            "how_run": HOW_RUN.get(kind, ""),
+            "laws": [{"id": l.id, "name": l.name, "active": l.active, "for": len(l.supporters),
+                      "against": len(l.opposers), "broken": l.times_broken} for l in laws],
+            "elections_open": [{"position": e.position, "closes": when(e.ends_tick),
+                                "candidates": [names.person(c) for c in sorted(e.candidates) if names.person(c)]}
+                               for e in open_elections],
+            "recent": [_gov_line(names, gm, t, k, d) for t, k, d in list(reversed(history))[:4]],
+        })
+    cards.sort(key=lambda c: (not c["active"], -(c["citizens"])))
+    return cards
+
+
 def _gov_line(names, gm, tick, kind, d) -> Dict:
     p = names.person
     law = gm.laws.get(d.get('law')) if d.get('law') else None
@@ -435,6 +466,9 @@ def knowhow(sim, name: str) -> Optional[Dict]:
     lines.sort(key=lambda x: -x['tick'])
     if lines:
         sections.append({"title": "How it spread", "timeline": lines[:80]})
+    elif first:
+        sections.append({"title": "How it spread", "text": "This world began before who learned what was "
+                         "written down; everyone who learns it from now on is recorded here."})
     if not ledger.active:
         subtitle = "Known to everyone in a settlers' world"
     elif first:
@@ -539,7 +573,24 @@ def event(sim, event_id: str) -> Optional[Dict]:
     names = _Names(sim)
     facts = [_fact("When", when(e.tick)), _fact("Kind", e.category.value), _fact("Importance", e.importance.name.lower())]
     sections = [{"title": "Who", "items": names.people(e.agents_involved) or [{"text": "nobody in particular"}]}]
-    return {"kind": "event", "id": e.id, "icon": "📌", "title": e.title, "subtitle": when(e.tick),
+    # What it names that can be opened: know-how, governments, laws, faiths
+    from world.knowhow import KNOWHOW
+    text = f"{e.title} {e.description}"
+    about = [link("knowhow", k.name, k.label) for k in KNOWHOW.values() if k.label in text]
+    gm = sim.governance_manager
+    about += [link("government", g.id, g.name) for g in gm.governments.values() if g.name in text]
+    about += [link("law", l.id, l.name) for l in gm.laws.values() if len(l.name) > 6 and l.name in text][:3]
+    about += [link("faith", r.id, r.name) for r in sim.religion.religions.values() if r.name in text]
+    if about:
+        sections.append({"title": "What it's about", "items": [{"text": l["label"], "link": l} for l in about[:8]]})
+    # The hour around it, for context
+    nearby = [o for o in sim.event_logger.events if o.id != e.id and abs(o.tick - e.tick) <= 6]
+    if nearby:
+        sections.append({"title": "Around the same time", "items": [
+            {"text": o.title, "note": when(o.tick), "link": link("event", o.id, o.title)}
+            for o in sorted(nearby, key=lambda o: o.tick)[:12]]})
+    icon = "" if not e.title[:1].isalnum() else "📌"     # titles often start with their own emoji
+    return {"kind": "event", "id": e.id, "icon": icon, "title": e.title, "subtitle": when(e.tick),
             "summary": e.description, "facts": facts, "sections": sections}
 
 

@@ -122,3 +122,32 @@ def test_the_endpoint_serves_details_and_404s_what_is_not_there():
         assert client.get("/details/agent/nobody").status_code == 404
         assert client.get("/details/dragon/1").status_code == 404
         assert client.get("/details/knowhow/fire").status_code == 200
+
+
+def test_politics_lists_how_each_government_is_run_and_the_chronicle_links_what_it_records():
+    from engine.details import government_cards
+    sim, roles = make_world()
+    a, d = roles["actor"], roles["neighbour"]
+    gov_id = act(sim, a, "govern").metadata["government_id"]
+    act(sim, d, "govern")
+    law_id = act(sim, a, "make_law", prohibition="gamble").metadata["law_id"]
+    card = next(c for c in government_cards(sim) if c["id"] == gov_id)
+    assert card["how_run"] and card["leader_id"] == a.id and card["citizens"] == 2
+    assert [l["id"] for l in card["laws"]] == [law_id]
+    assert any("founded it" in line["text"] for line in card["recent"])
+    sim.chronicle.observe(sim, sim.world.time.current_tick)
+    refs = {e.key: e.ref for e in sim.chronicle.entries}
+    assert refs["first_government"] == {"kind": "government", "id": gov_id}
+    assert refs["first_law"] == {"kind": "law", "id": law_id}
+
+
+def test_the_chronicle_endpoint_names_people_with_their_ids():
+    from fastapi.testclient import TestClient
+    from api import server
+    with TestClient(server.app) as client:
+        agent = next(a for a in server.simulation.world.agents if a.alive)
+        server.simulation.chronicle.first("first_test", 1, f"First test: {agent.name}", "", [agent.name])
+        entry = next(e for e in client.get("/chronicle").json()["entries"] if e["key"] == "first_test")
+        assert entry["people"] == [{"name": agent.name, "id": agent.id}]
+        politics = client.get("/governments").json()
+        assert {"governments", "fallen", "total", "under_government", "alive"} <= set(politics)

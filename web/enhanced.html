@@ -1066,6 +1066,50 @@
             letter-spacing: 0.5px;
         }
 
+        /* ===== DETAIL DRAWER: anything with data-kind/data-id opens here (GET /details/{kind}/{id}) ===== */
+        [data-kind][data-id] { cursor: pointer; }
+        .openable { transition: box-shadow 0.12s ease, transform 0.12s ease; }
+        .openable:hover { box-shadow: 0 0 0 1px #64748b, 0 4px 14px rgba(0, 0, 0, 0.35); }
+        .dlink { color: #93c5fd; text-decoration: underline dotted rgba(147, 197, 253, 0.6); text-underline-offset: 2px; }
+        .dlink:hover { color: #bfdbfe; text-decoration-style: solid; }
+        .open-hint { float: right; font-size: 11px; color: #64748b; font-weight: 400; }
+        .detail-drawer { position: fixed; inset: 0; z-index: 12000; display: none; }
+        .detail-drawer.open { display: block; }
+        .detail-backdrop { position: absolute; inset: 0; background: rgba(2, 6, 23, 0.55); }
+        .detail-panel { position: absolute; top: 0; right: 0; height: 100%; width: min(600px, 100vw); background: #0b1220;
+                        border-left: 1px solid #334155; overflow-y: auto; box-shadow: -12px 0 32px rgba(0, 0, 0, 0.5);
+                        animation: detailIn 0.16s ease-out; color: #e2e8f0; }
+        @keyframes detailIn { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+        .detail-head { position: sticky; top: 0; z-index: 1; background: #0b1220; border-bottom: 1px solid #1e293b;
+                       padding: 12px 16px; display: flex; align-items: center; gap: 8px; }
+        .detail-head button { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; border-radius: 6px;
+                              padding: 5px 10px; cursor: pointer; font-size: 13px; }
+        .detail-head button:hover { background: #334155; }
+        .detail-head button:disabled { opacity: 0.35; cursor: default; }
+        .detail-crumbs { flex: 1; font-size: 11px; color: #64748b; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+        .detail-body { padding: 16px 18px 40px; }
+        .detail-title { font-size: 22px; font-weight: 800; color: #f8fafc; line-height: 1.25; }
+        .detail-subtitle { font-size: 13px; color: #94a3b8; margin-top: 4px; }
+        .detail-summary { font-size: 14px; color: #cbd5e1; margin: 12px 0 4px; line-height: 1.5; }
+        .detail-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; margin: 14px 0; }
+        .detail-fact { background: #0f172a; border: 1px solid #1e293b; border-radius: 8px; padding: 8px 10px; }
+        .detail-fact-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: #64748b; }
+        .detail-fact-value { font-size: 13px; color: #f1f5f9; margin-top: 2px; word-break: break-word; }
+        .detail-section { margin-top: 18px; }
+        .detail-section h4 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; color: #a78bfa; }
+        .detail-section p { margin: 0; font-size: 13px; color: #cbd5e1; line-height: 1.55; white-space: pre-line; }
+        .detail-item { background: #0f172a; border-radius: 6px; padding: 7px 10px; margin-bottom: 5px; font-size: 13px; }
+        .detail-item-note { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+        .detail-timeline { border-left: 2px solid #334155; margin-left: 4px; padding-left: 12px; }
+        .detail-tl-row { position: relative; margin-bottom: 8px; font-size: 13px; }
+        .detail-tl-row::before { content: ''; position: absolute; left: -17px; top: 6px; width: 8px; height: 8px;
+                                 border-radius: 50%; background: #6366f1; }
+        .detail-tl-when { font-size: 11px; color: #64748b; }
+        .detail-more { background: none; border: 1px dashed #475569; color: #94a3b8; border-radius: 6px; padding: 4px 10px;
+                       cursor: pointer; font-size: 12px; margin-top: 4px; }
+        .detail-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+        .detail-actions button { background: #312e81; color: #e0e7ff; border: 1px solid #4f46e5; border-radius: 6px;
+                                 padding: 6px 12px; cursor: pointer; font-size: 12px; }
     </style>
 </head>
 <body>
@@ -2683,35 +2727,49 @@
             </div>
 
             <div class="tab-panel" id="politics">
-                <h2 style="margin-bottom: 15px;">🏛️ Politics & Governance - Emergent Leadership</h2>
-                <p style="color: #94a3b8; margin-bottom: 20px;">Government systems, power dynamics, and political evolution</p>
+                <h2 style="margin-bottom: 15px;">🏛️ Politics & Governance</h2>
+                <p style="color: #94a3b8; margin-bottom: 20px;">Nobody is made to found a government: when someone does, it's their choice, and so are the laws, votes, elections and revolts that follow. Click a government, law or person to see it in full.</p>
 
                 <!-- POLITICS METRICS -->
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 20px; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 15px; border-radius: 12px; border: 2px solid #334155;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin-bottom: 20px; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 15px; border-radius: 12px; border: 2px solid #334155;">
                     <div style="text-align: center;">
-                        <div style="font-size: 32px; font-weight: 700; color: #8b5cf6;" id="politics-governments-total">0</div>
+                        <div style="font-size: 30px; font-weight: 700; color: #8b5cf6;" id="politics-governments-total">0</div>
                         <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">🏛️ Governments</div>
                     </div>
                     <div style="text-align: center;">
-                        <div style="font-size: 32px; font-weight: 700; color: #3b82f6;" id="politics-population">0</div>
-                        <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">👥 Total Population</div>
+                        <div style="font-size: 30px; font-weight: 700; color: #22c55e;" id="politics-citizens">0</div>
+                        <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">🧑‍🤝‍🧑 Living under one</div>
                     </div>
                     <div style="text-align: center;">
-                        <div style="font-size: 32px; font-weight: 700; color: #f59e0b;" id="politics-avg-wealth">0</div>
-                        <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">💰 Avg Wealth</div>
+                        <div style="font-size: 30px; font-weight: 700; color: #e2e8f0;" id="politics-laws">0</div>
+                        <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">📜 Laws in force</div>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 30px; font-weight: 700; color: #38bdf8;" id="politics-elections">0</div>
+                        <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">🗳️ Open elections</div>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 30px; font-weight: 700; color: #3b82f6;" id="politics-population">0</div>
+                        <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">👥 Population</div>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 30px; font-weight: 700; color: #f59e0b;" id="politics-avg-wealth">0</div>
+                        <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">💰 Avg wealth</div>
                     </div>
                 </div>
 
                 <!-- GOVERNMENTS LIST -->
                 <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border: 2px solid #8b5cf6; border-radius: 12px; padding: 20px;">
-                    <h3 style="margin: 0 0 16px 0; color: #8b5cf6; font-size: 18px;">🏛️ Active Governments</h3>
+                    <h3 style="margin: 0 0 16px 0; color: #8b5cf6; font-size: 18px;">🏛️ Standing governments</h3>
                     <div id="governments-list">
                         <div style="text-align: center; color: #64748b; padding: 60px 20px;">
                             <div style="font-size: 48px; margin-bottom: 16px;">🏛️</div>
-                            <div style="font-size: 18px; margin-bottom: 8px;">No Governments Formed Yet</div>
-                            <div style="font-size: 14px; color: #94a3b8;">Governments will emerge as civilization grows</div>
+                            <div style="font-size: 18px; margin-bottom: 8px;">No government yet</div>
+                            <div style="font-size: 14px; color: #94a3b8;">Anyone can found one; nobody has chosen to</div>
                         </div>
                     </div>
+                    <div id="governments-fallen"></div>
+                    <div id="governments-outside" style="margin-top: 14px; font-size: 12px; color: #94a3b8;"></div>
                 </div>
             </div>
 
@@ -2779,6 +2837,20 @@
                 </div>
             </div>
         </div>
+    </div>
+
+    <!-- DETAIL DRAWER (openDetail): one panel for every government, law, faith,
+         person, know-how, invention, gathering, building and event -->
+    <div class="detail-drawer" id="detail-drawer" aria-hidden="true">
+        <div class="detail-backdrop" onclick="closeDetail()"></div>
+        <aside class="detail-panel" role="dialog" aria-modal="true" aria-labelledby="detail-title">
+            <div class="detail-head">
+                <button id="detail-back" onclick="detailBack()" title="Back" disabled>←</button>
+                <div class="detail-crumbs" id="detail-crumbs"></div>
+                <button onclick="closeDetail()" title="Close (Esc)">✕</button>
+            </div>
+            <div class="detail-body" id="detail-body"></div>
+        </aside>
     </div>
 
     <script src="/app/town_map.js"></script>
@@ -5779,28 +5851,56 @@
                     alive.reduce((sum, a) => sum + (a.wealth || 0), 0) / alive.length : 0;
                 document.getElementById('politics-avg-wealth').textContent = avgWealth.toFixed(0);
 
-                // Render governments (if any)
-                const container = document.getElementById('governments-list');
-                if (!data.governments || data.governments.length === 0) {
+                // Render governments (if any): each says how it's run, who leads,
+                // its laws, open elections and latest events; click for the rest
+                const governments = data.governments || [], fallen = data.fallen || [];
+                const citizenCount = data.under_government ?? governments.reduce((n, g) => n + (g.citizens || 0), 0);
+                setTextSafe('politics-citizens', `${citizenCount}`);
+                if (data.alive != null) setTextSafe('politics-population', data.alive);
+                setTextSafe('politics-laws', governments.reduce((n, g) => n + (g.laws || []).filter(l => l.active).length, 0));
+                setTextSafe('politics-elections', governments.reduce((n, g) => n + (g.elections_open || []).length, 0));
+                const container = $safe('governments-list');
+                const meter = (label, value, color) => `
+                    <div style="flex: 1; min-width: 90px;">
+                        <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase;">${label} ${escHtml(Math.round(value * 100))}%</div>
+                        <div style="height: 5px; background: #1e293b; border-radius: 3px; margin-top: 3px;"><div style="height: 100%; width: ${Math.max(0, Math.min(100, value * 100))}%; background: ${color}; border-radius: 3px;"></div></div>
+                    </div>`;
+                if (governments.length === 0) {
                     container.innerHTML = `
-                        <div style="text-align: center; color: #64748b; padding: 60px 20px;">
+                        <div style="text-align: center; color: #64748b; padding: 40px 20px;">
                             <div style="font-size: 48px; margin-bottom: 16px;">🏛️</div>
-                            <div style="font-size: 18px; margin-bottom: 8px;">No Governments Formed Yet</div>
-                            <div style="font-size: 14px; color: #94a3b8;">Governments will emerge as civilization grows</div>
-                        </div>
-                    `;
+                            <div style="font-size: 18px; margin-bottom: 8px;">No government ${fallen.length ? 'standing' : 'yet'}</div>
+                            <div style="font-size: 14px; color: #94a3b8;">Anyone can found one; nobody has chosen to${fallen.length ? ' since the last one fell' : ''}</div>
+                        </div>`;
                 } else {
-                    container.innerHTML = data.governments.map(gov => `
-                        <div style="background: #0f172a; border: 1px solid #8b5cf6; border-radius: 8px; padding: 16px; margin-bottom: 12px;">
-                            <div style="font-weight: 700; color: #8b5cf6; margin-bottom: 8px; font-size: 16px;">${gov.name || 'Government'}</div>
-                            <div style="font-size: 12px; color: #94a3b8; margin-bottom: 8px;">${gov.type || 'Unknown Type'}</div>
-                            <div style="font-size: 11px; color: #cbd5e1;">
-                                <div>👑 Leader: ${gov.leader || 'None'}</div>
-                                <div>👥 Citizens: ${gov.citizens || 0}</div>
+                    container.innerHTML = governments.map(gov => {
+                        const laws = (gov.laws || []);
+                        const inForce = laws.filter(l => l.active);
+                        return `
+                        <div class="openable" ${openAttr('government', gov.id)} style="background: #0f172a; border: 1px solid #8b5cf6; border-radius: 8px; padding: 16px; margin-bottom: 12px;">
+                            <div style="display: flex; justify-content: space-between; gap: 8px; align-items: baseline;">
+                                <div style="font-weight: 700; color: #c4b5fd; font-size: 17px;">${escHtml(gov.name)}</div>
+                                <div style="font-size: 11px; color: #94a3b8; white-space: nowrap;">open in full ›</div>
                             </div>
-                        </div>
-                    `).join('');
+                            <div style="font-size: 12px; color: #94a3b8; margin: 4px 0 8px;">${escHtml(gov.type)}${gov.founded_day ? ` · founded day ${escHtml(gov.founded_day)}` : ''} · ${escHtml(gov.citizens)} citizens · treasury ${escHtml(Math.round(gov.treasury || 0))} coins</div>
+                            <div style="font-size: 12px; color: #cbd5e1; margin-bottom: 10px; line-height: 1.45;">${escHtml(gov.how_run)}</div>
+                            <div style="font-size: 13px; color: #e2e8f0; margin-bottom: 8px;">👑 Leader: ${gov.leader ? dlink('agent', gov.leader_id, gov.leader) : 'nobody'}${(gov.council || []).length ? ` · Council: ${gov.council.map(detailLink).join(', ')}` : ''}</div>
+                            <div style="display: flex; gap: 12px; margin-bottom: 10px;">${meter('Approval', gov.approval || 0, '#22c55e')}${meter('Stability', gov.stability || 0, '#38bdf8')}</div>
+                            <div style="font-size: 12px; color: #a78bfa; margin-bottom: 4px;">📜 Laws: ${inForce.length} in force${laws.length > inForce.length ? `, ${laws.length - inForce.length} repealed` : ''}</div>
+                            ${laws.slice(-6).reverse().map(l => `<div class="dlink" ${openAttr('law', l.id)} style="display: block; text-decoration: none; font-size: 12px; margin: 2px 0 2px 10px; color: ${l.active ? '#e2e8f0' : '#64748b'};">${escHtml(l.name)}${l.active ? '' : ' (repealed)'} <span style="color: #64748b;">· ${escHtml(l.for)} for, ${escHtml(l.against)} against${l.broken ? `, broken ${escHtml(l.broken)}×` : ''}</span></div>`).join('') || '<div style="font-size: 12px; color: #64748b; margin-left: 10px;">None proposed yet</div>'}
+                            ${(gov.elections_open || []).map(e => `<div style="font-size: 12px; color: #38bdf8; margin-top: 6px;">🗳️ Election for ${escHtml(e.position)}, closing ${escHtml(e.closes)}: ${(e.candidates || []).map(detailLink).join(', ') || 'no candidates yet'}</div>`).join('')}
+                            ${(gov.recent || []).length ? `<div style="font-size: 12px; color: #94a3b8; margin-top: 10px; border-top: 1px solid #1e293b; padding-top: 8px;">Latest: ${gov.recent.map(t => `<div style="margin: 2px 0;"><span style="color: #64748b;">${escHtml(t.when)}</span> · ${linkify(t.text, t.links)}</div>`).join('')}</div>` : ''}
+                        </div>`; }).join('');
                 }
+                $safe('governments-fallen').innerHTML = fallen.length === 0 ? '' : `
+                    <h3 style="margin: 18px 0 10px; color: #64748b; font-size: 15px;">Fallen (${fallen.length})</h3>
+                    ${fallen.map(gov => `<div class="openable" ${openAttr('government', gov.id)} style="background: #0f172a; border: 1px dashed #475569; border-radius: 8px; padding: 10px 14px; margin-bottom: 8px; color: #94a3b8; font-size: 13px;">
+                        <span style="color: #cbd5e1; font-weight: 600;">${escHtml(gov.name)}</span> · ${escHtml(gov.type)}${gov.founded_day ? ` · founded day ${escHtml(gov.founded_day)}` : ''} · last led by ${gov.leader ? dlink('agent', gov.leader_id, gov.leader) : 'nobody'}
+                        ${(gov.recent || [])[0] ? `<div style="font-size: 12px; margin-top: 4px;">${escHtml(gov.recent[0].when)}: ${linkify(gov.recent[0].text, gov.recent[0].links)}</div>` : ''}</div>`).join('')}`;
+                const living = data.alive ?? alive.length;
+                const outside = living - citizenCount;
+                $safe('governments-outside').innerHTML = governments.length && outside > 0
+                    ? `${escHtml(outside)} of ${escHtml(living)} living people belong to no government.` : '';
             } catch (error) {
                 console.error('Error fetching politics:', error);
             }
@@ -7082,7 +7182,7 @@
             }
         }
 
-        function addToActivityFeed(message, type = 'info') {
+        function addToActivityFeed(message, type = 'info', eventId = null) {
             const timestamp = new Date().toLocaleTimeString();
             const colors = {
                 'discovery': '#10b981',
@@ -7095,8 +7195,8 @@
             };
 
             const item = `
-                <div style="padding: 8px; margin-bottom: 8px; background: #0f172a; border-radius: 6px; border-left: 3px solid ${colors[type]};">
-                    <div style="color: ${colors[type]}; font-weight: 600; margin-bottom: 4px;">${message}</div>
+                <div ${eventId ? `class="openable" ${openAttr('event', eventId)}` : ''} style="padding: 8px; margin-bottom: 8px; background: #0f172a; border-radius: 6px; border-left: 3px solid ${colors[type]};">
+                    <div style="color: ${colors[type]}; font-weight: 600; margin-bottom: 4px;">${escHtml(message)}</div>
                     <div style="color: #64748b; font-size: 11px;">${timestamp}</div>
                 </div>
             `;
@@ -7150,7 +7250,7 @@
                     else if (title.includes('Age') || title.includes('Era')) type = 'era';
                     else if (title.includes('collapsed') || title.includes('explosion')) type = 'death';
 
-                    addToActivityFeed(title, type);
+                    addToActivityFeed(title, type, event.id);
                 });
 
                 // Keep seenEventIds from growing forever (keep last 200)
@@ -7882,19 +7982,19 @@
             const economicData = extractEconomicData(event);
 
             return `
-                <div class="event-card ${category}">
+                <div class="event-card openable ${escHtml(category)}" ${openAttr('event', event.id)}>
                     ${importance >= 4 ? '<div class="event-importance-critical">🔥 CRITICAL</div>' : ''}
                     <div class="event-header">
-                        <div><div class="event-title">${icon} ${event.title || 'Event'}</div></div>
-                        <div class="event-category-badge ${category}">${category}</div>
+                        <div><div class="event-title">${icon} ${escHtml(event.title || 'Event')}</div></div>
+                        <div class="event-category-badge ${escHtml(category)}">${escHtml(category)}</div>
                     </div>
-                    <div class="event-description">${event.description || ''}</div>
+                    <div class="event-description">${escHtml(event.description || '')}</div>
                     ${agentsInvolved.length > 0 ? `
                         <div class="event-agents">
                             ${agentsInvolved.map(agentId => {
                                 const agent = window.statsData?.agents?.find(a => a.id === agentId);
                                 const agentName = agent?.name || agentId.substring(0, 8);
-                                return `<div class="event-agent-tag" onclick="showAgentProfile('${agentId}')">${agentName}</div>`;
+                                return `<div class="event-agent-tag" ${openAttr('agent', agentId)}>${escHtml(agentName)}</div>`;
                             }).join('')}
                         </div>
                     ` : ''}
@@ -7992,6 +8092,141 @@
         function emptyNote(text) {
             return `<div style="text-align: center; color: #64748b; padding: 30px;">${escHtml(text)}</div>`;
         }
+        // ===== DETAIL DRAWER =====
+        // Anything marked data-kind/data-id opens here, from any tab; links
+        // inside open the next thing, and Back walks the way you came.
+        const DETAIL_KINDS = { agent: 'Person', government: 'Government', law: 'Law', faith: 'Faith', knowhow: 'Know-how',
+                               invention: 'Invention', gathering: 'Gathering', building: 'Building', event: 'Event' };
+        const detailTrail = [];
+        function openAttr(kind, id) {
+            return id ? `data-kind="${escHtml(kind)}" data-id="${escHtml(id)}"` : '';
+        }
+        // A name that opens what it names (plain text when there's nothing to open)
+        function dlink(kind, id, label) {
+            return id ? `<span class="dlink" ${openAttr(kind, id)}>${escHtml(label)}</span>` : escHtml(label);
+        }
+        function detailLink(l) { return l ? dlink(l.kind, l.id, l.label) : ''; }
+        // Names in a sentence become links (links whose name isn't in it follow it)
+        function linkify(text, links) {
+            const raw = String(text ?? '');
+            const spans = [], extra = [];
+            (links || []).forEach(l => {
+                if (!l) return;
+                const name = String(l.label).replace(/ †$/, '');
+                let at = name ? raw.indexOf(name) : -1;
+                while (at >= 0 && spans.some(sp => at < sp.end && at + name.length > sp.start)) at = raw.indexOf(name, at + 1);
+                if (at >= 0) spans.push({ start: at, end: at + name.length, l, name });
+                else extra.push(detailLink(l));
+            });
+            spans.sort((a, b) => a.start - b.start);
+            let html = '', pos = 0;
+            spans.forEach(sp => { html += escHtml(raw.slice(pos, sp.start)) + dlink(sp.l.kind, sp.l.id, sp.name); pos = sp.end; });
+            html += escHtml(raw.slice(pos));
+            return html + (extra.length ? ` <span style="color: #64748b;">·</span> ${extra.join(', ')}` : '');
+        }
+        function renderDetailSection(section, idx) {
+            let inner = '';
+            if (section.text) inner += `<p>${escHtml(section.text)}</p>`;
+            const rows = section.items || [];
+            const lines = section.timeline || [];
+            const LIMIT = 40;
+            if (rows.length) {
+                inner += rows.map((it, n) => `
+                    <div class="detail-item" ${n >= LIMIT ? `data-more="${idx}" style="display: none;"` : ''}>
+                        <div>${it.link ? detailLink(Object.assign({}, it.link, { label: it.text })) : escHtml(it.text)}</div>
+                        ${it.note ? `<div class="detail-item-note">${escHtml(it.note)}</div>` : ''}
+                    </div>`).join('');
+            }
+            if (lines.length) {
+                inner += `<div class="detail-timeline">${lines.map((t, n) => `
+                    <div class="detail-tl-row" ${n >= LIMIT ? `data-more="${idx}" style="display: none;"` : ''}>
+                        <div class="detail-tl-when">${escHtml(t.when)}</div>
+                        <div>${linkify(t.text, t.links)}</div>
+                    </div>`).join('')}</div>`;
+            }
+            const hidden = Math.max(0, rows.length - LIMIT) + Math.max(0, lines.length - LIMIT);
+            if (hidden) inner += `<button class="detail-more" onclick="detailShowMore(this, ${idx})">Show ${hidden} more</button>`;
+            return `<div class="detail-section"><h4>${escHtml(section.title)}</h4>${inner}</div>`;
+        }
+        function detailShowMore(button, idx) {
+            document.querySelectorAll(`#detail-body [data-more="${idx}"]`).forEach(el => { el.style.display = ''; });
+            button.remove();
+        }
+        function renderDetail(d) {
+            const facts = (d.facts || []).map(f => `
+                <div class="detail-fact">
+                    <div class="detail-fact-label">${escHtml(f.label)}</div>
+                    <div class="detail-fact-value">${f.link ? detailLink(Object.assign({}, f.link, { label: f.value })) : escHtml(f.value)}</div>
+                </div>`).join('');
+            const actions = d.kind === 'agent'
+                ? `<div class="detail-actions"><button onclick="closeDetail(); openAgentProfile('${escHtml(d.id)}')">Full profile: needs, mind, inventory</button></div>` : '';
+            $safe('detail-body').innerHTML = `
+                <div class="detail-title" id="detail-title">${escHtml(d.icon || '')} ${escHtml(d.title)}</div>
+                ${d.subtitle ? `<div class="detail-subtitle">${escHtml(d.subtitle)}</div>` : ''}
+                ${d.summary ? `<div class="detail-summary">${escHtml(d.summary)}</div>` : ''}
+                ${actions}
+                ${facts ? `<div class="detail-facts">${facts}</div>` : ''}
+                ${(d.sections || []).map(renderDetailSection).join('')}`;
+        }
+        async function showDetail() {
+            const here = detailTrail[detailTrail.length - 1];
+            if (!here) return;
+            const drawer = $safe('detail-drawer');
+            drawer.classList.add('open');
+            drawer.setAttribute('aria-hidden', 'false');
+            $safe('detail-back').disabled = detailTrail.length < 2;
+            setTextSafe('detail-crumbs', detailTrail.map(t => t.label || DETAIL_KINDS[t.kind] || t.kind).join('  ›  '));
+            $safe('detail-body').innerHTML = emptyNote('Loading…');
+            try {
+                const response = await fetch(`/details/${encodeURIComponent(here.kind)}/${encodeURIComponent(here.id)}`);
+                if (here !== detailTrail[detailTrail.length - 1]) return;     // moved on meanwhile
+                if (!response.ok) {
+                    $safe('detail-body').innerHTML = emptyNote(response.status === 404
+                        ? `This ${(DETAIL_KINDS[here.kind] || here.kind).toLowerCase()} isn't in the world any more`
+                        : 'Could not load this right now');
+                    return;
+                }
+                const d = await response.json();
+                here.label = d.title;
+                setTextSafe('detail-crumbs', detailTrail.map(t => t.label || DETAIL_KINDS[t.kind] || t.kind).join('  ›  '));
+                renderDetail(d);
+                $safe('detail-body').parentElement.scrollTop = 0;
+            } catch (error) {
+                console.warn('Details unavailable:', error);
+                $safe('detail-body').innerHTML = emptyNote('Could not load this right now');
+            }
+        }
+        function openDetail(kind, id) {
+            if (!kind || !id) return;
+            const here = detailTrail[detailTrail.length - 1];
+            if (!(here && here.kind === kind && here.id === String(id))) detailTrail.push({ kind, id: String(id) });
+            if (detailTrail.length > 30) detailTrail.shift();
+            showDetail();
+        }
+        function detailBack() {
+            if (detailTrail.length > 1) { detailTrail.pop(); showDetail(); }
+        }
+        function closeDetail() {
+            detailTrail.length = 0;
+            const drawer = $safe('detail-drawer');
+            drawer.classList.remove('open');
+            drawer.setAttribute('aria-hidden', 'true');
+        }
+        document.addEventListener('click', (e) => {
+            const el = e.target.closest('[data-kind][data-id]');
+            if (!el) return;
+            const control = e.target.closest('button, a, input, select, textarea');
+            if (control && control !== el && el.contains(control)) return;      // a card's own buttons still work
+            e.preventDefault();
+            e.stopPropagation();
+            openDetail(el.dataset.kind, el.dataset.id);
+        });
+        document.addEventListener('keydown', (e) => {
+            if (!$safe('detail-drawer').classList.contains('open')) return;
+            if (e.key === 'Escape') { closeDetail(); e.stopPropagation(); }
+            else if (e.key === 'Backspace' && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '')) { e.preventDefault(); detailBack(); }
+        });
+
         const CHRONICLE_ICONS = { first: '⭐', milestone: '🏁', voice: '💬' };
 
         // The beginning of time: firsts beside our own history, what's been
@@ -8014,19 +8249,19 @@
                     ${firsts.map(f => {
                         const n = knowers[f.knowhow];
                         const now = n ? `${n} know it now` : '<span style="color: #f87171;">nobody knows it now</span>';
-                        return `<div style="background: #0f172a; border-left: 3px solid #22c55e; border-radius: 6px; padding: 8px 10px;">
-                                    <div style="color: #f8fafc; font-weight: 600;">${escHtml(f.label)}</div>
-                                    <div style="font-size: 11px; color: #cbd5e1;">day ${escHtml(f.day)}, generation ${escHtml(f.generation)} · ${escHtml(f.who)} · ${now}</div>
+                        return `<div class="openable" ${openAttr('knowhow', f.knowhow)} style="background: #0f172a; border-left: 3px solid #22c55e; border-radius: 6px; padding: 8px 10px;">
+                                    <div style="color: #f8fafc; font-weight: 600;">${escHtml(f.label)}<span class="open-hint">who knows, how it spread ›</span></div>
+                                    <div style="font-size: 11px; color: #cbd5e1;">day ${escHtml(f.day)}, generation ${escHtml(f.generation)} · ${dlink('agent', f.agent_id, f.who)} · ${now}</div>
                                 </div>
                                 <div style="background: #0f172a; border-left: 3px solid #475569; border-radius: 6px; padding: 8px 10px; color: #cbd5e1; display: flex; align-items: center;">${escHtml(f.humans)}</div>`;
                     }).join('')}
                    </div>`;
             const lost = history.lost || [];
             $safe('dawn-lost').innerHTML = lost.length === 0 ? '' :
-                `<div style="margin-top: 12px; font-size: 13px; color: #fca5a5;">🕯️ Lost: ${lost.map(l => `${escHtml(l.label)} (day ${escHtml(l.day)})`).join(', ')}</div>`;
+                `<div style="margin-top: 12px; font-size: 13px; color: #fca5a5;">🕯️ Lost: ${lost.map(l => `${dlink('knowhow', l.knowhow, l.label)} (day ${escHtml(l.day)})`).join(', ')}</div>`;
             const notYet = history.not_yet || [];
             $safe('dawn-not-yet').innerHTML = notYet.length === 0 ? '' :
-                `<div style="font-size: 12px; color: #94a3b8;">Not worked out yet: ${notYet.map(k => `${escHtml(k.label)} <span style="color: #64748b;">(humans: ${escHtml(k.humans)})</span>`).join(' · ')}</div>`;
+                `<div style="font-size: 12px; color: #94a3b8;">Not worked out yet: ${notYet.map(k => `${dlink('knowhow', k.knowhow, k.label)} <span style="color: #64748b;">(humans: ${escHtml(k.humans)})</span>`).join(' · ')}</div>`;
         }
 
         async function fetchChronicle() {
@@ -8039,19 +8274,23 @@
                 setTextSafe('chronicle-count', `(${entries.length})`);
                 $safe('chronicle-entries').innerHTML = entries.length === 0
                     ? emptyNote('Nothing has happened for the first time yet')
-                    : entries.map(e => `
-                        <div style="background: #0f172a; border-left: 3px solid ${e.kind === 'first' ? '#f59e0b' : '#3b82f6'}; border-radius: 6px; padding: 10px 14px; margin-bottom: 8px;">
-                            <div style="font-weight: 700; color: #f8fafc;">${CHRONICLE_ICONS[e.kind] || '•'} ${escHtml(e.title)}</div>
-                            ${e.text ? `<div style="font-size: 12px; color: #cbd5e1; margin-top: 4px;">${escHtml(e.text)}</div>` : ''}
+                    : entries.map(e => {
+                        const people = (e.people || []).map(p => ({ kind: 'agent', id: p.id, label: p.name }));
+                        const inTitle = people.filter(p => String(e.title).includes(p.label));
+                        const rest = people.filter(p => !inTitle.includes(p));
+                        return `
+                        <div ${e.ref ? `class="openable" ${openAttr(e.ref.kind, e.ref.id)}` : ''} style="background: #0f172a; border-left: 3px solid ${e.kind === 'first' ? '#f59e0b' : '#3b82f6'}; border-radius: 6px; padding: 10px 14px; margin-bottom: 8px;">
+                            <div style="font-weight: 700; color: #f8fafc;">${CHRONICLE_ICONS[e.kind] || '•'} ${linkify(e.title, inTitle)}${e.ref ? '<span class="open-hint">open ›</span>' : ''}</div>
+                            ${e.text || rest.length ? `<div style="font-size: 12px; color: #cbd5e1; margin-top: 4px;">${linkify(e.text || '', rest)}</div>` : ''}
                             <div style="font-size: 11px; color: #64748b; margin-top: 4px;">Day ${escHtml(e.day)} · tick ${escHtml(e.tick)}</div>
-                        </div>`).join('');
+                        </div>`; }).join('');
                 const voices = (data.voices || []).slice().reverse();
                 $safe('chronicle-voices').innerHTML = voices.length === 0
                     ? emptyNote('Agents with an AI mind write reflections and give reasons for their choices; none yet')
                     : voices.map(v => `
                         <div style="background: #0f172a; border-radius: 6px; padding: 10px 14px; margin-bottom: 8px;">
                             <div style="font-size: 13px; color: #e2e8f0; font-style: italic;">“${escHtml(v.text)}”</div>
-                            <div style="font-size: 11px; color: #a78bfa; margin-top: 4px;">${escHtml(v.title)}${v.key && v.key !== 'reflection' ? ', on choosing to ' + escHtml(v.key.replace(/_/g, ' ')) : ', reflecting'} · day ${escHtml(v.day)}</div>
+                            <div style="font-size: 11px; color: #a78bfa; margin-top: 4px;">${(v.people || [])[0] ? dlink('agent', v.people[0].id, v.title) : escHtml(v.title)}${v.key && v.key !== 'reflection' ? ', on choosing to ' + escHtml(v.key.replace(/_/g, ' ')) : ', reflecting'} · day ${escHtml(v.day)}</div>
                         </div>`).join('');
             } catch (error) {
                 console.warn('Chronicle unavailable:', error);
@@ -8060,10 +8299,9 @@
 
         function renderFamily(person) {
             const life = person.alive ? `${escHtml(person.age)}, ${escHtml(person.stage)}` : `died at ${escHtml(person.age)}`;
-            const partner = person.partner ? ` ♥ ${escHtml(person.partner)}` : '';
             const children = (person.children || []).map(renderFamily).join('');
-            return `<li style="margin: 4px 0;"><span style="color: ${person.alive ? '#f8fafc' : '#64748b'};">${escHtml(person.name)}</span>`
-                + `<span style="color: #94a3b8; font-size: 11px;"> (${life})</span>${partner}`
+            return `<li style="margin: 4px 0;"><span class="dlink" ${openAttr('agent', person.id)} style="color: ${person.alive ? '#f8fafc' : '#64748b'};">${escHtml(person.name)}</span>`
+                + `<span style="color: #94a3b8; font-size: 11px;"> (${life})</span>${person.partner ? ' ♥ ' + dlink('agent', person.partner_id, person.partner) : ''}`
                 + (children ? `<ul style="margin: 2px 0 2px 16px; padding-left: 10px; border-left: 1px dashed #475569; list-style: none;">${children}</ul>` : '')
                 + '</li>';
         }
@@ -8086,29 +8324,30 @@
 
                 $safe('society-governments-list').innerHTML = governments.length === 0 ? emptyNote('No one has founded a government')
                     : governments.map(g => `
-                        <div style="background: #0f172a; border-radius: 6px; padding: 10px 12px; margin-bottom: 8px; opacity: ${g.active ? 1 : 0.5};">
-                            <div style="font-weight: 700; color: #c4b5fd;">${escHtml(g.name)}</div>
-                            <div style="font-size: 12px; color: #94a3b8;">${escHtml(g.type)} · led by ${escHtml(g.leader || 'nobody')} · ${escHtml(g.citizens)} citizens</div>
-                            ${(g.laws || []).map(l => `<div style="font-size: 12px; margin-top: 4px; color: ${l.active ? '#e2e8f0' : '#64748b'};">📜 ${escHtml(l.name)}${l.active ? '' : ' (repealed)'}<span style="color: #64748b;"> · by ${escHtml(l.proposed_by || '?')} · ${escHtml(l.supporters)} for, ${escHtml(l.opposers)} against, broken ${escHtml(l.broken)}×</span></div>`).join('')}
+                        <div class="openable" ${openAttr('government', g.id)} style="background: #0f172a; border-radius: 6px; padding: 10px 12px; margin-bottom: 8px; opacity: ${g.active ? 1 : 0.5};">
+                            <div style="font-weight: 700; color: #c4b5fd;">${escHtml(g.name)}${g.active ? '' : ' (fallen)'}<span class="open-hint">open ›</span></div>
+                            <div style="font-size: 12px; color: #94a3b8;">${escHtml(g.type)} · led by ${g.leader ? dlink('agent', g.leader_id, g.leader) : 'nobody'} · ${escHtml(g.citizens)} citizens · approval ${escHtml(Math.round((g.approval || 0) * 100))}%${g.founded_day ? ` · since day ${escHtml(g.founded_day)}` : ''}</div>
+                            ${(g.laws || []).map(l => `<div class="dlink" ${openAttr('law', l.id)} style="display: block; text-decoration: none; font-size: 12px; margin-top: 4px; color: ${l.active ? '#e2e8f0' : '#64748b'};">📜 ${escHtml(l.name)}${l.active ? '' : ' (repealed)'}<span style="color: #64748b;"> · by ${escHtml(l.proposed_by || '?')} · ${escHtml(l.supporters)} for, ${escHtml(l.opposers)} against, broken ${escHtml(l.broken)}×</span></div>`).join('')}
                         </div>`).join('');
                 $safe('society-faiths-list').innerHTML = faiths.length === 0 ? emptyNote('No one has founded a faith')
                     : faiths.map(f => `
-                        <div style="background: #0f172a; border-radius: 6px; padding: 10px 12px; margin-bottom: 8px;">
-                            <div style="font-weight: 700; color: #fcd34d;">${escHtml(f.name)}</div>
-                            <div style="font-size: 12px; color: #94a3b8;">prophet ${escHtml(f.prophet || '?')} · ${escHtml(f.followers)} followers · ${escHtml(f.temples)} temples</div>
+                        <div class="openable" ${openAttr('faith', f.id)} style="background: #0f172a; border-radius: 6px; padding: 10px 12px; margin-bottom: 8px;">
+                            <div style="font-weight: 700; color: #fcd34d;">${escHtml(f.name)}<span class="open-hint">open ›</span></div>
+                            <div style="font-size: 12px; color: #94a3b8;">${escHtml(f.type || '')} · prophet ${dlink('agent', f.prophet_id, f.prophet || '?')} · ${escHtml(f.followers)} followers · ${escHtml(f.temples)} temples</div>
+                            ${f.belief ? `<div style="font-size: 12px; color: #cbd5e1; margin-top: 4px; font-style: italic;">“${escHtml(f.belief)}”</div>` : ''}
                         </div>`).join('');
                 $safe('society-families-tree').innerHTML = families.length === 0 ? emptyNote('No children born yet')
                     : `<ul style="list-style: none; padding-left: 0; margin: 0;">${families.map(renderFamily).join('')}</ul>`;
                 $safe('society-economy').innerHTML = `
                     <div style="font-size: 13px; color: #e2e8f0;">💰 ${escHtml(Math.round(economy.money || 0))} coins among the living · 🤝 ${escHtml(economy.trades || 0)} trades</div>
                     <div style="font-size: 13px; color: #e2e8f0; margin-top: 4px;">🪙 ${escHtml(economy.coins_minted || 0)} minting runs · 🏦 ${escHtml(economy.banks || 0)} banks</div>
-                    ${(economy.richest || []).length ? `<div style="font-size: 12px; color: #94a3b8; margin-top: 8px;">Richest: ${economy.richest.map(r => `${escHtml(r.name)} (${escHtml(r.wealth)})`).join(', ')}</div>` : ''}`;
+                    ${(economy.richest || []).length ? `<div style="font-size: 12px; color: #94a3b8; margin-top: 8px;">Richest: ${economy.richest.map(r => `${dlink('agent', r.id, r.name)} (${escHtml(r.wealth)})`).join(', ')}</div>` : ''}`;
                 $safe('society-inventions-list').innerHTML = inventions.length === 0 ? emptyNote('Nothing invented yet')
                     : inventions.slice(-30).reverse().map(i => `
-                        <div style="font-size: 12px; color: #e2e8f0; margin-bottom: 4px;">💡 ${escHtml(i.name)} <span style="color: #64748b;">(${escHtml(i.type)}) by ${escHtml(i.inventor || '?')}, known by ${escHtml(i.known_by)}</span></div>`).join('');
+                        <div style="font-size: 12px; color: #e2e8f0; margin-bottom: 4px;">💡 ${dlink('invention', i.id, i.name)} <span style="color: #64748b;">(${escHtml(i.type)}) by </span>${dlink('agent', i.inventor_id, i.inventor || '?')}<span style="color: #64748b;">, known by ${escHtml(i.known_by)}</span></div>`).join('');
                 const life = data.village_life || {};
                 const works = life.works || {};
-                const gatheringLine = (g, done) => `<div style="font-size: 12px; color: #e2e8f0; margin-bottom: 4px;">${done ? '🎉' : (g.on ? '🔴' : '📅')} ${escHtml(g.host)}'s ${escHtml(g.kind)} at ${escHtml(g.place)}, ${escHtml(g.when)}`
+                const gatheringLine = (g, done) => `<div class="openable" ${openAttr('gathering', g.id)} style="font-size: 12px; color: #e2e8f0; margin-bottom: 4px; border-radius: 4px; padding: 2px 4px;">${done ? '🎉' : (g.on ? '🔴' : '📅')} ${dlink('agent', g.host_id, g.host)}'s ${escHtml(g.kind)} at ${escHtml(g.place)}, ${escHtml(g.when)}`
                     + `<span style="color: #64748b;"> · ${escHtml(g.heard)} heard${done ? `, ${escHtml(g.came)} came` : (g.on ? `, ${escHtml(g.here)} there now` : '')}</span></div>`;
                 $safe('society-village-life').innerHTML = `
                     <div style="font-size: 13px; color: #e2e8f0; margin-bottom: 8px;">🛣️ ${escHtml(works.road_tiles || 0)} road tiles · 💧 ${escHtml(works.wells || 0)} wells · 🏮 ${escHtml(works.street_lights || 0)} street lights (${escHtml(works.lit || 0)} lit) · 💬 ${escHtml(life.conversations || 0)} conversations</div>

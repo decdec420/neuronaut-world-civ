@@ -16,16 +16,20 @@ def society_snapshot(sim) -> Dict:
     for gov in gm.governments.values():
         laws = [gm.laws[l] for l in gov.laws if l in gm.laws]
         governments.append({
-            "name": gov.name, "type": gov.government_type.value, "active": gov.active,
-            "leader": name(gov.leader_id), "citizens": len(gov.citizens),
-            "laws": [{"name": law.name, "description": law.description, "active": law.active,
-                      "proposed_by": name(law.created_by), "supporters": len(law.supporters),
+            "id": gov.id, "name": gov.name, "type": gov.government_type.value, "active": gov.active,
+            "leader": name(gov.leader_id), "leader_id": gov.leader_id, "citizens": len(gov.citizens),
+            "approval": round(gov.approval_rating, 2),
+            "founded_day": gov.founded_tick // 144 + 1 if getattr(gov, 'founded_tick', None) is not None else None,
+            "laws": [{"id": law.id, "name": law.name, "description": law.description, "active": law.active,
+                      "proposed_by": name(law.created_by), "proposed_by_id": law.created_by,
+                      "supporters": len(law.supporters),
                       "opposers": len(law.opposers), "broken": law.times_broken} for law in laws],
         })
 
     religions = [{
-        "name": r.name, "type": r.religion_type.value, "prophet": r.founder_name or name(r.founder_id),
-        "followers": len(r.followers), "temples": len(r.temples),
+        "id": r.id, "name": r.name, "type": r.religion_type.value, "prophet": r.founder_name or name(r.founder_id),
+        "prophet_id": r.founder_id, "followers": len(r.followers), "temples": len(r.temples),
+        "belief": r.core_beliefs[0] if r.core_beliefs else None,
     } for r in sim.religion.religions.values()]
 
     economy = sim.economy
@@ -38,12 +42,12 @@ def society_snapshot(sim) -> Dict:
         "trades": successes.get("trade", 0),
         "coins_minted": successes.get("mint_coins", 0),
         "banks": len(banks),
-        "richest": [{"name": a.name, "wealth": round(a.wealth, 1)} for a in richest if a.wealth > 0],
+        "richest": [{"id": a.id, "name": a.name, "wealth": round(a.wealth, 1)} for a in richest if a.wealth > 0],
     }
 
     inventions = [{
-        "name": inv.name, "type": inv.discovery_type.value, "inventor": name(inv.discoverer_id),
-        "known_by": len(inv.known_by),
+        "id": inv.id, "name": inv.name, "type": inv.discovery_type.value, "inventor": name(inv.discoverer_id),
+        "inventor_id": inv.discoverer_id, "known_by": len(inv.known_by),
     } for inv in sim.innovation_manager.innovations.values()]
 
     return {
@@ -66,11 +70,13 @@ def village_life(sim) -> Dict:
 
     def when(tick):
         return f"day {tick // 144 + 1}, {tick // 6 % 24:02d}:00"
-    upcoming = [{"host": g.organizer_name, "kind": g.kind, "place": g.place, "when": when(g.start),
+    upcoming = [{"id": g.id, "host": g.organizer_name, "host_id": g.organizer, "kind": g.kind, "place": g.place,
+                 "when": when(g.start),
                  "on": g.is_on(now), "heard": sum(1 for a in alive if g.news_id and news.knows(a, g.news_id)),
                  "here": len(g.attendees)}
                 for g in sorted(gatherings.upcoming.values(), key=lambda g: g.start)]
-    recent = [{"host": g.organizer_name, "kind": g.kind, "place": g.place, "when": when(g.start),
+    recent = [{"id": g.id, "host": g.organizer_name, "host_id": g.organizer, "kind": g.kind, "place": g.place,
+               "when": when(g.start),
                "heard": g.heard_before_start, "came": len(g.attendees)}
               for g in reversed(gatherings.history[-8:])]
     talked_about = sorted(((news.reach(n.id, alive), n.text) for n in news.items.values()), reverse=True)[:6]
@@ -92,8 +98,9 @@ def family_tree(sim) -> List[Dict]:
 
     def person(agent, depth=0) -> Dict:
         partner = by_id.get(agent.partner_id) if agent.partner_id else None
-        node = {"name": agent.name, "age": agent.age, "alive": agent.alive, "stage": agent.life_stage,
-                "partner": partner.name if partner else None, "children": []}
+        node = {"id": agent.id, "name": agent.name, "age": agent.age, "alive": agent.alive, "stage": agent.life_stage,
+                "partner": partner.name if partner else None, "partner_id": partner.id if partner else None,
+                "children": []}
         if depth < 6:
             node["children"] = [person(by_id[c], depth + 1) for c in agent.children_ids if c in by_id]
         return node
