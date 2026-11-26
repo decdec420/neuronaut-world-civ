@@ -2159,18 +2159,9 @@
                             </div>
                         </div>
                     </div>
-                    <div style="margin-top: 16px; padding: 12px; background: rgba(239, 68, 68, 0.1); border-left: 4px solid #ef4444; border-radius: 4px;">
-                        <div style="font-size: 12px; color: #94a3b8;">
-                            💀 <strong>SURVIVAL MODE:</strong> Agents start with <strong>ZERO wealth</strong> - no free money! The economy must be built from nothing:
-                            <ul style="margin: 8px 0 0 16px; padding: 0;">
-                                <li>🪵 <strong>Barter era</strong> - Trade wood for food, stones for water</li>
-                                <li>⛏️ <strong>Mining</strong> - Discover and gather metal_ore from the ground</li>
-                                <li>🔥 <strong>Smelting</strong> - Experiment to discover: ore + fire → pure metal</li>
-                                <li>🪙 <strong>Coin minting</strong> - Experiment to discover: metal → 10 coins</li>
-                                <li>💰 <strong>Currency era</strong> - Once coins exist, true economy emerges!</li>
-                            </ul>
-                            <strong>Watch the economic evolution happen naturally</strong> - agents will discover currency through experimentation!
-                        </div>
+                    <div style="margin-top: 16px;">
+                        <div style="font-size: 13px; color: #cbd5e1; margin-bottom: 8px;">Everyone starts with nothing. Each step below is something people may choose to do, once someone knows how; the counts are how often it's been done.</div>
+                        <div id="econ-steps" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px;"></div>
                     </div>
                 </div>
 
@@ -2211,7 +2202,7 @@
                     <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;">
                         <div style="text-align: center; padding: 16px; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-radius: 8px; border: 1px solid #334155;">
                             <div style="font-size: 24px; font-weight: 700; color: #3b82f6;" id="econ-trade-volume">0</div>
-                            <div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">Trade Volume (coins)</div>
+                            <div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">Market volume (coins)</div>
                         </div>
                         <div style="text-align: center; padding: 16px; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-radius: 8px; border: 1px solid #334155;">
                             <div style="font-size: 24px; font-weight: 700; color: #10b981;" id="econ-active-offers">0</div>
@@ -2219,7 +2210,7 @@
                         </div>
                         <div style="text-align: center; padding: 16px; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-radius: 8px; border: 1px solid #334155;">
                             <div style="font-size: 24px; font-weight: 700; color: #f59e0b;" id="econ-gambling-total">0</div>
-                            <div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">Gambling Winnings</div>
+                            <div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">Times gambled</div>
                         </div>
                     </div>
                 </div>
@@ -6094,7 +6085,9 @@
                 document.getElementById('econ-total-wealth').textContent = Math.round(wealth.total_wealth || 0);
                 document.getElementById('econ-avg-wealth').textContent = Math.round(wealth.mean_wealth || 0);
                 document.getElementById('econ-gini').textContent = (wealth.gini_coefficient || 0).toFixed(2);
-                document.getElementById('econ-trades').textContent = market.total_transactions || 0;
+                // Exchanges: barter trades between people, plus market sales
+                const exchanges = economyData.exchanges || {};
+                setTextSafe('econ-trades', (exchanges.trade || 0) + (market.total_transactions || 0));
 
                 // Currency system status
                 document.getElementById('econ-metal-ore').textContent = Math.round(resources.metal_ore || 0);
@@ -6115,18 +6108,27 @@
                 // Render wealth bars for all agents
                 renderWealthBars(worldData.agents || []);
 
-                // Market prices
+                // Market prices (the opening prices until someone sells)
+                window.__marketSales = market.total_transactions || 0;
                 renderMarketPrices(market.item_prices || {});
 
                 // Economic activity
                 document.getElementById('econ-trade-volume').textContent = Math.round(market.total_volume || 0);
                 document.getElementById('econ-active-offers').textContent = market.active_offers || 0;
 
-                // Calculate gambling total from events
-                document.getElementById('econ-gambling-total').textContent = Math.round(wealth.total_wealth * 0.05); // Estimate
+                setTextSafe('econ-gambling-total', exchanges.gamble || 0);
 
-                // Update currency evolution tracker
-                const currencyType = market.current_currency || 'barter';
+                // Steps toward money: done how often, and who knows how
+                $safe('econ-steps').innerHTML = (economyData.steps || []).map(st => `
+                    <div style="background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 8px 10px;">
+                        <div style="font-size: 13px; color: #f1f5f9; font-weight: 600;">${escHtml(st.label)} <span style="float: right; color: ${st.done ? '#22c55e' : '#64748b'};">${escHtml(st.done)}×</span></div>
+                        <div style="font-size: 11px; color: #94a3b8; margin-top: 3px;">${st.knowhow
+                            ? `needs ${dlink('knowhow', st.knowhow, st.knowhow_label)} · ${escHtml(st.can)} of ${escHtml(economyData.alive)} know it`
+                            : 'anyone can'}</div>
+                    </div>`).join('');
+
+                // Update currency evolution tracker: what's in use, not what's possible
+                const currencyType = economyData.phase || market.current_currency || 'barter';
                 const currencyPhases = {
                     'barter': { name: 'BARTER', desc: 'Direct item-for-item exchange', progress: '33%' },
                     'commodity': { name: 'COMMODITY', desc: 'Standard resource as currency', progress: '66%' },
@@ -6196,7 +6198,7 @@
                 return `
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <div style="width: 100px; font-size: 12px; color: #94a3b8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                            ${agent.name}
+                            ${dlink('agent', agent.id, agent.name)}
                         </div>
                         <div style="flex: 1; background: #0f172a; border-radius: 4px; height: 20px; overflow: hidden;">
                             <div style="width: ${percentage}%; height: 100%; background: ${color}; transition: width 0.3s;"></div>
@@ -6217,6 +6219,7 @@
                 return;
             }
 
+            const opened = (window.__marketSales || 0) > 0;
             const priceIcons = {
                 'food': '🌾',
                 'water': '💧',
@@ -6228,7 +6231,8 @@
                 'plant_fiber': '🌿'
             };
 
-            container.innerHTML = Object.entries(prices).map(([item, price]) => {
+            container.innerHTML = (opened ? '' : '<div style="font-size: 12px; color: #94a3b8; padding: 4px 8px 10px;">Nobody has sold anything at market yet: these are the prices a market would open at.</div>')
+                + Object.entries(prices).map(([item, price]) => {
                 const icon = priceIcons[item] || '📦';
                 return `
                     <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; border-bottom: 1px solid #334155;">

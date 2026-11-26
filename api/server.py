@@ -506,12 +506,35 @@ async def get_economy():
         raise HTTPException(status_code=503, detail="Simulation not running")
 
     done = simulation.action_successes
+    market = simulation.economy.market.get_market_statistics()
+    minting = simulation.economy.minting
+    # The phase is what's in use: coins only once some have been minted (old
+    # saves have the market marked "coins" from their first tick, with none)
+    phase = market.get("current_currency", "barter")
+    if phase == "coins" and minting.total_coins_in_circulation <= 0:
+        phase = "commodity" if market.get("commodity_currency") else "barter"
+    from world.knowhow import KNOWHOW, NEEDED_FOR, knows
+    alive = [a for a in simulation.world.agents if a.alive]
+    steps = []
+    for action, label in (("trade", "Trade goods (barter)"), ("smelt_ore", "Smelt ore"),
+                          ("mint_coins", "Mint coins"), ("open_bank", "Open a bank"),
+                          ("apply_for_loan", "Borrow"), ("gamble", "Gamble")):
+        need = NEEDED_FOR.get(action)
+        steps.append({"action": action, "label": label, "done": done.get(action, 0),
+                      "knowhow": need, "knowhow_label": KNOWHOW[need].label if need else None,
+                      "can": sum(1 for a in alive if need is None or knows(a, need))})
     return {
         "wealth_stats": simulation.economy.get_wealth_statistics(),
-        "market_stats": simulation.economy.market.get_market_statistics(),
+        "market_stats": market,
+        "phase": phase,
+        "coins_in_circulation": minting.total_coins_in_circulation,
         # how many times each step toward money has been done
         "made": {"smelt_ore": done.get("smelt_ore", 0), "refine_material": done.get("refine_material", 0),
                  "mint_coins": done.get("mint_coins", 0)},
+        # what people exchange, and how many know how to (dawn worlds: know-how)
+        "exchanges": {a: done.get(a, 0) for a in ("trade", "buy", "sell", "steal", "gamble", "pay_tax", "collect_tax")},
+        "steps": steps,
+        "alive": len(alive),
     }
 
 
