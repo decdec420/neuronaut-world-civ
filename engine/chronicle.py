@@ -31,6 +31,7 @@ class ChronicleEntry:
     title: str
     text: str = ""
     agents: List[str] = field(default_factory=list)   # names, as they were then
+    ref: Optional[Dict] = None   # what it's about, for the dashboard to open: {kind, id}
 
     def to_dict(self) -> Dict:
         d = asdict(self)
@@ -51,18 +52,18 @@ class Chronicle:
 
     # -- writing -----------------------------------------------------------------
 
-    def first(self, key: str, tick: int, title: str, text: str = "", agents=()) -> bool:
+    def first(self, key: str, tick: int, title: str, text: str = "", agents=(), ref=None) -> bool:
         """Record something that happened for the first time (once per key)."""
-        return self._once("first", key, tick, title, text, agents)
+        return self._once("first", key, tick, title, text, agents, ref)
 
     def milestone(self, key: str, tick: int, title: str, text: str = "", agents=()) -> bool:
         return self._once("milestone", key, tick, title, text, agents)
 
-    def _once(self, kind: str, key: str, tick: int, title: str, text: str, agents) -> bool:
+    def _once(self, kind: str, key: str, tick: int, title: str, text: str, agents, ref=None) -> bool:
         if key in self.done:
             return False
         self.done.add(key)
-        self._add(ChronicleEntry(tick, kind, key, title, text, [a for a in agents if a]))
+        self._add(ChronicleEntry(tick, kind, key, title, text, [a for a in agents if a], ref))
         return True
 
     def voice(self, tick: int, name: str, text: str, about: str = "") -> None:
@@ -134,7 +135,8 @@ class Chronicle:
                 b = done[0]
                 builders = [name_of(i) for i in sorted(b.builder_ids)]
                 self.first("first_home", tick, f"First building finished: {b.name}",
-                           f"Built by {', '.join(n for n in builders if n) or 'someone'}.", builders)
+                           f"Built by {', '.join(n for n in builders if n) or 'someone'}.", builders,
+                           ref={"kind": "building", "id": b.id})
 
         if "first_couple" not in self.done and events["partnered"]:
             couple = next((a for a in sim.world.agents if a.partner_id), None)
@@ -161,22 +163,26 @@ class Chronicle:
             gov = next(iter(gm.governments.values()))
             founder = name_of(gov.leader_id)
             self.first("first_government", tick, f"First government: {gov.name}",
-                       f"A {gov.government_type.value}, founded by {founder or 'someone'}.", [founder])
+                       f"A {gov.government_type.value}, founded by {founder or 'someone'}.", [founder],
+                       ref={"kind": "government", "id": gov.id})
         if "first_law" not in self.done and gm.laws:
             law = next(iter(gm.laws.values()))
-            self.first("first_law", tick, f"First law: {law.name}", law.description, [name_of(law.created_by)])
+            self.first("first_law", tick, f"First law: {law.name}", law.description, [name_of(law.created_by)],
+                       ref={"kind": "law", "id": law.id})
 
         if "first_religion" not in self.done and sim.religion.religions:
             faith = next(iter(sim.religion.religions.values()))
             prophet = faith.founder_name or name_of(faith.founder_id)
-            self.first("first_religion", tick, f"First faith: {faith.name}", f"Its prophet: {prophet}.", [prophet])
+            self.first("first_religion", tick, f"First faith: {faith.name}", f"Its prophet: {prophet}.", [prophet],
+                       ref={"kind": "faith", "id": faith.id})
 
         innovations = sim.innovation_manager.innovations
         if "first_invention" not in self.done and innovations:
             inv = next(iter(innovations.values()))
             inventor = name_of(inv.discoverer_id)
             self.first("first_invention", tick, f"First invention: {inv.name}",
-                       f"Made first by {inventor or 'someone'}.", [inventor])
+                       f"Made first by {inventor or 'someone'}.", [inventor],
+                       ref={"kind": "invention", "id": inv.id})
 
         wars = getattr(sim.warfare_manager, "active_conflicts", {})
         if "first_war" not in self.done and wars:

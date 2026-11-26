@@ -130,9 +130,10 @@ class EconomicEngine:
     def check_currency_evolution(self, current_tick: int) -> Optional[str]:
         """Check if currency should evolve (barter → commodity → coins)"""
 
-        # Check if coins have been discovered
-        if CoinType.COPPER_PENNY in self.minting.discovered_coins:
-            # Coins exist - check if economy should adopt them
+        # Coins are the currency once someone has minted some. (It used to be
+        # once the penny's design was known, and that's known from the start,
+        # so every world "adopted coins" on its first tick, with no coins.)
+        if self.minting.total_coins_in_circulation > 0:
             if self.base_economy.market.current_currency_type.value == 'barter':
                 # Upgrade from barter to coins!
                 self.base_economy.market.current_currency_type = CurrencyType.COINS

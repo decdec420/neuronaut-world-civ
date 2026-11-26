@@ -37,6 +37,7 @@ class Consequence:
 
     # Ripple effects
     secondary_consequences: List[str] = field(default_factory=list)
+    tick: Optional[int] = None      # sim time (timestamp is wall-clock)
 
 
 class ConsequenceType:
@@ -179,7 +180,8 @@ class ConsequenceEngine:
             timestamp=datetime.now(),
             consequence_type=consequence_type,
             severity=severity,
-            description=self._generate_description(consequence_type, affected_agents, action, context)
+            description=self._generate_description(consequence_type, affected_agents, action, context),
+            tick=context.get('current_tick'),
         )
 
         # Apply specific effects
@@ -225,6 +227,14 @@ class ConsequenceEngine:
         """Generate human-readable description"""
 
         agent_names = context.get('agent_names', list(agents))
+        what = context.get('what')           # e.g. "heating clay and fire"
+        who = ', '.join(agent_names[:3])
+        if what:
+            told = {ConsequenceType.EXPLOSION: f"An explosion while {who} was {what}",
+                    "fire": f"A fire broke out while {who} was {what}",
+                    ConsequenceType.INJURY: f"{who} was hurt while {what}"}
+            if consequence_type in told:
+                return told[consequence_type]
 
         descriptions = {
             ConsequenceType.DEATH: f"{', '.join(agent_names[:3])} died during {action}",

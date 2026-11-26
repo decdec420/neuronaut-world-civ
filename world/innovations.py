@@ -50,6 +50,8 @@ class Innovation:
 
     # Knowledge spread
     known_by: Set[str] = field(default_factory=set)  # Agent IDs
+    discovered_tick: Optional[int] = None  # sim tick (discovered_at is wall-clock)
+    taught: List[Tuple[int, str, str]] = field(default_factory=list)  # (tick, teacher, student)
     times_used: int = 0
     success_rate: float = 1.0  # How often it works
 
@@ -177,6 +179,8 @@ class InnovationManager:
             discoverer_id=agent_id,
             known_by={agent_id}
         )
+        clock = getattr(self, 'time', None)
+        innovation.discovered_tick = clock.current_tick if clock is not None else None
 
         # Determine effects based on what agent was trying to do
         if 'action' in context:
@@ -293,6 +297,12 @@ class InnovationManager:
 
         # Student learns it
         self.learn_innovation(student_id, innovation_id)
+        innovation = self.innovations.get(innovation_id)
+        if innovation is not None:
+            clock = getattr(self, 'time', None)
+            taught = innovation.__dict__.setdefault('taught', [])
+            taught.append((clock.current_tick if clock is not None else 0, teacher_id, student_id))
+            del taught[:-100]
 
         return True
 

@@ -436,6 +436,31 @@ async def get_agent_full_profile(agent_id: str):
     return out
 
 
+@app.get("/knowhow")
+async def get_knowhow():
+    """What people know how to do, in tiers, and how it spread (engine/details.py knowhow_view)."""
+    if not simulation:
+        raise HTTPException(status_code=503, detail="Simulation not running")
+    from engine.details import knowhow_view
+    return knowhow_view(simulation)
+
+
+@app.get("/details/{kind}/{item_id}")
+async def get_details(kind: str, item_id: str):
+    """Anything the dashboard can open, told in full with links to what it
+    touches: agent, government, law, faith, knowhow, invention, gathering,
+    building or event (engine/details.py)."""
+    if not simulation:
+        raise HTTPException(status_code=503, detail="Simulation not running")
+    from engine.details import describe, DESCRIBERS
+    if kind not in DESCRIBERS:
+        raise HTTPException(status_code=404, detail=f"Unknown kind: {kind}")
+    found = describe(simulation, kind, item_id)
+    if found is None:
+        raise HTTPException(status_code=404, detail=f"No {kind} {item_id}")
+    return found
+
+
 @app.get("/events")
 async def get_events(limit: int = 50, min_importance: int = 1):
     """Get recent events"""
@@ -463,19 +488,23 @@ async def get_consequences():
 
     consequences_list = []
     for consequence_id, consequence in simulation.consequence_engine.consequences.items():
+        tick = getattr(consequence, 'tick', None)
         consequences_list.append({
             "id": consequence.id,
             "type": consequence.consequence_type,
             "severity": consequence.severity,
             "description": consequence.description,
             "caused_by": consequence.caused_by_action,
-            "affected_agents": list(consequence.affected_agents),
+            "affected_agents": sorted(consequence.affected_agents),
+            "affected": [{"id": i, "name": _name_of(i)} for i in sorted(consequence.affected_agents)],
+            "tick": tick,
+            "day": tick // 144 + 1 if tick is not None else None,
             "timestamp": consequence.timestamp.isoformat(),
             "secondary_effects": consequence.secondary_consequences
         })
 
-    # Sort by timestamp, most recent first
-    consequences_list.sort(key=lambda x: x['timestamp'], reverse=True)
+    # Most recent first
+    consequences_list.sort(key=lambda x: (x['tick'] or 0, x['timestamp']), reverse=True)
 
     return {
         "consequences": consequences_list,
@@ -490,12 +519,35 @@ async def get_economy():
         raise HTTPException(status_code=503, detail="Simulation not running")
 
     done = simulation.action_successes
+    market = simulation.economy.market.get_market_statistics()
+    minting = simulation.economy.minting
+    # The phase is what's in use: coins only once some have been minted (old
+    # saves have the market marked "coins" from their first tick, with none)
+    phase = market.get("current_currency", "barter")
+    if phase == "coins" and minting.total_coins_in_circulation <= 0:
+        phase = "commodity" if market.get("commodity_currency") else "barter"
+    from world.knowhow import KNOWHOW, NEEDED_FOR, knows
+    alive = [a for a in simulation.world.agents if a.alive]
+    steps = []
+    for action, label in (("trade", "Trade goods (barter)"), ("smelt_ore", "Smelt ore"),
+                          ("mint_coins", "Mint coins"), ("open_bank", "Open a bank"),
+                          ("apply_for_loan", "Borrow"), ("gamble", "Gamble")):
+        need = NEEDED_FOR.get(action)
+        steps.append({"action": action, "label": label, "done": done.get(action, 0),
+                      "knowhow": need, "knowhow_label": KNOWHOW[need].label if need else None,
+                      "can": sum(1 for a in alive if need is None or knows(a, need))})
     return {
         "wealth_stats": simulation.economy.get_wealth_statistics(),
-        "market_stats": simulation.economy.market.get_market_statistics(),
+        "market_stats": market,
+        "phase": phase,
+        "coins_in_circulation": minting.total_coins_in_circulation,
         # how many times each step toward money has been done
         "made": {"smelt_ore": done.get("smelt_ore", 0), "refine_material": done.get("refine_material", 0),
                  "mint_coins": done.get("mint_coins", 0)},
+        # what people exchange, and how many know how to (dawn worlds: know-how)
+        "exchanges": {a: done.get(a, 0) for a in ("trade", "buy", "sell", "steal", "gamble", "pay_tax", "collect_tax")},
+        "steps": steps,
+        "alive": len(alive),
     }
 
 
@@ -631,7 +683,15 @@ async def get_chronicle(limit: int = 100):
     """The village's history: firsts, milestones, and agents' own words (engine/chronicle.py)."""
     if not simulation:
         raise HTTPException(status_code=503, detail="Simulation not running")
-    return simulation.chronicle.to_dict(limit=max(1, min(limit, 300)))
+    data = simulation.chronicle.to_dict(limit=max(1, min(limit, 300)))
+    # Entries name people as they were then; give the dashboard their ids to
+    # open them (the living first when two share a name)
+    ids = {}
+    for a in sorted(simulation.world.agents, key=lambda a: (a.alive, a.id)):
+        ids[a.name] = a.id
+    for entry in data["entries"] + data["voices"]:
+        entry["people"] = [{"name": n, "id": ids[n]} for n in entry.get("agents") or [] if n in ids]
+    return data
 
 
 @app.get("/society")
@@ -867,28 +927,34 @@ async def get_buildings():
     if not simulation:
         raise HTTPException(status_code=503, detail="Simulation not running")
 
-    # Get buildings from the dynamic building system (completed buildings only)
+    # Every building: finished, going up, and fallen (the tab counts each);
+    # condition is 0-1, and age is in sim days (built_date is wall-clock)
+    now = simulation.world.time.current_tick
+    homes = {}
+    for a in simulation.world.agents:
+        if a.alive and getattr(a, 'home_id', None):
+            homes.setdefault(a.home_id, []).append({'id': a.id, 'name': a.name})
     buildings = []
     for building in simulation.dynamic_building_system.buildings.values():
-        if building.is_complete and not building.collapsed:
-            # Get design to find category and purposes
-            design = simulation.dynamic_building_system.designs.get(building.design_id)
-            category = design.category if design else "Unknown"
-            purposes = design.intended_purposes if design else []
-
-            buildings.append({
-                'id': building.id,
-                'name': building.name,
-                'category': category,  # NEW!
-                'purposes': purposes,  # NEW!
-                'location': {'x': building.location[0], 'y': building.location[1]},
-                'builders': list(building.builder_ids),
-                'materials_used': building.materials_used,
-                'built_date': building.built_date.isoformat() if building.built_date else None,
-                'is_complete': building.is_complete,
-                'construction_progress': building.construction_progress,
-                'collapsed': building.collapsed
-            })
+        design = simulation.dynamic_building_system.designs.get(building.design_id)
+        built = getattr(building, 'built_tick', None)
+        buildings.append({
+            'id': building.id,
+            'name': building.name,
+            'category': design.category if design else "Unknown",
+            'purposes': design.intended_purposes if design else [],
+            'location': {'x': building.location[0], 'y': building.location[1]},
+            'builders': [{'id': i, 'name': _name_of(i)} for i in sorted(building.builder_ids)],
+            'residents': homes.get(building.id, []),
+            'materials_used': building.materials_used,
+            'built_day': built // 144 + 1 if built is not None else None,
+            'age_days': (now - built) // 144 if built is not None else None,
+            'durability': round(max(0.0, min(1.0, building.durability)), 3),
+            'shelter_value': building.shelter_value,
+            'is_complete': building.is_complete,
+            'construction_progress': building.construction_progress,
+            'collapsed': building.collapsed
+        })
 
     return {"buildings": buildings, "total": len(buildings)}
 
@@ -1122,20 +1188,19 @@ async def get_governments():
     if not simulation:
         raise HTTPException(status_code=503, detail="Simulation not running")
 
-    governments = [
-        {
-            "id": g.id,
-            "name": g.name,
-            "type": g.government_type.value,
-            "citizens": len(g.citizens),
-            "approval": g.approval_rating,
-            "leader": _name_of(g.leader_id),
-            "leader_id": g.leader_id,
-        }
-        for g in simulation.governance_manager.governments.values()
-        if g.active
-    ]
-    return {"governments": governments, "total": len(governments)}
+    # Standing governments, then the fallen; each with how it's run, its laws,
+    # elections and latest events (engine/details.py); /details/government/{id}
+    # tells the rest
+    from engine.details import government_cards
+    cards = government_cards(simulation)
+    standing = [c for c in cards if c["active"]]
+    alive = {a.id for a in simulation.world.agents if a.alive}
+    under = set()
+    for g in simulation.governance_manager.governments.values():
+        if g.active:
+            under |= set(g.citizens) & alive
+    return {"governments": standing, "fallen": [c for c in cards if not c["active"]], "total": len(standing),
+            "under_government": len(under), "alive": len(alive)}
 
 
 @app.get("/knowledge")
@@ -1349,69 +1414,12 @@ async def get_agent_inventory(agent_id: str):
 
 @app.get("/roles")
 async def get_emergent_roles():
-    """Get all emergent roles - agent-discovered, agent-named!"""
+    """Who does what: jobs, the roles people have now (named by themselves)
+    and the ones they've left (engine/society.py roles_snapshot)."""
     if not simulation:
         raise HTTPException(status_code=503, detail="Simulation not running")
-
-    # Get all roles with agent names
-    roles_data = []
-    for agent_id, roles in simulation.role_emergence.agent_roles.items():
-        # Get agent name
-        agent = simulation._get_agent_by_id(agent_id)
-        agent_name = agent.name if agent else "Unknown"
-
-        for role in roles:
-            roles_data.append({
-                'role_id': role.role_id,
-                'agent_id': role.agent_id,
-                'agent_name': agent_name,
-                # AGENT-CREATED NAME (not system defined!)
-                'custom_role_name': role.custom_role_name,
-                'role_name_language': role.role_name_language,
-                # Behavior pattern that led to this role
-                'pattern_type': role.behavior_pattern.pattern_type,
-                'dominant_actions': role.behavior_pattern.dominant_actions,
-                'pattern_strength': role.behavior_pattern.pattern_strength,
-                # Emergence details
-                'emergence_date': role.emergence_date.isoformat(),
-                'emergence_context': role.emergence_context,
-                # Community recognition
-                'recognized_by_count': len(role.recognized_by),
-                'recognition_strength': role.recognition_strength,
-                'name_adopters_count': len(role.name_adopters),
-                # Role performance
-                'times_acted_in_role': role.times_acted_in_role,
-                'role_effectiveness': role.role_effectiveness,
-                # Name evolution
-                'previous_names': role.previous_names,
-            })
-
-    # Get role vocabulary (what role names exist in the community)
-    role_vocabulary = simulation.role_emergence.role_vocabulary
-    role_name_creators = simulation.role_emergence.role_name_origins
-
-    # Get role name origins with creator names
-    vocabulary_with_creators = []
-    for role_name, usage_count in sorted(role_vocabulary.items(), key=lambda x: x[1], reverse=True):
-        creator_id = role_name_creators.get(role_name, "Unknown")
-        creator = simulation._get_agent_by_id(creator_id)
-        creator_name = creator.name if creator else "Unknown"
-
-        vocabulary_with_creators.append({
-            'role_name': role_name,
-            'usage_count': usage_count,
-            'created_by_id': creator_id,
-            'created_by_name': creator_name
-        })
-
-    return {
-        "roles": roles_data,
-        "total_roles": len(roles_data),
-        "agents_with_roles": len(simulation.role_emergence.agent_roles),
-        "unique_role_names": len(role_vocabulary),
-        "role_vocabulary": vocabulary_with_creators,
-        "statistics": simulation.role_emergence.get_statistics()
-    }
+    from engine.society import roles_snapshot
+    return roles_snapshot(simulation)
 
 
 @app.get("/fun/stats")

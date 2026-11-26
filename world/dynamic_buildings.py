@@ -612,6 +612,8 @@ class DynamicBuildingSystem:
         if building.construction_progress >= 1.0:
             building.is_complete = True
             building.built_date = datetime.now()
+            clock = getattr(self, 'time', None)
+            building.built_tick = clock.current_tick if clock is not None else None
 
             # Determine actual performance through testing!
             self._test_building_performance(building, design)

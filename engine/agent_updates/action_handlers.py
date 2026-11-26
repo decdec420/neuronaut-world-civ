@@ -19,7 +19,7 @@ from world.simulation import ResourceType
 from social.relationships import RelationshipType
 from engine.events import EventGenerator, EventCategory, EventImportance
 from engine.psychology import NeedType, EmotionType
-from engine.storytelling import StoryGenerator, StoryType
+from engine.storytelling import StoryGenerator, StoryType, story_from_memory
 
 # A gathered harvest is eaten on the spot: hunger drops by amount / FOOD_PER_HUNGER.
 # Food or water this close is simply seen and used, before any remembered place
@@ -279,24 +279,14 @@ class ActionHandlers:
                 story_chance = creativity * 0.15  # Up to 15% chance for very creative agents
 
                 if random.random() < story_chance:
-                    current_day = current_tick // 144
 
                     # Choose story type based on agent state and personality
                     story_type = self._choose_story_type(agent)
 
-                    # Create the story!
-                    story = StoryGenerator.agent_creates_story(
-                        agent.name,
-                        {
-                            'creativity': creativity,
-                            'openness': agent.personality.get_trait('openness')
-                        },
-                        story_type,
-                        current_day,
-                        {'agent_id': agent.id}
-                    )
-
-                    self.sim.story_feed.add_story(story)
+                    # Told from what they remember (engine/storytelling.py); nothing to tell, no story
+                    story = story_from_memory(agent, story_type, current_tick, getattr(self.sim, 'knowhow', None))
+                    if story is not None:
+                        self.sim.story_feed.add_story(story)
 
             return {
                 'success': True,
@@ -607,18 +597,10 @@ class ActionHandlers:
 
                 story_type = random.choice(story_types)
 
-                story = StoryGenerator.agent_creates_story(
-                    agent.name,
-                    {
-                        'creativity': openness,
-                        'openness': openness
-                    },
-                    story_type,
-                    0,  # Will be set by simulation
-                    {'agent_id': agent.id}
-                )
-
-                self.sim.story_feed.add_story(story)
+                story = story_from_memory(agent, story_type, self.sim.world.time.current_tick,
+                                          getattr(self.sim, 'knowhow', None))
+                if story is not None:
+                    self.sim.story_feed.add_story(story)
 
         return {
             'success': True,

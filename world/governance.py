@@ -50,6 +50,11 @@ class Law:
     times_enforced: int = 0
     times_broken: int = 0
 
+    proposed_tick: Optional[int] = None
+    government_id: Optional[str] = None
+    votes: Dict[str, Tuple[bool, int]] = field(default_factory=dict)  # voter -> (for?, tick)
+    repealed_tick: Optional[int] = None
+
     def get_support_ratio(self) -> float:
         """Get ratio of support"""
         total = len(self.supporters) + len(self.opposers)
@@ -84,6 +89,12 @@ class Government:
 
     active: bool = True
 
+    # When it was founded (sim tick; founded_at is wall-clock) and what has
+    # happened in it: (tick, kind, data) with agent/law/election ids, read
+    # back as sentences by engine/details.py
+    founded_tick: Optional[int] = None
+    history: List[Tuple[int, str, Dict]] = field(default_factory=list)
+
 
 @dataclass
 class Election:
@@ -115,6 +126,21 @@ class GovernanceManager:
         # Agent political influence
         self.political_power: Dict[str, float] = {}  # agent_id -> power level
 
+        # The world's clock (anything with .current_tick), set by the simulation
+        self.time = None
+
+    HISTORY_KEPT = 300
+
+    def now(self) -> int:
+        return self.time.current_tick if self.time is not None else 0
+
+    def note(self, government: 'Government', kind: str, **data) -> None:
+        """Remember something that happened in this government."""
+        history = government.__dict__.setdefault('history', [])
+        history.append((self.now(), kind, data))
+        if len(history) > self.HISTORY_KEPT:
+            del history[: len(history) - self.HISTORY_KEPT]
+
     def agent_forms_government(
         self,
         founder_id: str,
@@ -133,6 +159,8 @@ class GovernanceManager:
         )
 
         self.governments[gov_id] = government
+        government.founded_tick = self.now()
+        self.note(government, 'founded', by=founder_id, type=gov_type.value)
 
         # Founder gets political power
         self.political_power[founder_id] = self.political_power.get(founder_id, 0.0) + 0.3
@@ -145,7 +173,9 @@ class GovernanceManager:
             return False
 
         government = self.governments[government_id]
-        government.citizens.add(agent_id)
+        if agent_id not in government.citizens:
+            government.citizens.add(agent_id)
+            self.note(government, 'joined', who=agent_id)
 
         return True
 
@@ -180,8 +210,12 @@ class GovernanceManager:
             supporters={creator_id}
         )
 
+        law.proposed_tick = self.now()
+        law.government_id = government_id
+        law.votes = {creator_id: (True, self.now())}
         self.laws[law_id] = law
         government.laws.append(law_id)
+        self.note(government, 'law', law=law_id, by=creator_id)
 
         return law
 
@@ -215,6 +249,7 @@ class GovernanceManager:
         else:
             law.opposers.add(agent_id)
             law.supporters.discard(agent_id)
+        law.__dict__.setdefault('votes', {})[agent_id] = (support, self.now())
 
     def hold_election(
         self,
@@ -237,6 +272,7 @@ class GovernanceManager:
         )
 
         self.elections[election_id] = election
+        self.note(government, 'election', election=election_id, position=position, closes=election.ends_tick)
 
         return election
 
@@ -308,6 +344,8 @@ class GovernanceManager:
 
         # Winner gains political power
         self.political_power[winner] = self.political_power.get(winner, 0.0) + 0.5
+        self.note(government, 'elected', election=election_id, winner=winner, position=election.position,
+                  votes=election.candidates.get(winner, 0), candidates=len(election.candidates))
 
         return winner
 
@@ -351,6 +389,8 @@ class GovernanceManager:
 
             # Add revolutionaries to council
             government.council_ids.update(list(supporters)[:5])
+            self.note(government, 'revolution', leader=revolutionary_leader, old_leader=old_leader,
+                      supporters=len(supporters), won=True)
 
             return True
         else:
@@ -360,6 +400,7 @@ class GovernanceManager:
                 self.political_power[agent_id] = self.political_power.get(agent_id, 0.5) * 0.5
 
             government.stability = min(1.0, government.stability + 0.1)
+            self.note(government, 'revolution', leader=revolutionary_leader, supporters=len(supporters), won=False)
 
             return False
 
@@ -398,6 +439,8 @@ class GovernanceManager:
                 if (law and law.active and len(law.opposers) > len(law.supporters)
                         and len(law.supporters) + len(law.opposers) >= max(2, len(government.citizens) // 2)):
                     law.active = False
+                    law.repealed_tick = current_tick
+                    self.note(government, 'repealed', law=law_id, against=len(law.opposers), support=len(law.supporters))
                     self.repealed_tax_policies = getattr(self, 'repealed_tax_policies', [])
                     if getattr(law, 'tax_policy_id', None):
                         self.repealed_tax_policies.append(law.tax_policy_id)
@@ -430,6 +473,7 @@ class GovernanceManager:
             if government.stability < 0.1:
                 government.active = False
                 government.government_type = GovernmentType.ANARCHY
+                self.note(government, 'collapsed', approval=round(government.approval_rating, 2))
 
     def laws_binding(self, agent_id: str) -> List[Law]:
         """The laws in force for an agent (those of its government)."""

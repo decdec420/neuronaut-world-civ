@@ -524,7 +524,7 @@ class ConstructionHandler(ActionHandler):
 
         # Achievement tracking
         if achievement_tracker and story_generator and story_feed:
-            current_day = current_tick // 144
+            current_day = current_tick // 144 + 1
             achievement_tracker.track_agent(agent.id, agent.name)
 
             if agent.id in achievement_tracker.agent_achievements:
@@ -540,7 +540,9 @@ class ConstructionHandler(ActionHandler):
                         current_day,
                         {
                             'agent_id': agent.id,
-                            'building_count': current_count + 1
+                            'building_count': current_count + 1,
+                            'name': ach.name, 'description': getattr(ach, 'description', ''),
+                            'building': building.name, 'personal': True,
                         }
                     )
                     story_feed.add_story(achievement_story)

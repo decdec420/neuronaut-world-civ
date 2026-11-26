@@ -984,8 +984,8 @@ class PerceptionBuilder:
         # Detect behavior patterns for this agent
         detected_patterns = self.sim.role_emergence.detect_behavior_patterns(agent.id)
 
-        # Get agent's discovered roles
-        agent_roles = self.sim.role_emergence.agent_roles.get(agent.id, [])
+        # Get agent's discovered roles (the ones they still have: roles lapse)
+        agent_roles = [r for r in self.sim.role_emergence.agent_roles.get(agent.id, []) if getattr(r, 'active', True)]
 
         # Pattern detection (agent might not know they have a pattern yet!)
         if detected_patterns:
@@ -1050,7 +1050,8 @@ class PerceptionBuilder:
                 dist = agent.location.distance_to(other_agent.location)
 
                 if dist < 40:  # Can observe roles within 40m
-                    other_roles = self.sim.role_emergence.agent_roles.get(other_agent.id, [])
+                    other_roles = [r for r in self.sim.role_emergence.agent_roles.get(other_agent.id, [])
+                                   if getattr(r, 'active', True)]
 
                     for role in other_roles:
                         if role.custom_role_name:  # Only show named roles
