@@ -2848,6 +2848,14 @@
         </div>
     </div>
 
+    <!-- SERVER OUT OF DATE: the page is newer than the code the server is running -->
+    <div id="server-stale-banner" role="alert" style="display: none; position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+         z-index: 13000; max-width: min(760px, calc(100vw - 32px)); background: #451a03; border: 2px solid #f59e0b; color: #fde68a;
+         border-radius: 10px; padding: 12px 44px 12px 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); font-size: 14px; line-height: 1.5;">
+        <div id="server-stale-text"></div>
+        <button onclick="dismissStaleBanner()" title="Hide" style="position: absolute; top: 8px; right: 10px; background: none; border: none; color: #fde68a; font-size: 18px; cursor: pointer;">✕</button>
+    </div>
+
     <!-- DETAIL DRAWER (openDetail): one panel for every government, law, faith,
          person, know-how, invention, gathering, building and event -->
     <div class="detail-drawer" id="detail-drawer" aria-hidden="true">
@@ -2972,6 +2980,7 @@
                 showConnection(false);
                 setTimeout(connectWebSocket, 2000);
             };
+            ws.onopen = () => { if (typeof checkServerVersion === 'function') checkServerVersion(); };
         }
 
         // Until updates arrive, the numbers on the page aren't the world's: say so
@@ -6146,6 +6155,41 @@
         }
 
         // Initialize
+        // ===== IS THE SERVER RUNNING THE SAME CODE AS THIS PAGE? =====
+        // The page is read from disk on every load; the server keeps running
+        // the code it started with. After a `git pull` without a restart, the
+        // old server sends nothing to open (no ids, no /details), so say so.
+        const DASHBOARD_API = 10;          // api/server.py DASHBOARD_API
+        let staleDismissed = false;
+        function dismissStaleBanner() {
+            staleDismissed = true;
+            $safe('server-stale-banner').style.display = 'none';
+        }
+        function showStaleBanner(why) {
+            if (staleDismissed) return;
+            $safe('server-stale-text').innerHTML = `<strong>⚠️ Restart the server to use this page fully.</strong> ${escHtml(why)}<br>`
+                + 'Where it\'s running, press <strong>Ctrl+C</strong>, start it again (e.g. <code>civstart</code>), then reload this page. '
+                + 'A restart begins a new world: to keep this one, save it first (💾 Save/Load) and load it again afterwards.';
+            $safe('server-stale-banner').style.display = 'block';
+        }
+        async function checkServerVersion() {
+            try {
+                const response = await fetch('/health', { cache: 'no-store' });
+                const health = await response.json();
+                if (health.dashboard_api === undefined || health.dashboard_api < DASHBOARD_API) {
+                    showStaleBanner('The server is running older code than this page, so cards and names have nothing to open.');
+                } else if (health.code_changed) {
+                    showStaleBanner('The code changed after the server started (an update was pulled), so it is still running the old code.');
+                } else {
+                    $safe('server-stale-banner').style.display = 'none';
+                }
+            } catch (error) {
+                // not connected: the connection pill already says so
+            }
+        }
+        checkServerVersion();
+        setInterval(checkServerVersion, 30000);
+
         connectWebSocket(); // WebSocket provides real-time stats updates every 2s
         checkSimulationStatus(); // Check speed on load
 
@@ -8139,9 +8183,16 @@
                 const response = await fetch(`/details/${encodeURIComponent(here.kind)}/${encodeURIComponent(here.id)}`);
                 if (here !== detailTrail[detailTrail.length - 1]) return;     // moved on meanwhile
                 if (!response.ok) {
-                    $safe('detail-body').innerHTML = emptyNote(response.status === 404
-                        ? `This ${(DETAIL_KINDS[here.kind] || here.kind).toLowerCase()} isn't in the world any more`
-                        : 'Could not load this right now');
+                    const why = await response.json().catch(() => ({}));
+                    if (response.status === 404 && why.detail === 'Not Found') {
+                        // no such endpoint: the server is older than this page
+                        $safe('detail-body').innerHTML = emptyNote('The server is running older code than this page: restart it to open things');
+                        checkServerVersion();
+                    } else {
+                        $safe('detail-body').innerHTML = emptyNote(response.status === 404
+                            ? `This ${(DETAIL_KINDS[here.kind] || here.kind).toLowerCase()} isn't in the world any more`
+                            : 'Could not load this right now');
+                    }
                     return;
                 }
                 const d = await response.json();

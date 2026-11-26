@@ -267,10 +267,50 @@ async def broadcast_updates():
 
 # REST Endpoints
 
+# What the dashboard needs from this server. The page is read from disk on
+# every load, so after a `git pull` it can be newer than a server still running
+# the old code: it then finds no ids and nothing opens. The page compares this
+# number and code_changed (below) and says to restart. Raise it when the
+# dashboard starts relying on something new from the server.
+DASHBOARD_API = 10
+_CODE_DIRS = ("api", "engine", "world", "agents", "economy", "social", "life")
+
+
+def _code_mtime() -> float:
+    """When the newest Python file of the server was last changed."""
+    from config import REPO_DIR
+    newest = 0.0
+    paths = [REPO_DIR / "main.py", REPO_DIR / "config.py"]
+    for name in _CODE_DIRS:
+        paths.extend((REPO_DIR / name).rglob("*.py"))
+    for path in paths:
+        try:
+            newest = max(newest, path.stat().st_mtime)
+        except OSError:
+            pass
+    return newest
+
+
+_STARTED_WITH_CODE = _code_mtime()
+_code_check = {"at": 0.0, "changed": False}
+
+
+def code_changed() -> bool:
+    """Whether the server's code changed on disk after it started (checked at
+    most every 10 s): it's still running the old code until restarted."""
+    import time as _time
+    now = _time.monotonic()
+    if now - _code_check["at"] > 10:
+        _code_check["at"] = now
+        _code_check["changed"] = _code_mtime() > _STARTED_WITH_CODE + 1
+    return _code_check["changed"]
+
+
 @app.get("/health")
 async def health():
     """For load balancers and container health checks: 200 while the world
-    is running (paused counts as running), 503 if its loop has stopped."""
+    is running (paused counts as running), 503 if its loop has stopped.
+    Also tells the dashboard whether it and this server are the same code."""
     running = simulation is not None and simulation_task is not None and not simulation_task.done()
     body = {
         "status": "ok" if running else "down",
@@ -278,6 +318,8 @@ async def health():
         "paused": bool(simulation.paused) if simulation else None,
         "alive_agents": sum(1 for a in simulation.world.agents if a.alive) if simulation else 0,
         "viewers": len(active_websockets),
+        "dashboard_api": DASHBOARD_API,
+        "code_changed": code_changed(),
     }
     return JSONResponse(status_code=200 if running else 503, content=body)
 
