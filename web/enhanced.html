@@ -4614,15 +4614,15 @@
                         </div>
 
                         <div style="color: #e2e8f0; font-size: 14px; line-height: 1.7; margin-bottom: 14px; min-height: 42px;">
-                            ${consequence.description}
+                            ${escHtml(consequence.description)}
                         </div>
 
                         <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 14px; border-top: 1px solid rgba(100, 116, 139, 0.3);">
                             <div style="font-size: 12px; color: #94a3b8;">
-                                Affected: <strong style="color: ${severityColor};">${consequence.affected_agents.length}</strong> agent${consequence.affected_agents.length !== 1 ? 's' : ''}
+                                Affected: ${(consequence.affected || []).map(a => dlink('agent', a.id, a.name)).join(', ') || `<strong style="color: ${severityColor};">${consequence.affected_agents.length}</strong>`}
                             </div>
                             <div style="font-size: 11px; color: #64748b;">
-                                ${timeStr}
+                                ${consequence.day ? `day ${escHtml(consequence.day)}` : timeStr}
                             </div>
                         </div>
 

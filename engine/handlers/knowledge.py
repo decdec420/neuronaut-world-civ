@@ -448,7 +448,9 @@ class KnowledgeActionHandler(ActionHandler):
                     {
                         'had_explosion': result.explosion,
                         'had_fire': result.fire,
-                        'current_tick': current_tick
+                        'current_tick': current_tick,
+                        'agent_names': [agent.name],
+                        'what': f"trying to {method.value.replace('_', ' ')} {' and '.join(m.replace('_', ' ') for m in materials)}",
                     },
                     agent_objects=[agent]
                 )

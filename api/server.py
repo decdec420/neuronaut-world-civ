@@ -479,19 +479,23 @@ async def get_consequences():
 
     consequences_list = []
     for consequence_id, consequence in simulation.consequence_engine.consequences.items():
+        tick = getattr(consequence, 'tick', None)
         consequences_list.append({
             "id": consequence.id,
             "type": consequence.consequence_type,
             "severity": consequence.severity,
             "description": consequence.description,
             "caused_by": consequence.caused_by_action,
-            "affected_agents": list(consequence.affected_agents),
+            "affected_agents": sorted(consequence.affected_agents),
+            "affected": [{"id": i, "name": _name_of(i)} for i in sorted(consequence.affected_agents)],
+            "tick": tick,
+            "day": tick // 144 + 1 if tick is not None else None,
             "timestamp": consequence.timestamp.isoformat(),
             "secondary_effects": consequence.secondary_consequences
         })
 
-    # Sort by timestamp, most recent first
-    consequences_list.sort(key=lambda x: x['timestamp'], reverse=True)
+    # Most recent first
+    consequences_list.sort(key=lambda x: (x['tick'] or 0, x['timestamp']), reverse=True)
 
     return {
         "consequences": consequences_list,
