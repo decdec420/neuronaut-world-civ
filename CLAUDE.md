@@ -89,6 +89,8 @@ python3 scripts/sim_check.py --start settlers # the other kind of world (default
 | Buildings | `engine/handlers/construction.py`, `world/dynamic_buildings.py` |
 | World, resources, regrowth | `world/simulation.py` (`resource_pools`, `pool_regeneration`) |
 | Dashboard | `web/enhanced.html` (served at `/app`) |
+| Detail panel (anything opens) | `engine/details.py` → `GET /details/{kind}/{id}`; the drawer in `web/enhanced.html` (`openDetail`) opens any element with `data-kind`/`data-id` |
+| Histories | governments, faiths keep `history` (`note()` in `world/governance.py`, `world/religion.py`); know-how keeps `ledger.log`; read back as sentences in `engine/details.py` |
 
 ## Gotchas (each one caused real bugs)
 
@@ -122,6 +124,16 @@ python3 scripts/sim_check.py --start settlers # the other kind of world (default
 - **Relationships grow with time together** (`social/relationships.py`
   BOND_SPACING): repeating an interaction in the same hour adds almost
   nothing. Don't add 0.1 per interaction elsewhere.
+- **Show sim time, not wall-clock.** `datetime` fields (`emergence_date`,
+  `built_date`, `timestamp`, `founded_at`) are when the server ran: a world
+  loaded from a save shows "0d old" and times of day. Keep a tick
+  (`built_tick`, `started_tick`, `founded_tick`, `tick`) and show its day.
+- **Dashboard: make it open, and escape it.** A card or name that should open
+  gets `openAttr(kind, id)` / `dlink(kind, id, label)`; the endpoint behind
+  it must send ids. Text that agents or the LLM wrote goes through `escHtml`.
+- **Flavour randomness stays off the world's dice.** Naming a role uses
+  `_NameDice` (seeded by agent and action) so it doesn't move every number;
+  do the same for any new cosmetic randomness.
 - **Requests that change the world** need the `X-Neuronaut-Control: 1` header
   (and the admin token if `NEURONAUT_ADMIN_TOKEN` is set). In the dashboard use
   `controlFetch()`.
@@ -165,7 +177,16 @@ wildfire. Round 7 started worlds at the dawn of time (`world/knowhow.py`).
 6. **Far guests can't reach a gathering** (LEAD_TICKS): anyone more than
    ~20 tiles away arrives after the end. Letting them set off in time
    lowered attendance in every test. Measure before trying again.
-7. A tick costs ~80 ms of CPU with 30-40 people (profile: the rule brain
+7. **Dashboard, after Round 9** (every tab audited on a day-20 dawn world):
+   still thin or separate: Culture's celebrations (698 in 20 days, generic
+   names) run beside the village's gatherings and don't link to them; the
+   materials era (Tech tab, below the know-how age) comes from experiments,
+   is unrelated to know-how and still decides which experiments are tried
+   (`engine/handlers/knowledge.py`); Experimentation lists every material
+   whether or not anyone has made it. Eleven small governments form in the
+   first days: an agent joins the government of someone it likes and founds
+   its own when it likes nobody in one, which on day 1 is everyone.
+8. A tick costs ~80 ms of CPU with 30-40 people (profile: the rule brain
    weighing ~65 options per agent is the largest part). Faiths stay small;
    disasters are large; the PDFs in `docs/references/` predate most of this.
 
