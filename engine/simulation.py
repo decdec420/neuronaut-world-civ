@@ -621,45 +621,35 @@ class SimulationEngine:
         self._handle_autosave_and_extinction(current_tick, alive_count)
 
     def _update_role_emergence(self, current_tick: int):
-        """Handle role emergence detection for agents."""
+        """Roles are what someone does a lot of now (world/roles.py): they
+        begin when an activity is a quarter of what they do (self-care aside),
+        get a name the agent gives them, and lapse when they mostly stop."""
+        roles = self.role_emergence
         for agent in self.world.agents:
             if not agent.alive:
                 continue
-
-            patterns = self.role_emergence.detect_behavior_patterns(agent.id)
-
-            for pattern in patterns:
-                existing_roles = self.role_emergence.agent_roles.get(agent.id, [])
-                pattern_exists = any(
-                    r.behavior_pattern.pattern_type == pattern.pattern_type
-                    for r in existing_roles
-                )
-
-                if not pattern_exists and pattern.pattern_strength > 0.30:
-                    agent_role_name = self.role_emergence.generate_agent_role_name(
-                        pattern,
-                        agent_personality={'openness': agent.personality.openness if hasattr(agent, 'personality') else 0.5},
-                        agent_recent_discoveries=None,
-                        agent_culture_context=None
+            roles.review_roles(agent.id, current_tick)
+            for pattern in roles.detect_behavior_patterns(agent.id):
+                existing = roles.agent_roles.get(agent.id, [])
+                if any(r.behavior_pattern.pattern_type == pattern.pattern_type for r in existing):
+                    continue                                     # theirs already (or lapsed: review revives it)
+                name = roles.generate_agent_role_name(
+                    pattern,
+                    agent_personality={'openness': agent.personality.openness if hasattr(agent, 'personality') else 0.5},
+                    agent_seed=agent.id)
+                role = roles.agent_discovers_role(agent.id, agent.name, pattern, agent_generated_name=name)
+                if role:
+                    role.started_tick = current_tick
+                    doing = ', '.join(a.replace('_', ' ') for a in pattern.dominant_actions)
+                    self.event_logger.log_event(
+                        EventCategory.CULTURAL,
+                        EventImportance.MINOR,
+                        f"{agent.name} has become known as {name}",
+                        f"{doing.capitalize()} has been {round(pattern.pattern_strength * 100)}% of what "
+                        f"{agent.name} does lately; that's the name they gave it.",
+                        current_tick,
+                        [agent.id]
                     )
-
-                    role = self.role_emergence.agent_discovers_role(
-                        agent.id,
-                        agent.name,
-                        pattern,
-                        agent_generated_name=agent_role_name
-                    )
-
-                    if role:
-                        title = f"{agent.name} becomes {agent_role_name}!"
-                        desc = f"{agent.name} has specialized in {', '.join(pattern.dominant_actions)} and now identifies as a {agent_role_name}."
-                        self.event_logger.log_event(
-                            EventCategory.CULTURAL,
-                            EventImportance.MODERATE,
-                            title, desc,
-                            current_tick,
-                            [agent.id]
-                        )
 
     def _handle_autosave_and_extinction(self, current_tick: int, alive_count: int):
         """Handle auto-save and extinction detection."""

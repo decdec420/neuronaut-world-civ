@@ -6,6 +6,8 @@ the economy, and inventions. Read-only.
 
 from typing import Dict, List
 
+TICKS_PER_DAY = 144
+
 
 def society_snapshot(sim) -> Dict:
     by_id = {a.id: a for a in sim.world.agents}
@@ -19,7 +21,7 @@ def society_snapshot(sim) -> Dict:
             "id": gov.id, "name": gov.name, "type": gov.government_type.value, "active": gov.active,
             "leader": name(gov.leader_id), "leader_id": gov.leader_id, "citizens": len(gov.citizens),
             "approval": round(gov.approval_rating, 2),
-            "founded_day": gov.founded_tick // 144 + 1 if getattr(gov, 'founded_tick', None) is not None else None,
+            "founded_day": gov.founded_tick // TICKS_PER_DAY + 1 if getattr(gov, 'founded_tick', None) is not None else None,
             "laws": [{"id": law.id, "name": law.name, "description": law.description, "active": law.active,
                       "proposed_by": name(law.created_by), "proposed_by_id": law.created_by,
                       "supporters": len(law.supporters),
@@ -116,3 +118,62 @@ def family_tree(sim) -> List[Dict]:
             seen |= pair
             roots.append(person(agent))
     return roots
+
+
+def roles_snapshot(sim) -> Dict:
+    """Who does what (GET /roles): each living person's job (the work they've
+    done most in work hours, agents/daily_life.py), the roles people have now
+    (an activity that's 30% of what they do lately, named by them,
+    world/roles.py) and the roles they've left behind."""
+    from agents.daily_life import JOBS
+    from collections import Counter
+    roles = sim.role_emergence
+    by_id = {a.id: a for a in sim.world.agents}
+
+    def day(tick):
+        return tick // TICKS_PER_DAY + 1 if tick is not None else None
+
+    current, former = [], []
+    for agent_id in sorted(roles.agent_roles):
+        agent = by_id.get(agent_id)
+        if agent is None:
+            continue
+        for r in roles.agent_roles[agent_id]:
+            action = r.behavior_pattern.dominant_actions[0] if r.behavior_pattern.dominant_actions else "work"
+            row = {"role_id": r.role_id, "name": r.custom_role_name or "unnamed", "agent_id": agent.id,
+                   "agent_name": agent.name, "alive": agent.alive, "action": action,
+                   "activity": action.replace("_", " "), "share": round(r.behavior_pattern.pattern_strength, 2),
+                   "times": r.times_acted_in_role, "since_day": day(getattr(r, "started_tick", None)),
+                   "ended_day": day(getattr(r, "ended_tick", None)), "recognized_by": len(r.recognized_by),
+                   "previous_names": list(r.previous_names)}
+            (current if getattr(r, "active", True) and agent.alive else former).append(row)
+    current.sort(key=lambda r: (-r["share"], r["agent_name"]))
+    former.sort(key=lambda r: -(r["ended_day"] or 0))
+
+    alive = [a for a in sim.world.agents if a.alive]
+    jobs = {}
+    no_job = []
+    for a in sorted(alive, key=lambda a: a.name):
+        work = getattr(a, "work_life", None)
+        if work is None or not work.job:
+            no_job.append({"id": a.id, "name": a.name, "age": a.age,
+                           "shifts": len(work.recent_shifts) if work else 0})
+            continue
+        shifts = Counter(work.recent_shifts)
+        entry = jobs.setdefault(work.job, {"key": work.job, "title": JOBS[work.job].title,
+                                           "work": [w.replace("_", " ") for w in JOBS[work.job].actions],
+                                           "people": []})
+        entry["people"].append({"id": a.id, "name": a.name,
+                                "share": round(shifts[work.job] / max(1, sum(shifts.values())), 2)})
+    return {
+        "jobs": sorted(jobs.values(), key=lambda j: -len(j["people"])),
+        "no_job": no_job,
+        "current": current,
+        "former": former[:60],
+        "activities": Counter(r["activity"] for r in current).most_common(),
+        "vocabulary": [{"name": n, "uses": c, "coined_by": by_id[roles.role_name_origins[n]].name
+                        if roles.role_name_origins.get(n) in by_id else None,
+                        "coined_by_id": roles.role_name_origins.get(n)}
+                       for n, c in sorted(roles.role_vocabulary.items(), key=lambda kv: -kv[1])[:24]],
+        "alive": len(alive),
+    }

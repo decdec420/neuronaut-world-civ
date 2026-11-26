@@ -1372,69 +1372,12 @@ async def get_agent_inventory(agent_id: str):
 
 @app.get("/roles")
 async def get_emergent_roles():
-    """Get all emergent roles - agent-discovered, agent-named!"""
+    """Who does what: jobs, the roles people have now (named by themselves)
+    and the ones they've left (engine/society.py roles_snapshot)."""
     if not simulation:
         raise HTTPException(status_code=503, detail="Simulation not running")
-
-    # Get all roles with agent names
-    roles_data = []
-    for agent_id, roles in simulation.role_emergence.agent_roles.items():
-        # Get agent name
-        agent = simulation._get_agent_by_id(agent_id)
-        agent_name = agent.name if agent else "Unknown"
-
-        for role in roles:
-            roles_data.append({
-                'role_id': role.role_id,
-                'agent_id': role.agent_id,
-                'agent_name': agent_name,
-                # AGENT-CREATED NAME (not system defined!)
-                'custom_role_name': role.custom_role_name,
-                'role_name_language': role.role_name_language,
-                # Behavior pattern that led to this role
-                'pattern_type': role.behavior_pattern.pattern_type,
-                'dominant_actions': role.behavior_pattern.dominant_actions,
-                'pattern_strength': role.behavior_pattern.pattern_strength,
-                # Emergence details
-                'emergence_date': role.emergence_date.isoformat(),
-                'emergence_context': role.emergence_context,
-                # Community recognition
-                'recognized_by_count': len(role.recognized_by),
-                'recognition_strength': role.recognition_strength,
-                'name_adopters_count': len(role.name_adopters),
-                # Role performance
-                'times_acted_in_role': role.times_acted_in_role,
-                'role_effectiveness': role.role_effectiveness,
-                # Name evolution
-                'previous_names': role.previous_names,
-            })
-
-    # Get role vocabulary (what role names exist in the community)
-    role_vocabulary = simulation.role_emergence.role_vocabulary
-    role_name_creators = simulation.role_emergence.role_name_origins
-
-    # Get role name origins with creator names
-    vocabulary_with_creators = []
-    for role_name, usage_count in sorted(role_vocabulary.items(), key=lambda x: x[1], reverse=True):
-        creator_id = role_name_creators.get(role_name, "Unknown")
-        creator = simulation._get_agent_by_id(creator_id)
-        creator_name = creator.name if creator else "Unknown"
-
-        vocabulary_with_creators.append({
-            'role_name': role_name,
-            'usage_count': usage_count,
-            'created_by_id': creator_id,
-            'created_by_name': creator_name
-        })
-
-    return {
-        "roles": roles_data,
-        "total_roles": len(roles_data),
-        "agents_with_roles": len(simulation.role_emergence.agent_roles),
-        "unique_role_names": len(role_vocabulary),
-        "role_vocabulary": vocabulary_with_creators,
-        "statistics": simulation.role_emergence.get_statistics()
-    }
+    from engine.society import roles_snapshot
+    return roles_snapshot(simulation)
 
 
 @app.get("/fun/stats")

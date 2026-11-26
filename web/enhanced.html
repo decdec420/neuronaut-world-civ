@@ -1995,59 +1995,54 @@
 
             <!-- ROLES - EMERGENT SPECIALIZATION -->
             <div class="tab-panel" id="roles">
-                <h2 style="margin-bottom: 15px;">👷 Emergent Specialization - Watch Roles Form Naturally</h2>
+                <h2 style="margin-bottom: 15px;">👷 Work & Roles</h2>
                 <p style="color: #94a3b8; margin-bottom: 20px;">
-                    <strong>NO pre-defined jobs!</strong> Roles emerge from repeated actions. Agents notice patterns, name themselves, and specialize organically.
+                    Nobody is given a job. A <strong>job</strong> is the work someone has done most in their working hours (about two days of shifts before it settles, and it can drift). A <strong>role</strong> is anything that's become 30% of what they do lately, with a name they gave it; it lapses when they mostly stop. Click a person to see their whole life.
                 </p>
-
-                <!-- SPECIALIZATION OVERVIEW -->
-                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px;">
-                    <div style="background: linear-gradient(135deg, #10b981, #059669); padding: 20px; border-radius: 12px; border: 2px solid #047857;">
-                        <div style="font-size: 32px; font-weight: 700; color: white; margin-bottom: 4px;" id="roles-total-specialists">0</div>
-                        <div style="font-size: 13px; color: rgba(255,255,255,0.9);">Active Specialists</div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; margin-bottom: 22px;">
+                    <div style="background: linear-gradient(135deg, #10b981, #059669); padding: 18px; border-radius: 12px; border: 2px solid #047857;">
+                        <div style="font-size: 30px; font-weight: 700; color: white; margin-bottom: 4px;" id="roles-with-job">0</div>
+                        <div style="font-size: 13px; color: rgba(255,255,255,0.9);">Have a job</div>
                     </div>
-                    <div style="background: linear-gradient(135deg, #f59e0b, #d97706); padding: 20px; border-radius: 12px; border: 2px solid #b45309;">
-                        <div style="font-size: 32px; font-weight: 700; color: white; margin-bottom: 4px;" id="roles-unique-patterns">0</div>
-                        <div style="font-size: 13px; color: rgba(255,255,255,0.9);">Unique Patterns</div>
+                    <div style="background: linear-gradient(135deg, #8b5cf6, #7c3aed); padding: 18px; border-radius: 12px; border: 2px solid #6d28d9;">
+                        <div style="font-size: 30px; font-weight: 700; color: white; margin-bottom: 4px;" id="roles-current">0</div>
+                        <div style="font-size: 13px; color: rgba(255,255,255,0.9);">Roles held now</div>
                     </div>
-                    <div style="background: linear-gradient(135deg, #8b5cf6, #7c3aed); padding: 20px; border-radius: 12px; border: 2px solid #6d28d9;">
-                        <div style="font-size: 32px; font-weight: 700; color: white; margin-bottom: 4px;" id="roles-strongest">-</div>
-                        <div style="font-size: 13px; color: rgba(255,255,255,0.9);">Strongest Pattern</div>
+                    <div style="background: linear-gradient(135deg, #f59e0b, #d97706); padding: 18px; border-radius: 12px; border: 2px solid #b45309;">
+                        <div style="font-size: 30px; font-weight: 700; color: white; margin-bottom: 4px;" id="roles-names">0</div>
+                        <div style="font-size: 13px; color: rgba(255,255,255,0.9);">Role names coined</div>
                     </div>
-                    <div style="background: linear-gradient(135deg, #ec4899, #db2777); padding: 20px; border-radius: 12px; border: 2px solid #be185d;">
-                        <div style="font-size: 32px; font-weight: 700; color: white; margin-bottom: 4px;" id="roles-recognized">0</div>
-                        <div style="font-size: 13px; color: rgba(255,255,255,0.9);">Socially Recognized</div>
+                    <div style="background: linear-gradient(135deg, #64748b, #475569); padding: 18px; border-radius: 12px; border: 2px solid #334155;">
+                        <div style="font-size: 30px; font-weight: 700; color: white; margin-bottom: 4px;" id="roles-former">0</div>
+                        <div style="font-size: 13px; color: rgba(255,255,255,0.9);">Roles left behind</div>
                     </div>
                 </div>
-
-                <!-- MAIN CONTENT GRID -->
-                <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px;">
-                    <!-- LEFT: SPECIALISTS LIST -->
+                <div style="display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 20px;">
                     <div class="card">
-                        <h3 style="margin-bottom: 16px;">🎯 Current Specialists</h3>
-                        <div id="roles-specialists-list" class="empty-state">
-                            <div class="empty-state-icon">👷</div>
-                            <p>Waiting for agents to specialize...</p>
-                            <p style="font-size: 12px; color: #64748b; margin-top: 8px;">Watch for repeated actions!</p>
-                        </div>
+                        <h3 style="margin-bottom: 6px;">🛠️ Jobs</h3>
+                        <div style="font-size: 12px; color: #64748b; margin-bottom: 12px;">The work each person has done most in work hours; the % is how much of their recent shifts went to it</div>
+                        <div id="roles-jobs">Loading…</div>
                     </div>
-
-                    <!-- RIGHT: PATTERN ANALYSIS -->
                     <div class="card">
-                        <h3 style="margin-bottom: 16px;">📊 Specialization Patterns</h3>
-                        <div id="roles-pattern-breakdown" class="empty-state">
-                            <div class="empty-state-icon">📈</div>
-                            <p>Patterns will emerge!</p>
-                        </div>
+                        <h3 style="margin-bottom: 6px;">📊 What roles are about</h3>
+                        <div style="font-size: 12px; color: #64748b; margin-bottom: 12px;">The activities behind the roles people hold now</div>
+                        <div id="roles-pattern-breakdown">Loading…</div>
                     </div>
                 </div>
-
-                <!-- BOTTOM: ROLE EVOLUTION TIMELINE -->
                 <div class="card" style="margin-top: 20px;">
-                    <h3 style="margin-bottom: 16px;">⏳ Role Evolution Timeline</h3>
-                    <div id="roles-timeline" class="empty-state">
-                        <div class="empty-state-icon">📅</div>
-                        <p>Role formation history will appear here</p>
+                    <h3 style="margin-bottom: 6px;">🎯 Roles people hold now</h3>
+                    <div style="font-size: 12px; color: #64748b; margin-bottom: 12px;">Name (their own) · what it is · share of what they do lately · since · times done since</div>
+                    <div id="roles-specialists-list">Loading…</div>
+                </div>
+                <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; margin-top: 20px;">
+                    <div class="card">
+                        <h3 style="margin-bottom: 12px;">⏳ Roles left behind</h3>
+                        <div id="roles-timeline">Loading…</div>
+                    </div>
+                    <div class="card">
+                        <h3 style="margin-bottom: 12px;">🗣️ Words for work</h3>
+                        <div style="font-size: 12px; color: #64748b; margin-bottom: 10px;">Role names and who first used each</div>
+                        <div id="roles-vocabulary">Loading…</div>
                     </div>
                 </div>
             </div>
@@ -4990,195 +4985,50 @@
         async function fetchRoles() {
             try {
                 const response = await fetch('/roles');
+                if (!response.ok) return;
                 const data = await response.json();
+                const jobs = data.jobs || [], current = data.current || [], former = data.former || [];
+                const employed = jobs.reduce((n, j) => n + j.people.length, 0);
+                setTextSafe('roles-with-job', `${employed} of ${data.alive || 0}`);
+                setTextSafe('roles-current', current.length);
+                setTextSafe('roles-names', (data.vocabulary || []).length);
+                setTextSafe('roles-former', former.length);
+                const pct = x => `${Math.round((x || 0) * 100)}%`;
 
-                const roles = data.roles || [];
+                $safe('roles-jobs').innerHTML = (jobs.length === 0 ? emptyNote('Nobody has settled into a job yet (it takes about two days of work)') :
+                    jobs.map(j => `
+                        <div style="background: #0f172a; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px;">
+                            <div style="font-weight: 700; color: #34d399;">${escHtml(j.title)} <span style="color: #64748b; font-weight: 400; font-size: 12px;">· ${escHtml(j.people.length)} · ${escHtml(j.work.join(', '))}</span></div>
+                            <div style="font-size: 13px; margin-top: 4px; line-height: 1.7;">${j.people.map(p => `${dlink('agent', p.id, p.name)} <span style="color: #64748b; font-size: 11px;">${pct(p.share)}</span>`).join(' · ')}</div>
+                        </div>`).join(''))
+                    + ((data.no_job || []).length ? `<div style="font-size: 12px; color: #94a3b8; margin-top: 8px;">No job yet: ${data.no_job.map(p => dlink('agent', p.id, p.name)).join(', ')}</div>` : '');
 
-                // Update overview stats
-                const totalSpecialists = roles.length;
-                const uniquePatterns = [...new Set(roles.map(r => r.pattern_type))].length;
-                const recognized = roles.filter(r => r.recognized_by_count > 0).length;
-                const strongest = roles.length > 0
-                    ? roles.reduce((max, r) => r.pattern_strength > max.pattern_strength ? r : max, roles[0])
-                    : null;
+                const activities = data.activities || [];
+                const most = Math.max(1, ...activities.map(a => a[1]));
+                $safe('roles-pattern-breakdown').innerHTML = activities.length === 0 ? emptyNote('No roles held now') :
+                    activities.map(([activity, n]) => `
+                        <div style="margin-bottom: 8px;">
+                            <div style="display: flex; justify-content: space-between; font-size: 13px;"><span>${escHtml(activity)}</span><span style="color: #a78bfa;">${escHtml(n)}</span></div>
+                            <div style="height: 6px; background: #1e293b; border-radius: 3px; margin-top: 3px;"><div style="height: 100%; width: ${100 * n / most}%; background: #8b5cf6; border-radius: 3px;"></div></div>
+                        </div>`).join('');
 
-                document.getElementById('roles-total-specialists').textContent = totalSpecialists;
-                document.getElementById('roles-unique-patterns').textContent = uniquePatterns;
-                document.getElementById('roles-recognized').textContent = recognized;
-                document.getElementById('roles-strongest').textContent = strongest
-                    ? `${(strongest.pattern_strength * 100).toFixed(0)}%`
-                    : '-';
+                $safe('roles-specialists-list').innerHTML = current.length === 0 ? emptyNote('Nobody does any one thing enough for it to be a role') :
+                    `<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px;">${current.map(r => `
+                        <div class="openable" ${openAttr('agent', r.agent_id)} style="background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 10px 12px;">
+                            <div style="font-weight: 700; color: #10b981;">${escHtml(r.name)}</div>
+                            <div style="font-size: 13px; color: #e2e8f0; margin-top: 2px;">${escHtml(r.agent_name)} <span style="color: #94a3b8;">· ${escHtml(r.activity)}</span></div>
+                            <div style="font-size: 11px; color: #64748b; margin-top: 4px;">${pct(r.share)} of what they do lately${r.since_day ? ` · since day ${escHtml(r.since_day)}` : ''} · done ${escHtml(r.times)}× since${r.recognized_by ? ` · ${escHtml(r.recognized_by)} know them by it` : ''}</div>
+                        </div>`).join('')}</div>`;
 
-                // Render specialists list
-                renderSpecialistsList(roles);
+                $safe('roles-timeline').innerHTML = former.length === 0 ? emptyNote('Nobody has left a role yet') :
+                    former.slice(0, 30).map(r => `
+                        <div style="font-size: 12px; color: #cbd5e1; margin-bottom: 6px;">${dlink('agent', r.agent_id, r.agent_name)}${r.alive ? '' : ' †'} was <strong>${escHtml(r.name)}</strong> <span style="color: #64748b;">(${escHtml(r.activity)}${r.since_day ? `, day ${escHtml(r.since_day)}` : ''}${r.ended_day ? `–${escHtml(r.ended_day)}` : ''})</span></div>`).join('');
 
-                // Render pattern breakdown
-                renderPatternBreakdown(roles);
-
-                // Render timeline
-                renderRoleTimeline(roles);
+                $safe('roles-vocabulary').innerHTML = (data.vocabulary || []).length === 0 ? emptyNote('No words for work yet') :
+                    data.vocabulary.map(v => `<div style="font-size: 12px; color: #e2e8f0; margin-bottom: 4px;"><strong>${escHtml(v.name)}</strong> <span style="color: #64748b;">× ${escHtml(v.uses)}${v.coined_by ? ' · first: ' : ''}</span>${v.coined_by ? dlink('agent', v.coined_by_id, v.coined_by) : ''}</div>`).join('');
             } catch (error) {
                 console.error('Error fetching roles:', error);
             }
-        }
-
-        function renderSpecialistsList(roles) {
-            const container = document.getElementById('roles-specialists-list');
-
-            if (roles.length === 0) {
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-state-icon">👷</div>
-                        <p>No roles yet. Observe agent behaviors!</p>
-                    </div>
-                `;
-                return;
-            }
-
-            // Sort by recognition strength (most recognized first)
-            roles.sort((a, b) => b.recognition_strength - a.recognition_strength);
-
-            container.innerHTML = roles.map(role => {
-                const emergenceDate = new Date(role.emergence_date);
-                const timeStr = emergenceDate.toLocaleString();
-                const patternPct = (role.pattern_strength * 100).toFixed(0);
-
-                return `
-                    <div style="background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 12px; margin-bottom: 10px;">
-                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
-                            <div>
-                                <div style="font-weight: 600; color: #10b981; font-size: 15px;">
-                                    ${role.custom_role_name || 'Unnamed Role'}
-                                </div>
-                                <div style="color: #94a3b8; font-size: 13px; margin-top: 4px;">
-                                    👤 <strong>${role.agent_name}</strong>
-                                </div>
-                            </div>
-                            <div style="font-size: 11px; color: #64748b; text-align: right;">
-                                ${timeStr}
-                            </div>
-                        </div>
-
-                        <div style="font-size: 12px; color: #cbd5e1; margin-bottom: 6px;">
-                            📊 Specialization: <strong>${patternPct}%</strong> ${role.dominant_actions.join(', ')}
-                        </div>
-
-                        ${role.recognized_by_count > 0 ? `
-                            <div style="font-size: 11px; color: #94a3b8;">
-                                ✅ Recognized by ${role.recognized_by_count} ${role.recognized_by_count === 1 ? 'agent' : 'agents'}
-                            </div>
-                        ` : ''}
-
-                        ${role.previous_names && role.previous_names.length > 0 ? `
-                            <div style="font-size: 10px; color: #64748b; margin-top: 4px;">
-                                Previously: ${role.previous_names.join(' → ')}
-                            </div>
-                        ` : ''}
-                    </div>
-                `;
-            }).join('');
-        }
-
-        function renderPatternBreakdown(roles) {
-            const container = document.getElementById('roles-pattern-breakdown');
-
-            if (roles.length === 0) {
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-state-icon">📈</div>
-                        <p>Patterns will emerge!</p>
-                    </div>
-                `;
-                return;
-            }
-
-            // Count patterns
-            const patternCounts = {};
-            roles.forEach(role => {
-                const pattern = role.pattern_type || 'unknown';
-                patternCounts[pattern] = (patternCounts[pattern] || 0) + 1;
-            });
-
-            // Sort by count
-            const sortedPatterns = Object.entries(patternCounts)
-                .sort((a, b) => b[1] - a[1])
-                .slice(0, 8);  // Top 8 patterns
-
-            const total = roles.length;
-
-            container.innerHTML = `
-                <div style="max-height: 400px; overflow-y: auto;">
-                    ${sortedPatterns.map(([pattern, count]) => {
-                        const percentage = ((count / total) * 100).toFixed(1);
-                        const patternName = pattern.replace(/_/g, ' ').replace(/specialized /g, '');
-
-                        return `
-                            <div style="margin-bottom: 16px;">
-                                <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
-                                    <span style="font-size: 13px; color: #cbd5e1; text-transform: capitalize;">
-                                        ${patternName}
-                                    </span>
-                                    <span style="font-size: 13px; color: #10b981; font-weight: 700;">
-                                        ${count} (${percentage}%)
-                                    </span>
-                                </div>
-                                <div style="background: #0f172a; height: 6px; border-radius: 3px; overflow: hidden;">
-                                    <div style="background: linear-gradient(90deg, #10b981, #059669); height: 100%; width: ${percentage}%;"></div>
-                                </div>
-                            </div>
-                        `;
-                    }).join('')}
-                </div>
-            `;
-        }
-
-        function renderRoleTimeline(roles) {
-            const container = document.getElementById('roles-timeline');
-
-            if (roles.length === 0) {
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-state-icon">📅</div>
-                        <p>Role formation history will appear here</p>
-                    </div>
-                `;
-                return;
-            }
-
-            // Sort by emergence date (newest first)
-            const sortedRoles = [...roles].sort((a, b) =>
-                new Date(b.emergence_date) - new Date(a.emergence_date)
-            ).slice(0, 10);  // Last 10 roles
-
-            container.innerHTML = `
-                <div style="max-height: 300px; overflow-y: auto;">
-                    ${sortedRoles.map(role => {
-                        const emergenceDate = new Date(role.emergence_date);
-                        const timeStr = emergenceDate.toLocaleTimeString();
-                        const dateStr = emergenceDate.toLocaleDateString();
-                        const patternPct = (role.pattern_strength * 100).toFixed(0);
-
-                        return `
-                            <div style="background: #0f172a; padding: 12px; margin-bottom: 8px; border-radius: 6px; border-left: 3px solid #8b5cf6;">
-                                <div style="display: flex; justify-content: space-between; align-items: start;">
-                                    <div style="flex: 1;">
-                                        <div style="font-weight: 600; color: #a78bfa; font-size: 14px; margin-bottom: 4px;">
-                                            ${role.custom_role_name}
-                                        </div>
-                                        <div style="font-size: 12px; color: #94a3b8;">
-                                            ${role.agent_name} noticed they specialize in <strong>${role.dominant_actions[0]}</strong> (${patternPct}% strength)
-                                        </div>
-                                    </div>
-                                    <div style="text-align: right; font-size: 11px; color: #64748b; margin-left: 12px;">
-                                        <div>${dateStr}</div>
-                                        <div>${timeStr}</div>
-                                    </div>
-                                </div>
-                            </div>
-                        `;
-                    }).join('')}
-                </div>
-            `;
         }
 
         // ===== SAVE/LOAD SYSTEM - Multiple World Management! =====

@@ -26,9 +26,16 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
 from datetime import datetime
 import random
+import zlib
 
 # Actions that keep an agent alive but aren't work anyone specializes in
 SELF_MAINTENANCE_ACTIONS = frozenset({'idle', 'wait', 'rest', 'sleep', 'eat', 'drink'})
+
+# A share of recent actions (not counting self-maintenance) that makes a role,
+# and the share below which it lapses: a role is what someone does now, not
+# what they once did for a while
+ROLE_SHARE = 0.30
+ROLE_LAPSES_BELOW = 0.15
 
 
 @dataclass
@@ -86,6 +93,12 @@ class EmergentRole:
     # Role evolution
     previous_names: List[str] = field(default_factory=list)  # Name history
 
+    # Sim ticks (emergence_date is wall-clock): when it began, and when it
+    # lapsed because they stopped doing it (None while it's theirs)
+    started_tick: Optional[int] = None
+    ended_tick: Optional[int] = None
+    active: bool = True
+
 
 class RoleEmergence:
     """
@@ -131,6 +144,9 @@ class RoleEmergence:
         self.agent_action_history[agent_id].append(action)
         if len(self.agent_action_history[agent_id]) > 100:
             self.agent_action_history[agent_id].pop(0)
+        for role in self.agent_roles.get(agent_id, ()):
+            if getattr(role, 'active', True) and action in role.behavior_pattern.dominant_actions:
+                role.times_acted_in_role += 1
 
     def detect_behavior_patterns(self, agent_id: str) -> List[BehaviorPattern]:
         """
@@ -156,9 +172,8 @@ class RoleEmergence:
         for action_type, count in action_counts.items():
             frequency = count / total_actions
 
-            # Pattern detected if agent does this action frequently (>25%)
-            # Lowered from 30% to 25% to allow more diverse role emergence
-            if frequency >= 0.25:
+            # Pattern detected if agent does this action often (ROLE_SHARE)
+            if frequency >= ROLE_SHARE:
                 pattern = BehaviorPattern(
                     pattern_type=f"specialized_{action_type}",
                     dominant_actions=[action_type],
@@ -216,6 +231,29 @@ class RoleEmergence:
             self.register_role_name(agent_generated_name, agent_id)
 
         return role
+
+    def share(self, agent_id: str, action: str) -> float:
+        """How much of what the agent has done lately (self-maintenance aside) is this."""
+        actions = self.agent_action_history.get(agent_id, [])
+        return actions.count(action) / len(actions) if actions else 0.0
+
+    def review_roles(self, agent_id: str, tick: int) -> List[EmergentRole]:
+        """Roles lapse when the agent has mostly stopped doing that work, and
+        come back (with the name they gave it) if they take it up again.
+        Returns the roles that lapsed."""
+        lapsed = []
+        for role in self.agent_roles.get(agent_id, ()):
+            action = role.behavior_pattern.dominant_actions[0]
+            now = self.share(agent_id, action)
+            if getattr(role, 'active', True):
+                role.behavior_pattern.pattern_strength = now
+                if now < ROLE_LAPSES_BELOW:
+                    role.active, role.ended_tick = False, tick
+                    lapsed.append(role)
+            elif now >= ROLE_SHARE:
+                role.active, role.ended_tick = True, None
+                role.behavior_pattern.pattern_strength = now
+        return lapsed
 
     def agent_names_role(
         self,
@@ -349,7 +387,8 @@ class RoleEmergence:
         pattern: BehaviorPattern,
         agent_personality: Optional[Dict] = None,
         agent_recent_discoveries: Optional[List[str]] = None,
-        agent_culture_context: Optional[Dict] = None
+        agent_culture_context: Optional[Dict] = None,
+        agent_seed: str = ""
     ) -> str:
         """
         Generate a meaningful, agent-driven role name.
@@ -462,15 +501,21 @@ class RoleEmergence:
             }
         }
 
-        # Find matching vocabulary
-        vocab = None
-        for action_key in action_vocabularies.keys():
-            if action_key in primary_action.lower():
-                vocab = action_vocabularies[action_key]
-                break
+        action_vocabularies.update(LIFE_VOCABULARIES)
 
+        # The vocabulary for this action, or one whose name it contains
+        # (build -> build_temple). Work with no vocabulary used to take the
+        # food-gathering words, so a suitor was called "Harvester"; now it's
+        # named for what they do ("One-Who-Dances-Wildly").
+        action = primary_action.lower()
+        vocab = action_vocabularies.get(action) or next(
+            (v for key, v in action_vocabularies.items() if key in action), None)
         if not vocab:
-            vocab = action_vocabularies.get("gather_food")  # Default
+            return one_who(action)
+
+        # Names come from the agent's own draw, not the world's dice: naming a
+        # role doesn't change what happens next
+        random = _NameDice(agent_seed, primary_action)
 
         # Decide on naming style (creates variety)
         style_roll = random.random()
@@ -495,3 +540,103 @@ class RoleEmergence:
             noun = random.choice(vocab["nouns"])
             separator = "-" if random.random() < 0.5 else " "
             return f"{material}{separator}{noun}"
+
+
+# Words for what people commonly spend their days on besides the trades above
+LIFE_VOCABULARIES = {
+    "seek_romance": {"nouns": ["Suitor", "Admirer", "Sweetheart", "Wooer"],
+                     "descriptors": ["Ardent", "Hopeful", "Tender", "Devoted"],
+                     "materials": ["Heart", "Love", "Flower"],
+                     "compounds": ["Heart-Seeker", "Love-Seeker", "Flower-Giver"]},
+    "care_for_child": {"nouns": ["Child-Minder", "Nurturer", "Carer", "Guardian"],
+                       "descriptors": ["Gentle", "Watchful", "Loving", "Patient"],
+                       "materials": ["Child", "Cradle", "Hearth"],
+                       "compounds": ["Cradle-Keeper", "Child-Raiser", "Hearth-Keeper"]},
+    "attend_event": {"nouns": ["Reveller", "Guest", "Feast-Goer", "Merrymaker"],
+                     "descriptors": ["Eager", "Merry", "Faithful", "Lively"],
+                     "materials": ["Feast", "Gathering", "Festival"],
+                     "compounds": ["Feast-Goer", "Gathering-Goer", "Dance-Joiner"]},
+    "organize_event": {"nouns": ["Host", "Feast-Giver", "Gatherer of People"],
+                       "descriptors": ["Generous", "Open-handed", "Lively"],
+                       "materials": ["Feast", "Festival", "Gathering"],
+                       "compounds": ["Feast-Giver", "Fire-Circle-Caller", "People-Gatherer"]},
+    "play_game": {"nouns": ["Player", "Game-Lover", "Jester"],
+                  "descriptors": ["Playful", "Merry", "Quick"],
+                  "materials": ["Game", "Dice", "Ball"],
+                  "compounds": ["Game-Player", "Fun-Maker", "Laughter-Bringer"]},
+    "patrol": {"nouns": ["Watcher", "Guard", "Sentinel", "Warden"],
+               "descriptors": ["Vigilant", "Steady", "Night", "Wakeful"],
+               "materials": ["Border", "Night", "Fire"],
+               "compounds": ["Night-Walker", "Border-Watcher", "Fire-Guard"]},
+    "try_for_child": {"nouns": ["Family-Maker", "Parent-to-be"],
+                      "descriptors": ["Hopeful", "Loving"],
+                      "materials": ["Family", "Cradle"],
+                      "compounds": ["Family-Builder", "Cradle-Hoper"]},
+    "worship": {"nouns": ["Devotee", "Worshipper", "Believer"],
+                "descriptors": ["Pious", "Faithful", "Devout"],
+                "materials": ["Spirit", "Shrine", "Prayer"],
+                "compounds": ["Spirit-Speaker", "Shrine-Keeper", "Prayer-Sayer"]},
+    "share_faith": {"nouns": ["Preacher", "Witness", "Messenger"],
+                    "descriptors": ["Zealous", "Earnest", "Wandering"],
+                    "materials": ["Faith", "Word", "Spirit"],
+                    "compounds": ["Faith-Bringer", "Word-Spreader"]},
+    "farm": {"nouns": ["Farmer", "Grower", "Tiller", "Planter"],
+             "descriptors": ["Patient", "Hardworking", "Green-handed"],
+             "materials": ["Field", "Grain", "Seed", "Soil"],
+             "compounds": ["Field-Tender", "Seed-Sower", "Grain-Grower"]},
+    "plant": {"nouns": ["Planter", "Sower", "Grower"],
+              "descriptors": ["Patient", "Careful"],
+              "materials": ["Seed", "Field", "Garden"],
+              "compounds": ["Seed-Sower", "Garden-Keeper"]},
+    "hunt": {"nouns": ["Hunter", "Tracker", "Stalker"],
+             "descriptors": ["Keen", "Swift", "Silent"],
+             "materials": ["Game", "Deer", "Boar"],
+             "compounds": ["Game-Tracker", "Spear-Thrower"]},
+    "fish": {"nouns": ["Fisher", "Netter"],
+             "descriptors": ["Patient", "Quiet"],
+             "materials": ["River", "Lake", "Net"],
+             "compounds": ["Net-Caster", "River-Fisher"]},
+    "chop_wood": {"nouns": ["Woodcutter", "Feller", "Axe-Bearer"],
+                  "descriptors": ["Strong", "Tireless"],
+                  "materials": ["Wood", "Timber", "Log"],
+                  "compounds": ["Tree-Feller", "Wood-Cutter"]},
+    "mine": {"nouns": ["Miner", "Digger", "Quarrier"],
+             "descriptors": ["Hardy", "Deep", "Strong"],
+             "materials": ["Stone", "Ore", "Rock"],
+             "compounds": ["Ore-Digger", "Stone-Breaker"]},
+    "govern": {"nouns": ["Chief", "Leader", "Elder"],
+               "descriptors": ["Wise", "Firm", "Respected"],
+               "materials": ["Council", "Law", "People"],
+               "compounds": ["Law-Giver", "People-Leader"]},
+    "make_law": {"nouns": ["Lawgiver", "Lawmaker"],
+                 "descriptors": ["Stern", "Fair", "Wise"],
+                 "materials": ["Law", "Rule"],
+                 "compounds": ["Law-Giver", "Rule-Maker"]},
+    "give_gift": {"nouns": ["Giver", "Benefactor"],
+                  "descriptors": ["Generous", "Open-handed", "Kind"],
+                  "materials": ["Gift", "Bounty"],
+                  "compounds": ["Gift-Giver", "Bounty-Sharer"]},
+}
+
+
+def one_who(action: str) -> str:
+    """A plain name for someone known by what they do: attend_event ->
+    'One-Who-Attends-Event'."""
+    words = [w for w in action.lower().split('_') if w]
+    if not words:
+        return "One-Who-Works"
+    verb = words[0]
+    if verb.endswith('y') and verb[-2:-1] not in 'aeiou':
+        verb = verb[:-1] + 'ies'
+    elif verb.endswith(('s', 'sh', 'ch', 'x', 'z')):
+        verb += 'es'
+    else:
+        verb += 's'
+    return '-'.join(['One', 'Who', verb.capitalize()] + [w.capitalize() for w in words[1:]])
+
+
+class _NameDice(random.Random):
+    """The dice one agent names one role with: the same every time."""
+
+    def __init__(self, agent_seed: str, action: str):
+        super().__init__(zlib.crc32(f"{agent_seed}:{action}".encode()))
