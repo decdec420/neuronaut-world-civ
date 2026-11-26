@@ -164,6 +164,7 @@ class KnowHowLedger:
         self.lost: List[Dict] = []
         self.counts = {'insight': 0, 'watched': 0, 'taught': 0, 'lost': 0}
         self._known_last: set = set()
+        self.log: List[Tuple[int, str, str, str, Optional[str]]] = []  # (tick, knowhow, who, how, teacher)
 
     # -- learning --------------------------------------------------------------
 
@@ -176,6 +177,9 @@ class KnowHowLedger:
         lost_before = name in self.firsts and name not in self._known_now()
         known.add(name)
         self.counts[how] = self.counts.get(how, 0) + 1
+        log = self.__dict__.setdefault('log', [])
+        log.append((tick, name, agent.id, how, teacher.id if teacher is not None else None))
+        del log[:-3000]
         k = KNOWHOW[name]
         from engine.events import EventCategory, EventImportance
         log = getattr(self.sim, 'event_logger', None)

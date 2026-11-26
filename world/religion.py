@@ -108,6 +108,9 @@ class Religion:
     regular_rituals: List[RitualType] = field(default_factory=list)
     holy_days: List[str] = field(default_factory=list)
 
+    # What has happened in it: (tick, kind, data), read back by engine/details.py
+    history: List[Tuple[int, str, Dict]] = field(default_factory=list)
+
 
 @dataclass
 class Temple:
@@ -422,13 +425,24 @@ class ReligionManager:
 
     # ===== CONVERSION & MEMBERSHIP =====
 
+    HISTORY_KEPT = 300
+
+    def note(self, religion: 'Religion', kind: str, **data) -> None:
+        """Remember something that happened in this faith."""
+        clock = getattr(self, 'time', None)
+        history = religion.__dict__.setdefault('history', [])
+        history.append((clock.current_tick if clock is not None else 0, kind, data))
+        if len(history) > self.HISTORY_KEPT:
+            del history[: len(history) - self.HISTORY_KEPT]
+
     def convert_agent(
         self,
         agent_id: str,
         religion_id: str,
-        previous_religion_id: Optional[str] = None
+        previous_religion_id: Optional[str] = None,
+        by: Optional[str] = None
     ) -> bool:
-        """Convert agent to a religion"""
+        """Convert agent to a religion (by: who told them of it, if anyone)"""
 
         if religion_id not in self.religions:
             return False
@@ -443,6 +457,7 @@ class ReligionManager:
 
         # Add to new religion
         religion.followers.add(agent_id)
+        self.note(religion, 'converted' if by else 'joined', who=agent_id, by=by, left=previous_religion_id)
 
         self.total_conversions += 1
 
@@ -516,6 +531,7 @@ class ReligionManager:
                     religion.priests.discard(agent_id)
                     last.pop(agent_id, None)
                     lapsed.append(agent_id)
+                    self.note(religion, 'lapsed', who=agent_id)
         return lapsed
 
     def get_agent_religion(self, agent_id: str) -> Optional[Religion]:

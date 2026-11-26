@@ -157,6 +157,7 @@ class GovernanceHandler(ActionHandler):
             election = gm.open_election(gov.id)
             if election and agent.id not in election.candidates:
                 gm.agent_runs_for_office(agent.id, election.id)
+                gm.note(gov, 'candidate', who=agent.id, election=election.id)
                 agent.needs.satisfy_need(NeedType.STATUS, 0.2)
                 return ActionResult(success=True, emotional_impact=0.2,
                                     message=f"Running for {election.position} of {gov.name}",
@@ -165,6 +166,7 @@ class GovernanceHandler(ActionHandler):
             # A leader collects the taxes the government's laws levy
             collected = self._collect_taxes(agent, gov, tick) if agent.id == gov.leader_id else 0.0
             if collected:
+                gm.note(gov, 'taxes', by=agent.id, amount=round(collected, 1))
                 agent.needs.satisfy_need(NeedType.STATUS, 0.2)
                 return ActionResult(success=True, emotional_impact=0.2,
                                     message=f"Collected {collected:.0f} coins in taxes for {gov.name}",

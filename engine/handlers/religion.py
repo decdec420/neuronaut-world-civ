@@ -116,7 +116,7 @@ class ReligionHandler(ActionHandler):
         chance = self._listener_takes_it_up(listener, agent, tick)
         theirs = religion.get_agent_religion(listener.id)
         if random.random() < chance:
-            religion.convert_agent(listener.id, faith.id, theirs.id if theirs else None)
+            religion.convert_agent(listener.id, faith.id, theirs.id if theirs else None, by=agent.id)
             religion.record_practice(listener.id, tick)
             listener.needs.satisfy_need(NeedType.MEANING, 0.3)
             listener.needs.satisfy_need(NeedType.BELONGING, 0.3)
@@ -186,6 +186,7 @@ class ReligionHandler(ActionHandler):
             if faith is None:
                 # Nobody this agent cares about holds a faith: it starts its own
                 new = religion.found_religion(agent.id, agent.name, self._founding_type(agent), current_tick)
+                religion.note(new, 'founded', by=agent.id)
                 religion.record_practice(agent.id, current_tick)
                 agent.needs.satisfy_need(NeedType.MEANING, 0.5)
                 self._log(f"✨ {agent.name} founded {new.name}",
@@ -229,6 +230,8 @@ class ReligionHandler(ActionHandler):
             agent.inventory.remove_item('stone', 5)
             agent.inventory.remove_item('wood', 5)
             temple = religion.build_temple(faith.id, agent.id, (agent.location.x, agent.location.y), current_tick, size=1)
+            if temple is not None:
+                religion.note(faith, 'temple', by=agent.id, temple=temple.id)
             if temple:
                 religion.record_practice(agent.id, current_tick)
                 agent.needs.satisfy_need(NeedType.ACHIEVEMENT, 0.4)

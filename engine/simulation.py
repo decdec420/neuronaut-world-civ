@@ -305,6 +305,7 @@ class SimulationEngine:
         self.agriculture = systems['agriculture']
         self.health = systems['health']
         self.religion = systems['religion']
+        self._wire_clocks()
         self.territory = systems['territory']
         self.chemistry = systems['chemistry']
         self.energy = systems['energy']
@@ -800,6 +801,14 @@ class SimulationEngine:
         self.knowhow.after_action(agent, action.action_type.value, result, current_tick)
         return result
 
+    def _wire_clocks(self) -> None:
+        """Systems that date what happens read the world's clock (sim ticks;
+        their own timestamps were wall-clock, useless for "on day 4")."""
+        for system in (self.relationship_manager, self.governance_manager, self.innovation_manager,
+                       self.religion, getattr(self, 'dynamic_building_system', None)):
+            if system is not None and getattr(system, 'time', None) is None:
+                system.time = self.world.time
+
     def ensure_newer_systems(self) -> None:
         """A world saved by an older version lacks systems added since; give it
         fresh ones (as a new world would have) so it can carry on."""
@@ -820,8 +829,7 @@ class SimulationEngine:
             self.world.map._label_land()
         if not getattr(self.pathfinder, 'water', None):
             self.pathfinder.set_terrain(self.world.map)
-        if getattr(self.relationship_manager, 'time', None) is None:
-            self.relationship_manager.time = self.world.time
+        self._wire_clocks()
         if not hasattr(self, 'knowhow'):
             from world.knowhow import KnowHowLedger
             self.knowhow = KnowHowLedger(self, active=False)   # saved before know-how: everyone knows all

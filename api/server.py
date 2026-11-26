@@ -436,6 +436,22 @@ async def get_agent_full_profile(agent_id: str):
     return out
 
 
+@app.get("/details/{kind}/{item_id}")
+async def get_details(kind: str, item_id: str):
+    """Anything the dashboard can open, told in full with links to what it
+    touches: agent, government, law, faith, knowhow, invention, gathering,
+    building or event (engine/details.py)."""
+    if not simulation:
+        raise HTTPException(status_code=503, detail="Simulation not running")
+    from engine.details import describe, DESCRIBERS
+    if kind not in DESCRIBERS:
+        raise HTTPException(status_code=404, detail=f"Unknown kind: {kind}")
+    found = describe(simulation, kind, item_id)
+    if found is None:
+        raise HTTPException(status_code=404, detail=f"No {kind} {item_id}")
+    return found
+
+
 @app.get("/events")
 async def get_events(limit: int = 50, min_importance: int = 1):
     """Get recent events"""
