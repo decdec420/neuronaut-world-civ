@@ -1838,8 +1838,20 @@
 
             <!-- KNOWLEDGE -->
             <div class="tab-panel" id="knowledge">
-                <h2 style="margin-bottom: 15px;">📚 Knowledge Library - Civilization's Collective Wisdom</h2>
-                <p style="color: #94a3b8; margin-bottom: 20px;">Track knowledge spread, mutation, and preservation. Inspired by Europa Universalis and tech tree games.</p>
+                <h2 style="margin-bottom: 15px;">📚 Knowledge</h2>
+                <p style="color: #94a3b8; margin-bottom: 20px;">Two kinds: <strong>know-how</strong>, what people can do (worked out, picked up by watching, or taught, and lost when the last who knows it dies), and <strong>lessons on record</strong>, what individuals noted from their own experiments.</p>
+
+                <!-- KNOW-HOW: the tree, who knows what, how it spread (GET /knowhow) -->
+                <div class="card" style="margin-bottom: 20px;">
+                    <h3 style="margin-bottom: 6px;">🧠 What they know how to do</h3>
+                    <div style="font-size: 12px; color: #64748b; margin-bottom: 12px;">Each column builds on the one before it. Green: known now (how many know it). Red: lost. Grey: nobody has worked it out yet. Click any one for who knows it and how it spread.</div>
+                    <div id="knowhow-summary" style="font-size: 13px; color: #cbd5e1; margin-bottom: 12px;"></div>
+                    <div id="knowhow-tree" style="display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px;"></div>
+                    <h4 style="margin: 16px 0 8px; color: #a78bfa; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">How it has passed between people</h4>
+                    <div id="knowhow-recent" style="max-height: 260px; overflow-y: auto;"></div>
+                </div>
+                <h3 style="margin: 0 0 6px;">📖 Lessons on record</h3>
+                <div style="font-size: 12px; color: #64748b; margin-bottom: 12px;">Notes people made from their own experiments and work. The same lesson noted many times is shown once, with how many times (×).</div>
 
                 <!-- KNOWLEDGE METRICS BAR -->
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px; background: #1e293b; padding: 16px; border-radius: 8px;">
@@ -2218,9 +2230,20 @@
 
             <!-- TECH PROGRESSION -->
             <div class="tab-panel" id="tech">
-                <h2 style="margin-bottom: 15px;">🚀 Technology Progression - Emergent Discovery System</h2>
-                <p style="color: #94a3b8; margin-bottom: 20px;">NO fixed tech tree! Progression emerges from agent experimentation and material discovery.</p>
+                <h2 style="margin-bottom: 15px;">🚀 Technology</h2>
+                <p style="color: #94a3b8; margin-bottom: 20px;">What they can do (know-how, which people work out, pass on and can lose) and what they've made at the bench (materials from experiments). Nobody is told what to learn next.</p>
 
+                <!-- THEIR AGE, BY WHAT THEY KNOW (GET /knowhow) -->
+                <div class="card" style="margin-bottom: 20px;">
+                    <h3 style="margin: 0 0 6px;">🧭 Their age, by what they know</h3>
+                    <div style="font-size: 12px; color: #64748b; margin-bottom: 12px;">The latest human age whose mark someone alive knows how to make. If the last one who knows dies untaught, the age slips back.</div>
+                    <div id="tech-knowhow-age" style="font-size: 22px; font-weight: 800; color: #f8fafc; margin-bottom: 10px;">…</div>
+                    <div id="tech-age-ladder" style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px;"></div>
+                    <h4 style="margin: 0 0 8px; color: #a78bfa; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Within reach next</h4>
+                    <div style="font-size: 12px; color: #64748b; margin-bottom: 8px;">Everything these build on is known; doing the things listed may give someone the idea (or tinkering may).</div>
+                    <div id="tech-frontier" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px;"></div>
+                </div>
+                <div style="font-size: 12px; color: #64748b; margin: 0 0 8px;">Below: the materials era, a separate measure from what experiments have produced, which shapes what people try at the bench.</div>
                 <!-- CURRENT ERA BANNER -->
                 <div id="tech-era-banner" style="background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%); padding: 24px; border-radius: 12px; margin-bottom: 20px; border: 2px solid #f97316; box-shadow: 0 8px 16px rgba(0,0,0,0.3);">
                     <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
@@ -3084,7 +3107,9 @@
             $safe('header-discoveries').textContent = data.experimentation?.total_discoveries || 0;
             $safe('header-buildings').textContent = data.dynamic_buildings?.completed_buildings || data.buildings?.complete || 0;
             $safe('header-libraries').textContent = data.knowledge?.total_libraries || 0;
-            $safe('header-era').textContent = data.tech_progression?.current_era || 'Stone Age';
+            // At the dawn: the age by what someone alive knows (world/knowhow.py AGES)
+            $safe('header-era').textContent = (data.history && data.history.active && data.history.age)
+                || data.tech_progression?.current_era || 'Stone Age';
 
             // Update tech era display
             const currentEra = data.tech_progression?.current_era || 'Stone Age';
@@ -3669,14 +3694,58 @@
         let allKnowledgeData = [];
         let currentKnowledgeFilter = 'all';
 
+        // ===== KNOW-HOW (GET /knowhow) =====
+        async function fetchKnowhow() {
+            try {
+                const response = await fetch('/knowhow');
+                if (!response.ok) return;
+                const data = await response.json();
+                const counts = data.counts || {};
+                $safe('knowhow-summary').innerHTML = !data.active
+                    ? 'A settlers\' world: everyone arrived knowing all of it.'
+                    : `${escHtml(data.known)} of ${escHtml(data.total)} known by someone alive · worked out ${escHtml(counts.insight || 0)}× · picked up by watching ${escHtml(counts.watched || 0)}× · taught ${escHtml(counts.taught || 0)}× · lost ${escHtml(counts.lost || 0)}×`;
+                const tiers = [];
+                (data.nodes || []).forEach(n => { (tiers[n.tier] = tiers[n.tier] || []).push(n); });
+                const colors = { known: '#22c55e', lost: '#ef4444', 'not yet': '#475569' };
+                $safe('knowhow-tree').innerHTML = tiers.map((col, i) => `
+                    <div style="min-width: 190px; flex: 1;">
+                        <div style="font-size: 10px; color: #64748b; text-transform: uppercase; margin-bottom: 6px;">${i === 0 ? 'From nothing' : `Step ${i}`}</div>
+                        ${col.map(n => `
+                            <div class="openable" ${openAttr('knowhow', n.id)} style="background: #0f172a; border: 1px solid ${colors[n.state]}; border-left-width: 4px; border-radius: 6px; padding: 7px 9px; margin-bottom: 6px;">
+                                <div style="font-size: 13px; color: #f1f5f9; font-weight: 600;">${escHtml(n.label)}</div>
+                                <div style="font-size: 11px; color: ${colors[n.state]};">${n.state === 'known' ? `${escHtml(n.knowers)} of ${escHtml(data.alive)} know it` : escHtml(n.state)}</div>
+                                ${n.first ? `<div style="font-size: 10px; color: #94a3b8;">first: ${escHtml(n.first.who)}, day ${escHtml(n.first.day)}</div>`
+                                          : `<div style="font-size: 10px; color: #64748b;">humans: ${escHtml(n.humans)}</div>`}
+                            </div>`).join('')}
+                    </div>`).join('');
+                const recent = data.recent || [];
+                $safe('knowhow-recent').innerHTML = recent.length === 0
+                    ? emptyNote(data.active ? 'Nothing learned yet (or this world began before learning was recorded)' : 'Nothing to learn in a settlers\' world')
+                    : recent.map(t => `<div style="font-size: 12px; color: #e2e8f0; margin-bottom: 4px;"><span style="color: #64748b;">${escHtml(t.when)}</span> · ${linkify(t.text, t.links)}</div>`).join('');
+            } catch (error) {
+                console.warn('Know-how unavailable:', error);
+            }
+        }
+
         async function fetchKnowledgeDetails() {
             try {
                 // Fetch knowledge data
                 const knowledgeResp = await fetch('/knowledge');
                 const knowledgeData = await knowledgeResp.json();
 
-                // Store for filtering
-                allKnowledgeData = knowledgeData.knowledge || [];
+                // The same lesson is often noted many times: show it once, with how many
+                const grouped = new Map();
+                (knowledgeData.knowledge || []).forEach(k => {
+                    const key = `${k.type}|${k.name}`;
+                    const have = grouped.get(key);
+                    if (!have) grouped.set(key, Object.assign({}, k, { copies: 1 }));
+                    else {
+                        have.copies += 1;
+                        if ((k.known_by_count || 0) > (have.known_by_count || 0)) Object.assign(have, k, { copies: have.copies });
+                    }
+                });
+                allKnowledgeData = Array.from(grouped.values()).sort((a, b) => b.copies - a.copies || (b.known_by_count || 0) - (a.known_by_count || 0));
+                fetchKnowhow();
 
                 // Render new card-based UI
                 renderKnowledgeCards(allKnowledgeData);
@@ -4042,8 +4111,8 @@
                 // Spread metrics
                 const spreadWidth = Math.min((k.known_by_count / 12) * 100, 100); // Assuming max 12 agents
 
-                // Clean name for display
-                const cleanName = cleanText(k.name);
+                // Clean name for display (and how many times the same lesson was noted)
+                const cleanName = cleanText(k.name) + (k.copies > 1 ? ` ×${k.copies}` : '');
 
                 return `
                     <div class="knowledge-card" data-type="${type}" onclick="showKnowledgeDetails('${k.id}')"
@@ -4705,8 +4774,34 @@
         }
 
         // ===== TECH PROGRESSION - Emergent Discovery System! =====
+        async function fetchTechAge() {
+            try {
+                const response = await fetch('/knowhow');
+                if (!response.ok) return;
+                const data = await response.json();
+                setTextSafe('tech-knowhow-age', data.active ? data.age : 'A settlers\' world: they arrived knowing everything');
+                $safe('tech-age-ladder').innerHTML = (data.ages || []).map(a => `
+                    <div title="${escHtml(a.marks.join(' or '))}; humans: ${escHtml(a.humans)}" style="padding: 6px 10px; border-radius: 6px; font-size: 12px;
+                         background: ${a.now ? '#14532d' : a.first_day ? '#450a0a' : '#1e293b'}; border: 1px solid ${a.now ? '#22c55e' : a.first_day ? '#ef4444' : '#334155'}; color: ${a.now ? '#dcfce7' : '#94a3b8'};">
+                        <div style="font-weight: 700;">${escHtml(a.name)}</div>
+                        <div style="font-size: 10px;">${a.first_day ? `reached day ${escHtml(a.first_day)}${a.now ? '' : ', since lost'}` : 'not yet'} · humans ${escHtml(a.humans)}</div>
+                    </div>`).join('');
+                const frontier = data.frontier || [];
+                $safe('tech-frontier').innerHTML = frontier.length === 0 ? emptyNote(data.active ? 'Nothing new is within reach until something else is learned' : 'Nothing left to learn')
+                    : frontier.map(f => `
+                        <div class="openable" ${openAttr('knowhow', f.id)} style="background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 8px 10px;">
+                            <div style="font-size: 13px; color: #f1f5f9; font-weight: 600;">${escHtml(f.label)}</div>
+                            <div style="font-size: 11px; color: #94a3b8;">${f.needs.length ? `builds on ${escHtml(f.needs.join(', '))} · ` : ''}idea may come from: ${escHtml(f.sparks.join(', ') || 'tinkering')}</div>
+                            <div style="font-size: 10px; color: #64748b;">humans: ${escHtml(f.humans)}</div>
+                        </div>`).join('');
+            } catch (error) {
+                console.warn('Age unavailable:', error);
+            }
+        }
+
         async function fetchTechProgression() {
             try {
+                fetchTechAge();
                 const [statsResponse, experimentsResponse, agentsResponse] = await Promise.all([
                     fetch('/stats'),
                     fetch('/experiments'),

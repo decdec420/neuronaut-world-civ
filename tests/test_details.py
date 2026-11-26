@@ -151,3 +151,58 @@ def test_the_chronicle_endpoint_names_people_with_their_ids():
         assert entry["people"] == [{"name": agent.name, "id": agent.id}]
         politics = client.get("/governments").json()
         assert {"governments", "fallen", "total", "under_government", "alive"} <= set(politics)
+
+
+def test_the_knowhow_view_gives_tiers_the_age_and_what_is_within_reach():
+    from engine.details import knowhow_view
+    from test_knowhow import dawn_world
+    from world.knowhow import age_of
+    sim, roles = dawn_world()
+    a, b = roles["actor"], roles["partner"]
+    view = knowhow_view(sim)
+    assert view["age"] == "Before tools" and view["known"] == 0
+    with quiet():
+        sim.knowhow.learn(a, "stone_tools", "insight", 30)
+        sim.knowhow.learn(b, "stone_tools", "taught", 40, teacher=a)
+    view = knowhow_view(sim)
+    tools = next(n for n in view["nodes"] if n["id"] == "stone_tools")
+    assert tools["tier"] == 0 and tools["state"] == "known" and tools["knowers"] == 2
+    assert tools["first"]["who"] == a.name and tools["first"]["how"] == "worked it out"
+    assert next(n for n in view["nodes"] if n["id"] == "metalworking")["tier"] == 2
+    assert view["age"] == "Old Stone Age" and view["ages"][0]["first_day"] == 1
+    frontier = {f["id"] for f in view["frontier"]}
+    assert {"hunting", "shelter", "fire"} <= frontier and "metalworking" not in frontier
+    assert view["recent"][0]["text"] == f"{a.name} taught {b.name} making stone tools"
+    assert age_of({"writing", "art", "stone_tools"}) == "Age of Writing"
+
+
+def test_money_is_the_currency_only_once_someone_mints_it():
+    """The penny's design is known from the start, and every world used to
+    'adopt coins' on its first tick with none in existence
+    (economy/economic_engine.py check_currency_evolution)."""
+    sim, roles = make_world()
+    economy = sim.economy
+    assert economy.check_currency_evolution(1) is None
+    assert economy.base_economy.market.current_currency_type.value == "barter"
+    economy.minting.total_coins_in_circulation = 10
+    assert "COINS" in economy.check_currency_evolution(2)
+
+
+def test_buildings_report_condition_age_builders_and_residents():
+    from fastapi.testclient import TestClient
+    from api import server
+    from world.dynamic_buildings import Building
+    with TestClient(server.app) as client:
+        sim = server.simulation
+        a = next(x for x in sim.world.agents if x.alive)
+        hut = Building(id="hut-x", name="A Hut", design_id="none", location=(50, 50), is_complete=True,
+                       builder_ids={a.id}, durability=0.62)
+        hut.built_tick = sim.world.time.current_tick - 144 * 2
+        sim.dynamic_building_system.buildings[hut.id] = hut
+        a.home_id = hut.id
+        row = next(b for b in client.get("/buildings").json()["buildings"] if b["id"] == "hut-x")
+        assert row["durability"] == 0.62 and row["age_days"] == 2
+        assert row["builders"] == [{"id": a.id, "name": a.name}] and {"id": a.id, "name": a.name} in row["residents"]
+        econ = client.get("/economy").json()
+        assert econ["phase"] in ("barter", "commodity", "coins") and "trade" in econ["exchanges"]
+        assert client.get("/knowhow").status_code == 200

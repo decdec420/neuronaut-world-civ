@@ -138,7 +138,7 @@ class StatisticsExporter:
             # NEW AUTONOMOUS SYSTEMS
             'experimentation': self.sim.experimentation_engine.get_statistics(),
             'dynamic_buildings': self.sim.dynamic_building_system.get_statistics(),
-            'knowledge': self.sim.knowledge_system.get_statistics(),
+            'knowledge': self._knowledge_stats(),
             'consequences': self.sim.consequence_engine.get_statistics(),
             'roles': self.sim.role_emergence.get_statistics(),
             'tech_progression': self.sim.tech_progression.get_statistics(),
@@ -152,6 +152,17 @@ class StatisticsExporter:
             # POPULATION TRACKING - Births, deaths, demographics over time!
             'population': self.get_population_statistics(),
         }
+
+    def _knowledge_stats(self) -> Dict:
+        """Knowledge records' statistics, with literacy as the share of living
+        people who can write. (knowledge.py's literacy_rate is the share of
+        records that are written down, which read 0% with writers alive.)"""
+        from world.knowhow import knows_action
+        stats = self.sim.knowledge_system.get_statistics()
+        alive = [a for a in self.sim.world.agents if a.alive]
+        stats['written_share'] = stats.get('literacy_rate', 0.0)
+        stats['literacy_rate'] = (sum(1 for a in alive if knows_action(a, 'write')) / len(alive)) if alive else 0.0
+        return stats
 
     def update_population_history(self):
         """

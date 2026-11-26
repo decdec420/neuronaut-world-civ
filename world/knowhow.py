@@ -119,6 +119,26 @@ for _k in KNOWHOW.values():
 SPARKED_BY = {a: sorted(ks) for a, ks in SPARKED_BY.items()}
 
 
+# Human ages, each marked by know-how (any of): the world's age is the latest
+# one whose mark someone alive knows. A reading of the world, nothing more.
+AGES = (
+    ("Old Stone Age", ("stone_tools", "fire"), "about 3.3 million years ago"),
+    ("Late Stone Age", ("art",), "about 45,000 years ago"),
+    ("New Stone Age", ("farming", "herding", "masonry"), "about 12,000 years ago"),
+    ("Age of Metal", ("metalworking",), "about 7,000 years ago"),
+    ("Age of Writing", ("writing",), "about 5,200 years ago"),
+    ("Age of Money", ("coinage",), "about 2,600 years ago"),
+    ("Age of Science", ("science",), "about 400 years ago"),
+    ("Age of Electricity", ("electricity",), "about 150 years ago"),
+)
+
+
+def age_of(known_now) -> str:
+    """The latest human age whose mark is in known_now (names of know-how)."""
+    known_now = set(known_now)
+    return next((name for name, marks, _ in reversed(AGES) if known_now & set(marks)), "Before tools")
+
+
 def needed_for(action_name: str) -> Optional[str]:
     return NEEDED_FOR.get(action_name)
 
@@ -280,6 +300,7 @@ class KnowHowLedger:
             'firsts': sorted(self.firsts.values(), key=lambda f: f['tick']),
             'lost': self.lost[-20:],
             'known_now': sorted(now),
+            'age': age_of(now) if self.active else None,
             'knowers': {n: sum(1 for a in alive if knows(a, n)) for n in sorted(now)},
             'not_yet': [{'knowhow': k.name, 'label': k.label, 'humans': k.humans}
                         for k in KNOWHOW.values() if k.name not in now],

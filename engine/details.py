@@ -601,3 +601,57 @@ DESCRIBERS = {"agent": agent, "government": government, "law": law, "faith": fai
 def describe(sim, kind: str, item_id: str) -> Optional[Dict]:
     describer = DESCRIBERS.get(kind)
     return describer(sim, item_id) if describer else None
+
+
+def knowhow_view(sim) -> Dict:
+    """Everything people can come to know how to do (world/knowhow.py), in
+    tiers by what each builds on: who knows it now, who first worked it out
+    and when, what was lost; and how know-how has passed between people
+    (GET /knowhow, the Knowledge tab)."""
+    from world.knowhow import AGES, KNOWHOW, knows
+    ledger = sim.knowhow
+    names = _Names(sim)
+    alive = [a for a in sim.world.agents if a.alive]
+    depth: Dict[str, int] = {}
+
+    def tier(n):
+        if n not in depth:
+            depth[n] = 0 if not KNOWHOW[n].needs else 1 + max(tier(m) for m in KNOWHOW[n].needs)
+        return depth[n]
+
+    lost = {l['knowhow'] for l in ledger.lost}
+    nodes = []
+    for k in KNOWHOW.values():
+        knowers = sum(1 for a in alive if knows(a, k.name)) if ledger.active else len(alive)
+        first = ledger.firsts.get(k.name)
+        state = "known" if knowers else ("lost" if k.name in lost or first else "not yet")
+        nodes.append({"id": k.name, "label": k.label, "tier": tier(k.name), "knowers": knowers, "state": state,
+                      "needs": [{"id": n, "label": KNOWHOW[n].label} for n in k.needs], "humans": k.humans,
+                      "lets": [u.replace('_', ' ') for u in k.unlocks],
+                      "first": None if not first else {"who": first['who'], "id": first['agent_id'],
+                                                       "day": first['day'], "how": HOW_WORDS.get(first['how'], first['how'])}})
+    recent = []
+    for t, what, who, how, teacher in list(getattr(ledger, 'log', []))[-40:][::-1]:
+        label = KNOWHOW[what].label if what in KNOWHOW else what
+        if how == 'taught' and teacher:
+            text, links = f"{names.name(teacher)} taught {names.name(who)} {label}", [names.person(teacher), names.person(who)]
+        else:
+            text, links = f"{names.name(who)} {HOW_WORDS.get(how, how)}: {label}", [names.person(who)]
+        recent.append({"tick": t, "when": when(t), "text": text,
+                       "links": [l for l in links if l] + [link("knowhow", what, label)]})
+    known_now = {n["id"] for n in nodes if n["state"] == "known"}
+    ages = []
+    for name, marks, humans in AGES:
+        reached = [ledger.firsts[m]['tick'] for m in marks if m in ledger.firsts]
+        ages.append({"name": name, "marks": [KNOWHOW[m].label for m in marks], "humans": humans,
+                     "now": bool(known_now & set(marks)),
+                     "first_day": min(reached) // TICKS_PER_DAY + 1 if reached else None})
+    age = next((a for a in reversed(ages) if a["now"]), None)
+    # Within reach: not known now, but everything it builds on is
+    frontier = [{"id": k.name, "label": k.label, "needs": [KNOWHOW[n].label for n in k.needs],
+                 "sparks": [x.replace('_', ' ') for x in k.sparks], "humans": k.humans}
+                for k in KNOWHOW.values() if k.name not in known_now and all(n in known_now for n in k.needs)]
+    return {"active": ledger.active, "alive": len(alive), "nodes": sorted(nodes, key=lambda n: (n["tier"], n["label"])),
+            "counts": dict(ledger.counts), "recent": recent,
+            "known": len(known_now), "total": len(nodes),
+            "age": age["name"] if age else "Before tools", "ages": ages, "frontier": frontier}
