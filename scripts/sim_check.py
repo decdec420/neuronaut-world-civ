@@ -292,6 +292,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--ticks", type=int, default=1200)
     parser.add_argument("--seeds", type=int, default=3)
+    parser.add_argument("--first-seed", type=int, default=1,
+                        help="start at this seed (to run seeds 4-8 beside 1-3, in parallel)")
     parser.add_argument("--llm", action="store_true", help="use the LLM decision path")
     parser.add_argument("--verbose", action="store_true", help="show top actions and failures")
     parser.add_argument("--long", action="store_true",
@@ -308,7 +310,7 @@ def main() -> int:
     logging.disable(logging.WARNING)
 
     all_ok = True
-    for seed in range(1, args.seeds + 1):
+    for seed in range(args.first_seed, args.first_seed + args.seeds):
         r = run_seed(args.ticks, seed, args.llm)
         problems = []
         if r["errors"]:
