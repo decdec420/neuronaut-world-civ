@@ -111,3 +111,25 @@ def test_a_damaged_home_draws_its_people_to_mend_it_more_the_worse_it_is():
     assert brain._repair_pull(a) > slight > 0.0
     a.home_id = None
     assert brain._repair_pull(a) == 0.0                           # someone else's house: no pull
+
+
+def test_a_world_saved_before_repair_existed_can_repair_once_loaded():
+    """A save pickles the engine with its handlers and menus: a world saved
+    before an action existed never got it (SimulationEngine.ensure_newer_systems
+    now registers what it lacks and rebuilds both brains' menus)."""
+    from agents.agent import ActionType
+    from engine.handlers.repair import RepairHandler
+    sim, roles = make_world()
+    registry = sim._handler_registry
+    registry._handlers = [h for h in registry._handlers if not isinstance(h, RepairHandler)]
+    registry._cache.clear()
+    brain = sim._agent_updater.utility_brain
+    before = [c for c in brain.candidates if c != "repair"]
+    brain.candidates = list(before)
+    assert registry.get_handler(ActionType.REPAIR) is None          # as an older save loads
+    sim.ensure_newer_systems()
+    assert isinstance(registry.get_handler(ActionType.REPAIR), RepairHandler)
+    assert "repair" in brain.candidates
+    assert [c for c in brain.candidates if c != "repair"] == before   # nothing else moved
+    sim.ensure_newer_systems()
+    assert sum(isinstance(h, RepairHandler) for h in registry._handlers) == 1

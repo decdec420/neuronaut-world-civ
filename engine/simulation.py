@@ -339,12 +339,18 @@ class SimulationEngine:
         self.llm_brain = systems['llm_brain']
 
     def _register_action_handlers(self) -> None:
-        """
-        Register all action handlers with the registry.
+        """Register every action handler with the registry."""
+        handlers = self._new_action_handlers()
+        self._handler_registry.register_multiple(handlers)
 
-        All 17 handlers registered for 100% coverage.
-        """
-        handlers = [
+        # Log coverage statistics
+        stats = self._handler_registry.get_coverage_stats()
+        print(f"   Registered {len(handlers)} action handlers")
+        print(f"   Coverage: {stats['covered_count']}/{stats['total_action_types']} action types ({stats['coverage_percentage']:.1f}%)")
+
+    def _new_action_handlers(self) -> list:
+        """One of every action handler a new world has."""
+        return [
             # Basic Actions
             MovementActionHandler(self._action_context),
             SurvivalActionHandler(self._action_context),
@@ -391,13 +397,6 @@ class SimulationEngine:
             ShelterHandler(self._action_context),
             RepairHandler(self._action_context),
         ]
-
-        self._handler_registry.register_multiple(handlers)
-
-        # Log coverage statistics
-        stats = self._handler_registry.get_coverage_stats()
-        print(f"   Registered {len(handlers)} action handlers")
-        print(f"   Coverage: {stats['covered_count']}/{stats['total_action_types']} action types ({stats['coverage_percentage']:.1f}%)")
 
         if stats['coverage_percentage'] >= 100:
             print(f"   ✅ 100% ACTION COVERAGE ACHIEVED!")
@@ -825,6 +824,25 @@ class SimulationEngine:
         if not hasattr(self, 'knowhow'):
             from world.knowhow import KnowHowLedger
             self.knowhow = KnowHowLedger(self, active=False)   # saved before know-how: everyone knows all
+        self._ensure_action_handlers()
+
+    def _ensure_action_handlers(self) -> None:
+        """A saved world keeps the handlers and menus it was saved with, so an
+        action added since (repair, say) could never run in it. Register any
+        handler it lacks and rebuild both brains' menus from the registry; a
+        world whose actions haven't changed gets the same menu back."""
+        have = {type(h) for h in self._handler_registry._handlers}
+        missing = [h for h in self._new_action_handlers() if type(h) not in have]
+        if missing:
+            self._handler_registry.register_multiple(missing)
+        self._handler_registry._cache.clear()
+        from agents.action_menu import build_menu
+        menu = build_menu(self._handler_registry, UNHANDLED_ACTION_FALLBACKS)
+        updater = getattr(self, '_agent_updater', None)
+        if updater is not None:
+            updater.utility_brain.candidates = [e.action for entries in menu.by_category.values() for e in entries]
+        if getattr(self, 'llm_brain', None) is not None:
+            self.llm_brain.set_action_menu(menu)
 
     EVENT_MEMORY_IMPORTANCE = {0: 0.1, 1: 0.3, 2: 0.5, 3: 0.8, 4: 1.0}
 
