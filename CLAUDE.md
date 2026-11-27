@@ -131,6 +131,15 @@ python3 scripts/sim_check.py --start settlers # the other kind of world (default
 - **Dashboard: make it open, and escape it.** A card or name that should open
   gets `openAttr(kind, id)` / `dlink(kind, id, label)`; the endpoint behind
   it must send ids. Text that agents or the LLM wrote goes through `escHtml`.
+- **After a pull, the server must restart.** The page is read from disk on
+  every load; the server runs the code it started with. An old server gives
+  the new page no ids and no new endpoints, so nothing opens. `/health`
+  reports `code_changed` and `dashboard_api`, and the page shows a banner.
+  Raise `DASHBOARD_API` (api/server.py and web/enhanced.html) when the page
+  starts needing something new from the server.
+- **Panels that refresh use `el.liveHTML = ...`**, which replaces the content
+  only when it changed; assigning `innerHTML` every few seconds rebuilt cards
+  under the pointer and lost clicks.
 - **Flavour randomness stays off the world's dice.** Naming a role uses
   `_NameDice` (seeded by agent and action) so it doesn't move every number;
   do the same for any new cosmetic randomness.
