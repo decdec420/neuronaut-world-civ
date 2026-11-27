@@ -280,7 +280,14 @@ def test_economy_barter_mint_bank_loan():
         assert act(sim, a, "mint_coins").success
     assert a.wealth >= 100
     assert act(sim, a, "open_bank").success
-    assert act(sim, b, "apply_for_loan").success
+    # A credit check is a roll (about 70% for a first loan with collateral)
+    # and a refusal costs nothing, so B may ask again
+    loan_result = None
+    for _ in range(20):
+        loan_result = act(sim, b, "apply_for_loan")
+        if loan_result.success:
+            break
+    assert loan_result.success, loan_result.message
 
     # A loan left unpaid defaults, and the world carries on (logging a
     # default used to raise inside tick())
