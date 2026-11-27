@@ -658,7 +658,10 @@ class DynamicBuildingSystem:
             self._test_purpose_effectiveness(building, purpose, design)
 
         # Record completion
-        building.events.append(f"Completed on {building.built_date}")
+        # In sim time (built_date is the wall clock the server ran at)
+        tick = getattr(building, 'built_tick', None)
+        building.events.append(f"Completed on day {tick // 144 + 1}, {tick // 6 % 24:02d}:00" if tick is not None
+                               else "Completed")
 
     def _test_purpose_effectiveness(
         self,
