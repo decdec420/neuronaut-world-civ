@@ -107,6 +107,8 @@ class PerceptionBuilder:
         home = homes.home_of(dbs, agent)
         perceptions['works']['home'] = home.name if home else None
         perceptions['works']['home_distance'] = round(homes.distance_home(dbs, agent), 1) if home else None
+        # How sound it is: a damaged home shelters less in the next disaster (repair mends it)
+        perceptions['works']['home_condition'] = round(min(1.0, home.durability), 2) if home else None
         return perceptions
 
     def _add_social_info(self, agent, perceptions: Dict) -> Dict:

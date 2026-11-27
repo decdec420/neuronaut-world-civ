@@ -49,7 +49,7 @@ from engine.psychology import NeedType as N
 # Actions whose effect comes later than their first step, or only on success, or
 # only rarely: one run can't see it, so their entries are read from the handlers,
 # each with a note on why.
-EFFECT_LATER = {"attend_event", "hide", "build", "gather_water", "discover_element", "discover_material",
+EFFECT_LATER = {"attend_event", "hide", "build", "repair", "gather_water", "discover_element", "discover_material",
                 "discover_energy", "make_law", "fight", "separate", "experiment"}
 
 ACTION_NEEDS: Dict[str, Dict[N, float]] = {
@@ -90,6 +90,7 @@ ACTION_NEEDS: Dict[str, Dict[N, float]] = {
     "harvest": {N.ACHIEVEMENT: 0.6, N.RESOURCES: 0.4},
     "heal": {N.ACHIEVEMENT: 0.55, N.MEANING: 0.45},
     "hide": {N.SECURITY: 0.3},  # on arriving; kept low on purpose, see _warning_pull
+    "repair": {N.SHELTER: 0.4, N.SECURITY: 0.3, N.ACHIEVEMENT: 0.3},  # once there (engine/handlers/repair.py; shelter 0.3 for one's home)
     "hunt": {N.HUNGER: 0.8, N.ACHIEVEMENT: 0.2},
     "join_tax_revolt": {N.STATUS: 1},
     "make_law": {N.STATUS: 1},  # when the law is proposed (governance handler)
@@ -141,6 +142,7 @@ ACTION_TRAITS: Dict[str, Dict[str, float]] = {
     "chop_wood": {"conscientiousness": 0.4},
     "mine": {"conscientiousness": 0.4, "risk_taking": 0.2},
     "build": {"conscientiousness": 0.5, "ambition": 0.3},
+    "repair": {"conscientiousness": 0.6, "agreeableness": 0.2},
     "build_road": {"conscientiousness": 0.4, "agreeableness": 0.3, "ambition": 0.2},
     "dig_well": {"conscientiousness": 0.4, "agreeableness": 0.3},
     "build_streetlight": {"creativity": 0.3, "agreeableness": 0.3, "conscientiousness": 0.2},
@@ -216,6 +218,7 @@ FAITH_PULL = 0.6         # one's own faith, felt more as it fades unpractised
 COMMIT_PULL = 0.8        # carrying on with what one set out to do (x 0.5-1.5 by conscientiousness)
 FAITH_ACTIONS = {"pray", "worship", "perform_ritual"}
 WARNING_PULL = 2.5       # a warned disaster that will reach where one stands: take shelter
+REPAIR_PULL = 1.0        # one's own home in poor repair (x how damaged, x 0.5-1.5 by conscientiousness)
 SEVERITY = {"minor": 0.25, "moderate": 0.5, "major": 0.75, "catastrophic": 1.0}
 NIGHT_REST_PULL = 2.5
 WORK_PULL = 0.3
@@ -318,6 +321,8 @@ class UtilityBrain:
         disaster is coming its way feels the pull of shelter."""
         if action == "hide":
             return self._warning_pull(agent)
+        if action == "repair":
+            return self._repair_pull(agent)
         if action in FAITH_ACTIONS:
             return self._faith_pull(agent)
         if action == "attend_event":
@@ -353,6 +358,21 @@ class UtilityBrain:
             return 0.0
         since = self.sim.world.time.current_tick - last
         return FAITH_PULL * min(1.0, max(0, since) / religion.LAPSE_TICKS)
+
+    def _repair_pull(self, agent) -> float:
+        """One's own home in poor repair: felt more the worse it is (a damaged
+        home shelters less in a disaster) and more by a careful agent. A home
+        relieves the shelter need whatever its state, so damage used to weigh
+        nothing: in one world seven damaged houses stood for days, repair open
+        to someone 9,923 times, and nobody chose it. (The LLM brain is told
+        its home's condition in its perception.)"""
+        from life import homes
+        from engine.handlers.repair import needs_repair, quality
+        home = homes.home_of(self.sim.dynamic_building_system, agent)
+        if home is None or not needs_repair(home):
+            return 0.0
+        damage = max(0.0, 1.0 - home.durability / quality(home))
+        return REPAIR_PULL * damage * (0.5 + agent.personality.get_trait("conscientiousness"))
 
     def _warning_pull(self, agent) -> float:
         """The worst warned disaster that will reach where the agent is: more

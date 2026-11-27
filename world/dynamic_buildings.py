@@ -198,6 +198,7 @@ class Building:
 
     # Performance (learned!)
     durability: float = 1.0  # Degrades over time
+    quality: Optional[float] = None  # the condition it was made with; repairs restore up to it
     shelter_value: Optional[float] = None
     storage_capacity: Optional[int] = None
     production_bonus: Optional[float] = None
@@ -644,6 +645,7 @@ class DynamicBuildingSystem:
             durability_base = 0.5
 
         building.durability = durability_base + random.uniform(-0.2, 0.1)
+        building.quality = building.durability
 
         # CATASTROPHIC FAILURE - building collapses!
         # REDUCED from 10% to 1% - agents are learning!
@@ -658,7 +660,10 @@ class DynamicBuildingSystem:
             self._test_purpose_effectiveness(building, purpose, design)
 
         # Record completion
-        building.events.append(f"Completed on {building.built_date}")
+        # In sim time (built_date is the wall clock the server ran at)
+        tick = getattr(building, 'built_tick', None)
+        building.events.append(f"Completed on day {tick // 144 + 1}, {tick // 6 % 24:02d}:00" if tick is not None
+                               else "Completed")
 
     def _test_purpose_effectiveness(
         self,

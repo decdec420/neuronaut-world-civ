@@ -64,6 +64,7 @@ PREPARE = {
     "build_streetlight": ["<makes glass>"],
     "attend_event": ["<a gathering is announced nearby>"],
     "hide": ["<a house stands nearby>"],
+    "repair": ["<a disaster damaged a house nearby>"],
 }
 PREP_TRIES = 60
 
@@ -254,6 +255,13 @@ def prepare(sim, roles, name: str):
             sim.dynamic_building_system.buildings["prep_house"] = Building(
                 id="prep_house", name="A house", design_id="prep",
                 location=(actor.location.x + 8, actor.location.y), is_complete=True, durability=0.8)
+            continue
+        if step == "<a disaster damaged a house nearby>":
+            from world.dynamic_buildings import Building
+            actor = roles["actor"]
+            sim.dynamic_building_system.buildings["prep_damaged"] = Building(
+                id="prep_damaged", name="A damaged house", design_id="prep",
+                location=(actor.location.x, actor.location.y), is_complete=True, durability=0.3, quality=0.8)
             continue
         if step == "<makes glass>":
             ok, why = attempt_as(sim, roles["actor"], "refine_material", {"details": "sand into glass"})

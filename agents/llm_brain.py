@@ -852,7 +852,11 @@ Be bold! Think of something interesting to try.
                 notes.append("you have been walking a lot lately")
             lines.append("The village has " + ", ".join(parts) + (" (" + "; ".join(notes) + ")" if notes else "") + ".")
             if works.get("home"):
-                lines.append(f"Your home: {works['home']}, {works['home_distance']:.0f} tiles away.")
+                condition = works.get("home_condition")
+                state = "" if condition is None else (
+                    f", in poor repair ({condition:.0%}): it would shelter you less in a disaster" if condition < 0.5
+                    else f", in fair repair ({condition:.0%})" if condition < 0.75 else ", sound")
+                lines.append(f"Your home: {works['home']}, {works['home_distance']:.0f} tiles away{state}.")
             else:
                 lines.append("You have no home yet (a shelter you build becomes yours; partners share).")
 

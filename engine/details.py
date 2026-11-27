@@ -551,6 +551,10 @@ def building(sim, building_id: str) -> Optional[Dict]:
         facts.append(_fact("Kind", str(design.category).replace('_', ' ')))
         if design.intended_purposes:
             facts.append(_fact("Meant for", ", ".join(p.replace('_', ' ') for p in design.intended_purposes)))
+    if getattr(b, 'quality', None) is not None and b.is_complete and not b.collapsed:
+        facts.append(_fact("Built to", _pct(min(1.0, b.quality))))
+    if getattr(b, 'repairs', 0):
+        facts.append(_fact("Mended", f"{b.repairs}×"))
     for label, value in (("Shelter", b.shelter_value), ("Comfort", b.comfort_value), ("Defence", b.defense_value)):
         if value is not None:
             facts.append(_fact(label, _pct(min(1.0, value))))
@@ -560,7 +564,15 @@ def building(sim, building_id: str) -> Optional[Dict]:
         sections.append({"title": "Made of", "items": [{"text": m.replace('_', ' '), "note": str(q)}
                                                        for m, q in sorted(b.materials_used.items())]})
     if b.events:
-        sections.append({"title": "What has happened to it", "items": [{"text": e} for e in b.events[-15:]]})
+        def told(e):
+            # older saves wrote the wall clock ("Completed on 2026-11-26 19:35:57"); a collapse named an id
+            if e.startswith("Completed on 20") and getattr(b, 'built_tick', None) is not None:
+                return f"Completed on {when(b.built_tick)}"
+            for agent_id in names.by_id:
+                if agent_id in e:
+                    e = e.replace(agent_id, names.name(agent_id))
+            return e
+        sections.append({"title": "What has happened to it", "items": [{"text": told(e)} for e in b.events[-15:]]})
     return {"kind": "building", "id": b.id, "icon": "🏠", "title": b.name, "subtitle": state,
             "summary": f"Built by {', '.join(names.name(i) for i in sorted(b.builder_ids)) or 'someone'}.",
             "facts": facts, "sections": sections}

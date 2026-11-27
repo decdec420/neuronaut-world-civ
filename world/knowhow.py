@@ -65,7 +65,7 @@ KNOWHOW: Dict[str, KnowHow] = {k.name: k for k in (
     KnowHow("hunting", "hunting", ("stone_tools",), ("hunt",),
             ("gather_food", "explore"), 1 / 2000,
             "about 500,000 years ago"),
-    KnowHow("shelter", "building shelters", ("stone_tools",), ("build",),
+    KnowHow("shelter", "building shelters", ("stone_tools",), ("build", "repair"),
             ("gather_materials", "chop_wood"), 1 / 1000,
             "about 400,000 years ago"),
     KnowHow("medicine", "healing with herbs", (), ("heal", "cure", "diagnose"),
