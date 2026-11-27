@@ -477,7 +477,12 @@ class UtilityBrain:
         if partner is None:
             return None, 0.0
         profile = self.sim.life_system.life_profiles.get(agent.id)
-        if profile is not None and profile.wants_children and len(agent.children_ids) < profile.ideal_children_count:
+        # Living children: one who died no longer counts toward the family wanted
+        living = 0
+        for child_id in agent.children_ids:
+            child = self.sim._get_agent_by_id(child_id)
+            living += child is not None and child.alive
+        if profile is not None and profile.wants_children and living < profile.ideal_children_count:
             pull = profile.family_priority
         else:
             pull = -0.5
