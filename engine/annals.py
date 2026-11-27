@@ -37,7 +37,7 @@ WEIGHT = {
     'born': 3, 'died': 3, 'coupled': 3, 'parted': 3, 'elected': 3, 'temple': 3, 'collapsed': 3,
     'revolt': 3, 'revolt_end': 3,
     'came_of_age': 2, 'law': 2, 'repealed': 2, 'built': 2, 'insight': 2, 'gathering': 2, 'arrived': 2,
-    'tax': 2, 'tax_repealed': 2,
+    'tax': 2, 'tax_repealed': 2, 'land': 2, 'land_freed': 2,
     'invention': 1, 'taught': 1, 'watched': 1, 'converted': 1, 'joined_faith': 1, 'lapsed': 1,
     'celebration': 1, 'election': 1, 'taxes': 1, 'role': 1,
 }
@@ -206,6 +206,7 @@ class Annals:
         self._read_inventions(sim, fresh)
         self._read_wars(sim, now, quiet=not people)
         self._read_taxes(sim, now, fresh, quiet=not people)
+        self._read_land(sim, now, fresh, quiet=not people)
         self._read_roles(sim, fresh)
         self._read_firsts(sim, after, fresh)
 
@@ -485,6 +486,21 @@ class Annals:
                 self._record(_day(now))["counts"]["joined_revolt"] += size - joined.get(revolt.id, 1)
             joined[revolt.id] = size
 
+    def _read_land(self, sim, now: int, fresh, quiet: bool) -> None:
+        lands = getattr(getattr(sim, 'territory', None), 'territories', {}) or {}
+        known = self.__dict__.setdefault('_lands', {})
+        for land_id in sorted(lands):
+            land = lands[land_id]
+            if land_id not in known:
+                known[land_id] = land.name
+                if fresh(getattr(land, 'claimed_at', None)):
+                    owner = self._name(sim, land.owner_id)
+                    self.add(land.claimed_at, 'land', f"{owner[1] or land.owner_name} claimed {land.name}", [owner])
+        for land_id in sorted(set(known) - set(lands)):
+            if not quiet:
+                self.add(now, 'land_freed', f"{known[land_id]} is no one's now: whoever held it has died")
+            del known[land_id]
+
     def _read_roles(self, sim, fresh) -> None:
         roles = getattr(getattr(sim, 'role_emergence', None), 'agent_roles', {}) or {}
         for agent_id in sorted(roles):
@@ -760,7 +776,7 @@ def lives(sim) -> List[Dict]:
 
 LIFE_KINDS = {'born', 'died', 'coupled', 'parted', 'came_of_age', 'arrived', 'first_knowhow', 'insight', 'taught',
               'watched', 'government', 'law', 'elected', 'revolution', 'faith', 'converted', 'joined_faith', 'lapsed',
-              'temple', 'built', 'gathering', 'celebration', 'invention', 'revolt', 'revolt_end', 'tax', 'role',
+              'temple', 'built', 'gathering', 'celebration', 'invention', 'revolt', 'revolt_end', 'tax', 'role', 'land',
               'first', 'war'}
 
 

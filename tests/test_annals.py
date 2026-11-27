@@ -173,3 +173,18 @@ def test_the_annals_endpoint(monkeypatch):
         assert body["days"][0]["happenings"][0]["kind"] == "began"
         founders = body["days"][0]["happenings"][0]["people"]
         assert founders and all({"id", "name"} <= set(p) for p in founders)
+
+
+def test_land_claimed_and_let_go_is_written_down():
+    sim, roles = make_world()
+    a = roles["actor"]
+    sim.annals.observe(sim, _hour_end(0))
+    from world.territory import TerritoryType
+    sim.territory.claim_territory(a.id, a.name, (a.location.x, a.location.y), 15.0, TerritoryType.PERSONAL, _hour_end(1) - 1)
+    sim.annals.observe(sim, _hour_end(1))
+    claimed = next(h for h in sim.annals.days[1]["happenings"] if h["kind"] == "land")
+    assert claimed["text"].startswith(f"{a.name} claimed")
+    a.alive = False
+    sim.lifecycle_manager.handle_deaths()
+    sim.annals.observe(sim, _hour_end(2))
+    assert "land_freed" in _kinds(sim)

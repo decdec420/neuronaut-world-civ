@@ -830,6 +830,8 @@ class SimulationEngine:
         if not hasattr(self, 'knowhow'):
             from world.knowhow import KnowHowLedger
             self.knowhow = KnowHowLedger(self, active=False)   # saved before know-how: everyone knows all
+        # Worlds saved before the dead let go of their land still hold it
+        self.lifecycle_manager._release_land()
         if not hasattr(self, 'annals'):
             # Saved before the annals: they piece its past together at their first look
             from engine.annals import Annals
