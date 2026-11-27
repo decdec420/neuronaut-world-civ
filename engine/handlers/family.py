@@ -181,6 +181,11 @@ class FamilyHandler(ActionHandler):
         agent.needs.satisfy_need(NeedType.ROMANCE, 0.5)
         agent.needs.satisfy_need(NeedType.SEX, 0.4)
         partner.needs.satisfy_need(NeedType.ROMANCE, 0.3)
+        # Time with one's partner is company too: it eases belonging as an
+        # evening among friends does. (It didn't, so couples had to leave each
+        # other to feel they belonged.)
+        agent.needs.satisfy_need(NeedType.BELONGING, 0.3)
+        partner.needs.satisfy_need(NeedType.BELONGING, 0.2)
         self.relationships.update_relationship(agent.id, partner.id, 'romance', True)
         for who in (agent, partner):
             who.emotions.trigger_emotion(EmotionType.LOVE, 0.3)
