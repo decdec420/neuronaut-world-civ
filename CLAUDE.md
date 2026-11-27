@@ -195,7 +195,14 @@ wildfire. Round 7 started worlds at the dawn of time (`world/knowhow.py`).
    whether or not anyone has made it. Eleven small governments form in the
    first days: an agent joins the government of someone it likes and founds
    its own when it likes nobody in one, which on day 1 is everyone.
-8. A tick costs ~80 ms of CPU with 30-40 people (profile: the rule brain
+8. **Buildings wear only by disasters** (each hit takes half a building's
+   condition) and, since Round 10, can be mended (`engine/handlers/repair.py`;
+   a damaged home pulls its people, `_repair_pull`). 16 settlers seeds x 4000
+   ticks: repairs 0 -> 229, damaged buildings standing 55 -> 32, fallen
+   21 -> 14, births 152 -> 147 (median 7.5 -> 8, both directions by seed).
+   `use_building` (wear from use) is never called; buildings at the dawn
+   rarely exist before tick 1200, so 1200-tick dawn checks don't see this.
+9. A tick costs ~80 ms of CPU with 30-40 people (profile: the rule brain
    weighing ~65 options per agent is the largest part). Faiths stay small;
    disasters are large; the PDFs in `docs/references/` predate most of this.
 
