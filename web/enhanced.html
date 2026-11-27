@@ -6516,32 +6516,11 @@
 
         // ===== MAP INPUT =====
         // The town map (web/town_map.js) handles hover, drag, zoom and
-        // following an agent; its card's "Full profile" button opens the
-        // agent's profile here.
+        // following an agent. Its card's "Their story" button, the names on it
+        // and a clicked building open in the detail panel, over the map (the
+        // panel's Full profile button opens the profile window).
         let hoveredAgent = null;
-
-        function openAgentFromMap(agentId) {
-            const tab = document.querySelector('[data-tab="agents"]');
-            if (tab) tab.click();
-            // Wait for the tab to load and the agent cards to render
-            setTimeout(() => {
-                const agentCard = document.querySelector(`[data-agent-id="${agentId}"]`);
-                if (agentCard) {
-                    agentCard.scrollIntoView({behavior: 'smooth', block: 'center'});
-                    agentCard.style.boxShadow = '0 0 20px 5px rgba(59, 130, 246, 0.8)';
-                    agentCard.style.transform = 'scale(1.05)';
-                    setTimeout(() => { agentCard.click(); }, 400);
-                    setTimeout(() => {
-                        agentCard.style.boxShadow = '';
-                        agentCard.style.transform = '';
-                    }, 1000);
-                } else if (typeof openAgentProfile === 'function') {
-                    openAgentProfile(agentId);
-                }
-            }, 300);
-        }
-
-        TownMap.init(canvas, { onProfile: openAgentFromMap });
+        TownMap.init(canvas, { onProfile: id => openDetail('agent', id), onOpen: (kind, id) => openDetail(kind, id) });
 
         function spawnParticles(x, y, count, color, text = null, type = 'circle') {
             for (let i = 0; i < count; i++) {

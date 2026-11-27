@@ -217,6 +217,7 @@
         lightCanvas: null, rain: [],
         controls: null, card: null,
         onProfile: null,
+        onOpen: null,            // (kind, id): open something in the page's detail panel
         frameMs: 0,
     };
 
@@ -775,6 +776,8 @@
                 return;
             }
             if (T.hover) { follow(T.hover.id); return; }
+            // A building opens in the detail panel (it showed a pointer and did nothing)
+            if (T.hoverBuilding && T.onOpen) { T.onOpen('building', T.hoverBuilding.id); return; }
         });
     }
 
@@ -824,6 +827,13 @@
         });
     }
 
+    // A name the page's detail panel can open (web/enhanced.html opens anything
+    // with data-kind/data-id), or plain text without the panel
+    function linkTo(kind, id, label) {
+        if (!T.onOpen || !id) return escapeHtml(label);
+        return `<span class="dlink" data-kind="${escapeHtml(kind)}" data-id="${escapeHtml(id)}">${escapeHtml(label)}</span>`;
+    }
+
     function showCard() { if (T.card) { T.card.style.display = 'block'; T.cardKey = ''; } }
     function hideCard() { if (T.card) T.card.style.display = 'none'; }
 
@@ -847,8 +857,8 @@
             `<div>${emoji} ${escapeHtml(phrase)}</div>` +
             `<div style="color:#94a3b8;">Age ${escapeHtml(a.age)} · ${escapeHtml(a.life_stage || '')}${job ? ' · ' + escapeHtml(job) : ''}</div>` +
             `<div style="color:#94a3b8;">Feeling ${escapeHtml(a.dominant_emotion || 'calm')} · health ${Math.round(a.health || 0)} · energy ${Math.round(a.energy || 0)}</div>` +
-            `<div style="color:#94a3b8;">${home ? '🏠 ' + escapeHtml(home.name) : 'No home yet'}${partner && partner.data ? ' · 💞 ' + escapeHtml(partner.data.name) : ''}</div>` +
-            `<button data-act="profile" type="button" style="margin-top:6px;background:#4f46e5;color:#fff;border:0;border-radius:5px;padding:3px 10px;cursor:pointer;">👤 Full profile</button>`;
+            `<div style="color:#94a3b8;">${home ? '🏠 ' + linkTo('building', home.id, home.name) : 'No home yet'}${partner && partner.data ? ' · 💞 ' + linkTo('agent', a.partner_id, partner.data.name) : ''}</div>` +
+            `<button data-act="profile" type="button" style="margin-top:6px;background:#4f46e5;color:#fff;border:0;border-radius:5px;padding:3px 10px;cursor:pointer;">📖 Their story</button>`;
     }
 
     // ------------------------------------------------------------- talking
@@ -977,6 +987,7 @@
         const night = isNight(Math.floor(hourF));
         const dark = darkness(hourF);
         const buildings = town.buildings || [];
+        T.lastBuildings = buildings;
         const buildingsById = new Map(buildings.map(b => [b.id, b]));
         updateCamera(now, data);
 
@@ -1143,7 +1154,8 @@
             const b = T.hoverBuilding;
             const status = b.collapsed ? 'Collapsed' : b.complete ? `${buildingKind(b)} · ${Math.round(b.durability * 100)}% sound` : `Being built · ${Math.round(b.progress * 100)}%`;
             const people = b.residents && b.residents.length ? `Home of ${b.residents.slice(0, 4).join(', ')}${b.residents.length > 4 ? '…' : ''}` : (b.purposes || []).join(', ') || b.category;
-            tooltip(g, [b.name, status, people].concat(b.home_now ? [`${b.home_now} at home now`] : []), T.mouse.x, T.mouse.y);
+            tooltip(g, [b.name, status, people].concat(b.home_now ? [`${b.home_now} at home now`] : [],
+                T.onOpen ? ['Click for who built it and who lives there'] : []), T.mouse.x, T.mouse.y);
         }
         g.restore();
         updateCard(buildingsById);
@@ -1283,6 +1295,7 @@
     function init(canvas, opts) {
         T.canvas = canvas;
         T.onProfile = opts && opts.onProfile;
+        T.onOpen = opts && opts.onOpen;
         canvas.style.width = '100%';
         canvas.style.height = '100%';
         canvas.style.cursor = 'grab';
@@ -1306,6 +1319,12 @@
             }
             return out;
         },
+        // where each drawn building is (centre of its box), in CSS pixels within the canvas
+        visibleBuildings: () => (T.lastBuildings || []).filter(b => b._box).map(b => {
+            const [bx, by, bw, bh] = b._box;
+            const [sx, sy] = toScreen(bx + bw / 2, by + bh * 0.6);
+            return { id: b.id, name: b.name, x: sx / T.dpr, y: sy / T.dpr };
+        }),
         follow,
         stats: () => ({ frameMs: T.frameMs, agents: T.agents.size, zoom: T.cam.zoom, mode: T.mode, mapLoaded: !!T.map, W: T.W, H: T.H }),
     };
