@@ -551,6 +551,10 @@ def building(sim, building_id: str) -> Optional[Dict]:
         facts.append(_fact("Kind", str(design.category).replace('_', ' ')))
         if design.intended_purposes:
             facts.append(_fact("Meant for", ", ".join(p.replace('_', ' ') for p in design.intended_purposes)))
+    if getattr(b, 'quality', None) is not None and b.is_complete and not b.collapsed:
+        facts.append(_fact("Built to", _pct(min(1.0, b.quality))))
+    if getattr(b, 'repairs', 0):
+        facts.append(_fact("Mended", f"{b.repairs}×"))
     for label, value in (("Shelter", b.shelter_value), ("Comfort", b.comfort_value), ("Defence", b.defense_value)):
         if value is not None:
             facts.append(_fact(label, _pct(min(1.0, value))))
