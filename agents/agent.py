@@ -733,7 +733,9 @@ class Agent:
                         "dehydration" if thirst_need and thirst_need.level > 0.95 else \
                         "exhaustion" if self.energy <= 0 else "unknown causes"
                 self.death_cause = cause
-                self.death_tick = self.ticks_lived
+                # death_tick is the world's tick, set when the death is recorded
+                # this same tick (lifecycle_manager.handle_deaths); it used to be
+                # the agent's own age in ticks here, and the world's tick elsewhere
                 logger.info(f"💀💀💀 {self.name} ({self.age}y) DIED from {cause}!")
             self.alive = False
 

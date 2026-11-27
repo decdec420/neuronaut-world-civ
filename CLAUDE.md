@@ -91,6 +91,8 @@ python3 scripts/sim_check.py --start settlers # the other kind of world (default
 | Dashboard | `web/enhanced.html` (served at `/app`) |
 | Detail panel (anything opens) | `engine/details.py` → `GET /details/{kind}/{id}`; the drawer in `web/enhanced.html` (`openDetail`) opens any element with `data-kind`/`data-id` |
 | Histories | governments, faiths keep `history` (`note()` in `world/governance.py`, `world/religion.py`); know-how keeps `ledger.log`; read back as sentences in `engine/details.py` |
+| Annals (the Chronicle tab) | `engine/annals.py`: once an hour, writes down what changed (births, deaths, couples, know-how, governments, faiths, disasters, buildings, taxes...) into day records, saved with the world; `GET /annals`; a person's "Their life" in `engine/details.py` |
+| Starting and stopping | `api/server.py` `_start_world` (RESUME: carry on the newest playable save) and `_save_on_stop` |
 
 ## Gotchas (each one caused real bugs)
 
@@ -131,6 +133,13 @@ python3 scripts/sim_check.py --start settlers # the other kind of world (default
 - **Dashboard: make it open, and escape it.** A card or name that should open
   gets `openAttr(kind, id)` / `dlink(kind, id, label)`; the endpoint behind
   it must send ids. Text that agents or the LLM wrote goes through `escHtml`.
+- **The world outlives the server.** It is saved when the server stops and
+  carried on when it starts (`RESUME=last`, the default), so a pickled world
+  meets new code: anything new on the engine needs a default in
+  `ensure_newer_systems` (the annals piece an old world's past together
+  there). Tests begin new worlds and save nothing (`tests/conftest.py`).
+- **The annals only read.** `engine/annals.py` must never change the world or
+  roll its dice; `sim_check` numbers are identical with or without it.
 - **After a pull, the server must restart.** The page is read from disk on
   every load; the server runs the code it started with. An old server gives
   the new page no ids and no new endpoints, so nothing opens. `/health`

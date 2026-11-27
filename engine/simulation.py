@@ -254,6 +254,9 @@ class SimulationEngine:
         self.products = collections.Counter()  # things made (glass, steel, coins...), by name
         from engine.chronicle import Chronicle
         self.chronicle = Chronicle()
+        # Day by day, everything that changed the village (engine/annals.py)
+        from engine.annals import Annals
+        self.annals = Annals()
         self.last_tracked_day = 0
         print("📊 Population tracking enabled - track births/deaths over time!")
 
@@ -609,8 +612,10 @@ class SimulationEngine:
         self.gatherings.update(current_tick)
         self.knowhow.update(current_tick)   # know-how nobody alive has any more is lost
 
-        # Write down any firsts and milestones (engine/chronicle.py)
+        # Write down any firsts and milestones (engine/chronicle.py), and once
+        # an hour what changed (engine/annals.py)
         self.chronicle.observe(self, current_tick)
+        self.annals.observe(self, current_tick)
 
         # Check civilization milestones (DELEGATED)
         self.system_coordinator.check_civilization_milestones(current_tick)
@@ -825,6 +830,10 @@ class SimulationEngine:
         if not hasattr(self, 'knowhow'):
             from world.knowhow import KnowHowLedger
             self.knowhow = KnowHowLedger(self, active=False)   # saved before know-how: everyone knows all
+        if not hasattr(self, 'annals'):
+            # Saved before the annals: they piece its past together at their first look
+            from engine.annals import Annals
+            self.annals = Annals()
         self._ensure_action_handlers()
 
     def _ensure_action_handlers(self) -> None:

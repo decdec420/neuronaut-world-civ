@@ -353,7 +353,7 @@ async def broadcast_updates():
 # the old code: it then finds no ids and nothing opens. The page compares this
 # number and code_changed (below) and says to restart. Raise it when the
 # dashboard starts relying on something new from the server.
-DASHBOARD_API = 11
+DASHBOARD_API = 12
 _CODE_DIRS = ("api", "engine", "world", "agents", "economy", "social", "life")
 
 
@@ -818,6 +818,17 @@ async def get_chronicle(limit: int = 100):
     for entry in data["entries"] + data["voices"]:
         entry["people"] = [{"name": n, "id": ids[n]} for n in entry.get("agents") or [] if n in ids]
     return data
+
+
+@app.get("/annals")
+async def get_annals(since_day: Optional[int] = None, before_day: Optional[int] = None, days: int = 10):
+    """The village's history day by day (engine/annals.py): the latest `days`
+    days in full (or those before `before_day`), every day's population,
+    chapters, families and lives; with since_day, what happened since then."""
+    if not simulation:
+        raise HTTPException(status_code=503, detail="Simulation not running")
+    from engine.annals import annals_view
+    return annals_view(simulation, since_day=since_day, before_day=before_day, days=max(1, min(days, 60)))
 
 
 @app.get("/society")

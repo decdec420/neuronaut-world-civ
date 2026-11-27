@@ -1204,6 +1204,9 @@
 
         <!-- CONTENT -->
         <div class="content">
+            <!-- WHILE YOU WERE AWAY: what happened since this browser last looked (GET /annals?since_day=);
+                 inside the content: the page is a grid of header, tabs and content, and a fourth row pushed the tabs down -->
+            <div id="away-strip" style="display: none; margin: 0 0 16px 0; background: #0c4a6e; border: 1px solid #38bdf8; border-radius: 10px; padding: 10px 14px; color: #e0f2fe; font-size: 13px;"></div>
             <!-- WORLD VIEW - MISSION CONTROL DASHBOARD -->
             <div class="tab-panel active" id="world-view">
                 <h2 style="margin-bottom: 15px;">🌍 Mission Control - Autonomous Civilization Command Center</h2>
@@ -2706,8 +2709,47 @@
             <!-- POLITICS TAB -->
             <!-- CHRONICLE TAB: firsts, milestones and agents' own words (GET /chronicle) -->
             <div class="tab-panel" id="chronicle">
-                <h2 style="margin-bottom: 15px;">🗓️ Chronicle - What They Did First</h2>
-                <p style="color: #94a3b8; margin-bottom: 20px;">Written down as it happens. Nothing here is scripted: every entry is something an agent chose to do.</p>
+                <h2 style="margin-bottom: 8px;">🗓️ Chronicle: the Village's History</h2>
+                <p style="color: #94a3b8; margin-bottom: 20px;">Written down as it happens, hour by hour, and kept for as long as the world lasts. Nothing here is scripted: every line is something that happened, most of it something someone chose to do. Names and things open.</p>
+
+                <!-- Since you were last here (GET /annals?since_day=; this browser remembers the last tick it saw) -->
+                <div id="annals-since" style="display: none; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border: 2px solid #38bdf8; border-radius: 12px; padding: 20px; margin-bottom: 20px;"></div>
+
+                <!-- The village now, and its people over time -->
+                <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border: 2px solid #10b981; border-radius: 12px; padding: 20px; margin-bottom: 20px;">
+                    <h3 style="margin: 0 0 12px 0; color: #10b981; font-size: 18px;">🏘️ The Village Now</h3>
+                    <div id="annals-now" style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px;"></div>
+                    <div id="annals-population"></div>
+                </div>
+
+                <!-- Chapters of ten days -->
+                <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border: 2px solid #f59e0b; border-radius: 12px; padding: 20px; margin-bottom: 20px;">
+                    <h3 style="margin: 0 0 6px 0; color: #f59e0b; font-size: 18px;">📖 The Story So Far</h3>
+                    <p style="color: #94a3b8; font-size: 12px; margin: 0 0 14px 0;">Ten days to a chapter, newest first, each named for the biggest thing that happened in it.</p>
+                    <div id="annals-chapters"><div style="text-align: center; color: #64748b; padding: 30px;">Loading the village's history…</div></div>
+                </div>
+
+                <!-- Day by day -->
+                <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border: 2px solid #3b82f6; border-radius: 12px; padding: 20px; margin-bottom: 20px;">
+                    <h3 style="margin: 0 0 6px 0; color: #3b82f6; font-size: 18px;">📅 Day by Day</h3>
+                    <p style="color: #94a3b8; font-size: 12px; margin: 0 0 14px 0;">Each day told from what happened in it; open a day for every birth, death, lesson, law and invention, by the hour. (A sim day is a year of their lives.)</p>
+                    <div id="annals-days"></div>
+                    <button id="annals-more" onclick="showEarlierDays()" style="display: none; width: 100%; margin-top: 8px; background: #1e293b; border: 1px solid #334155; color: #cbd5e1; padding: 10px; border-radius: 8px; cursor: pointer;">Show earlier days</button>
+                </div>
+
+                <!-- Families and lives -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-bottom: 20px;">
+                    <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border: 2px solid #ec4899; border-radius: 12px; padding: 20px;">
+                        <h3 style="margin: 0 0 6px 0; color: #ec4899; font-size: 18px;">🌳 Families</h3>
+                        <p style="color: #94a3b8; font-size: 12px; margin: 0 0 12px 0;">Everyone descended from each of the first people, the living among them, and how many generations deep.</p>
+                        <div id="annals-houses"></div>
+                    </div>
+                    <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border: 2px solid #a78bfa; border-radius: 12px; padding: 20px;">
+                        <h3 style="margin: 0 0 6px 0; color: #a78bfa; font-size: 18px;">🕯️ Lives Worth Remembering</h3>
+                        <p style="color: #94a3b8; font-size: 12px; margin: 0 0 12px 0;">Each for a reason taken from the record.</p>
+                        <div id="annals-lives"></div>
+                    </div>
+                </div>
                 <!-- From the beginning of time (world/knowhow.py; snapshot 'history'): shown in a dawn world -->
                 <div id="dawn-panel" style="display: none; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border: 2px solid #22c55e; border-radius: 12px; padding: 20px; margin-bottom: 20px;">
                     <h3 style="margin: 0 0 6px 0; color: #22c55e; font-size: 18px;">🕰️ From the Beginning of Time</h3>
@@ -6182,7 +6224,7 @@
         // The page is read from disk on every load; the server keeps running
         // the code it started with. After a `git pull` without a restart, the
         // old server sends nothing to open (no ids, no /details), so say so.
-        const DASHBOARD_API = 11;          // api/server.py DASHBOARD_API
+        const DASHBOARD_API = 12;          // api/server.py DASHBOARD_API
         let staleDismissed = false;
         function dismissStaleBanner() {
             staleDismissed = true;
@@ -8294,6 +8336,7 @@
         }
 
         async function fetchChronicle() {
+            fetchAnnals();
             renderDawnHistory(statsData.history);
             try {
                 const response = await fetch('/chronicle?limit=100');
@@ -8324,6 +8367,220 @@
             } catch (error) {
                 console.warn('Chronicle unavailable:', error);
             }
+        }
+
+        // ===== THE ANNALS (GET /annals): the village's history day by day =====
+        const ANNAL_ICONS = {
+            began: '🌅', age: '🏺', war: '⚔️', war_end: '🕊️', disaster: '🌪️', first: '⭐', first_knowhow: '💡',
+            insight: '💡', taught: '📖', watched: '👀', lost: '🕯️', born: '👶', died: '🕯️', coupled: '💞',
+            parted: '💔', came_of_age: '🎓', arrived: '🚶', government: '🏛️', law: '📜', repealed: '📜',
+            election: '🗳️', elected: '🗳️', revolution: '✊', fell: '🏚️', taxes: '💰', tax: '💰', tax_repealed: '💰',
+            revolt: '✊', revolt_end: '✊', faith: '✨', converted: '🙏', joined_faith: '🙏', lapsed: '🍂',
+            temple: '⛩️', built: '🏠', collapsed: '🏚️', gathering: '🎉', celebration: '🎊', invention: '⚙️', role: '🏷️',
+        };
+        let annalsDayCount = 10;              // days shown in full; "Show earlier days" adds ten
+        const openAnnalDays = new Set();      // days whose full list is open, kept across refreshes
+        let latestTick = null;                // the world's tick, as last heard (for "since you were last here")
+        let annalsSinceDismissed = false;
+
+        // This browser remembers the last tick it saw of the world, to tell
+        // what happened since. Storage can be unavailable: then nothing is shown.
+        const LAST_SEEN_KEY = 'neuronaut.lastSeenTick';
+        function readLastSeen() {
+            try { const v = JSON.parse(localStorage.getItem(LAST_SEEN_KEY)); return v && typeof v.tick === 'number' ? v : null; }
+            catch (e) { return null; }
+        }
+        function writeLastSeen(tick) {
+            try { if (typeof tick === 'number') localStorage.setItem(LAST_SEEN_KEY, JSON.stringify({ tick, at: Date.now() })); }
+            catch (e) { /* private window or storage off: nothing to remember */ }
+        }
+        const lastSeenAtLoad = readLastSeen();
+        const rememberSeen = () => writeLastSeen(latestTick);
+        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') rememberSeen(); });
+        window.addEventListener('pagehide', rememberSeen);
+
+        function annalPeople(people) { return (people || []).map(p => ({ kind: 'agent', id: p.id, label: p.name })); }
+        // Link only the names that are in the text (no list of extras after it)
+        function linkifyIn(text, links) {
+            const t = String(text ?? '');
+            return linkify(t, (links || []).filter(l => l && t.includes(String(l.label))));
+        }
+        function hourOf(h) { return `${String(h.hour).padStart(2, '0')}:00`; }
+        function annalLine(h, withDay) {
+            const opens = h.ref && h.ref.kind !== 'agent';
+            const strong = h.weight >= 3 || h.first;
+            const when = withDay ? `Day ${escHtml(h.day)}, ${hourOf(h)}` : hourOf(h);
+            const links = annalPeople(h.people);
+            const text = h.kind === 'began' ? linkify(h.text, links) : linkifyIn(h.text, links);
+            return `<div ${opens ? `class="openable" ${openAttr(h.ref.kind, h.ref.id)}` : ''} style="display: flex; gap: 8px; padding: 3px 6px; border-radius: 4px; font-size: 12.5px; line-height: 1.45; color: ${strong ? '#e2e8f0' : '#94a3b8'};">`
+                + `<span style="color: #64748b; flex: 0 0 ${withDay ? '96px' : '42px'}; font-variant-numeric: tabular-nums;">${when}</span>`
+                + `<span style="flex: 0 0 18px;">${ANNAL_ICONS[h.kind] || '•'}</span>`
+                + `<span style="flex: 1; ${strong ? 'font-weight: 600;' : ''}">${h.first ? '<span style="color: #f59e0b;">The first: </span>' : ''}${text}`
+                + `${opens ? '<span class="open-hint">open ›</span>' : ''}</span></div>`;
+        }
+        function dayLinks(d) {
+            const seen = new Map();
+            (d.happenings || []).forEach(h => (h.people || []).forEach(p => { if (!seen.has(p.name)) seen.set(p.name, { kind: 'agent', id: p.id, label: p.name }); }));
+            return [...seen.values()];
+        }
+        function annalDay(d) {
+            const e = d.end || {};
+            const people = d.people ?? e.people;
+            const meta = [e.season, d.weather, people != null ? `${people} people` : null, e.age].filter(Boolean).map(escHtml).join(' · ');
+            const hs = d.happenings || [];
+            const actions = Object.entries(d.actions || {});
+            const open = openAnnalDays.has(d.day);
+            return `<div style="background: #0f172a; border-left: 3px solid ${d.notable ? '#3b82f6' : '#334155'}; border-radius: 6px; padding: 12px 14px; margin-bottom: 10px;">
+                <div style="display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; align-items: baseline;">
+                    <strong style="color: #f8fafc; font-size: 15px;">Day ${escHtml(d.day)}</strong>
+                    <span style="color: #64748b; font-size: 12px;">${meta}</span>
+                </div>
+                ${d.pieced ? '<div style="font-size: 11px; color: #64748b; margin-top: 2px;">Pieced together from the records kept at the time: births of people still alive, deaths, know-how, governments, faiths, disasters, gatherings and inventions.</div>' : ''}
+                <div style="font-size: 13px; color: #cbd5e1; margin-top: 6px; line-height: 1.55;">${linkifyIn(d.summary, dayLinks(d))}</div>
+                ${actions.length ? `<div style="font-size: 11px; color: #64748b; margin-top: 6px;">Most done: ${actions.map(([k, n]) => `${escHtml(k.replace(/_/g, ' '))} ×${escHtml(n)}`).join(' · ')}</div>` : ''}
+                ${hs.length ? `<details data-annal-day="${escHtml(d.day)}" ${open ? 'open' : ''} style="margin-top: 8px;">
+                    <summary style="cursor: pointer; color: #93c5fd; font-size: 12px;">Everything that happened (${escHtml(hs.length)})</summary>
+                    <div style="margin-top: 6px;">${hs.map(h => annalLine(h, false)).join('')}</div>
+                </details>` : ''}
+            </div>`;
+        }
+        function annalChapter(c) {
+            const links = c.highlights.flatMap(h => annalPeople(h.people));
+            const range = c.from === c.to ? `Day ${c.from}` : `Days ${c.from}–${c.to}`;
+            const facts = [
+                c.people_start != null && c.people_end != null ? `${c.people_start} → ${c.people_end} people` : null,
+                `${c.born} born`, `${c.died} died`, `${c.couples} new couples`, `${c.taught} lessons`, `${c.inventions} inventions`,
+            ].filter(Boolean).map(escHtml).join(' · ');
+            return `<div style="background: #0f172a; border-radius: 8px; padding: 14px; margin-bottom: 12px;">
+                <div style="font-size: 11px; color: #f59e0b; text-transform: uppercase; letter-spacing: 0.04em;">${escHtml(range)}${c.age ? ' · ' + escHtml(c.age) : ''}</div>
+                <div style="font-size: 16px; font-weight: 700; color: #f8fafc; margin: 4px 0;">${linkifyIn(c.title, links)}</div>
+                <div style="font-size: 12px; color: #94a3b8; margin-bottom: ${c.highlights.length ? '8px' : '0'};">${facts}</div>
+                ${c.highlights.map(h => annalLine(h, true)).join('')}
+            </div>`;
+        }
+        function populationChart(pop) {
+            const pts = (pop || []).filter(p => p.people != null);
+            if (pts.length < 2) return '<div style="font-size: 12px; color: #64748b;">The chart starts once a second day has been counted.</div>';
+            const W = 640, H = 150, L = 34, R = 10, T = 10, B = 24;
+            const first = pts[0].day, last = pts[pts.length - 1].day;
+            const top = Math.max(...pts.map(p => p.people)) || 1;
+            const x = d => L + (W - L - R) * (last === first ? 0 : (d - first) / (last - first));
+            const y = v => T + (H - T - B) * (1 - v / top);
+            const line = pts.map(p => `${x(p.day).toFixed(1)},${y(p.people).toFixed(1)}`).join(' ');
+            const area = `${x(first).toFixed(1)},${y(0)} ${line} ${x(last).toFixed(1)},${y(0)}`;
+            const step = (W - L - R) / Math.max(1, last - first);
+            const marks = (pop || []).filter(p => p.died >= 3 && p.people != null)
+                .map(p => `<circle cx="${x(p.day).toFixed(1)}" cy="${y(p.people).toFixed(1)}" r="3.5" fill="#ef4444"><title>Day ${p.day}: ${p.died} died</title></circle>`).join('');
+            const hover = (pop || []).filter(p => p.people != null)
+                .map(p => `<rect x="${(x(p.day) - step / 2).toFixed(1)}" y="${T}" width="${Math.max(2, step).toFixed(1)}" height="${H - T - B}" fill="transparent"><title>Day ${p.day}: ${p.people} people · ${p.born} born · ${p.died} died</title></rect>`).join('');
+            return `<svg viewBox="0 0 ${W} ${H}" style="width: 100%; height: auto; display: block;" role="img" aria-label="People alive each day">
+                <line x1="${L}" y1="${y(0)}" x2="${W - R}" y2="${y(0)}" stroke="#334155"/>
+                <line x1="${L}" y1="${y(top)}" x2="${W - R}" y2="${y(top)}" stroke="#1e293b" stroke-dasharray="3 3"/>
+                <text x="${L - 6}" y="${y(top) + 4}" text-anchor="end" font-size="10" fill="#64748b">${top}</text>
+                <text x="${L - 6}" y="${y(0) + 4}" text-anchor="end" font-size="10" fill="#64748b">0</text>
+                <text x="${L}" y="${H - 6}" font-size="10" fill="#64748b">day ${first}</text>
+                <text x="${W - R}" y="${H - 6}" text-anchor="end" font-size="10" fill="#64748b">day ${last}</text>
+                <polygon points="${area}" fill="rgba(16, 185, 129, 0.15)"/>
+                <polyline points="${line}" fill="none" stroke="#10b981" stroke-width="2"/>
+                ${marks}${hover}
+            </svg>
+            <div style="font-size: 11px; color: #64748b; margin-top: 4px;">People alive at the end of each day; red marks days when three or more died. Hover a day for its numbers.</div>`;
+        }
+        function annalsNow(data) {
+            const e = data.now || {};
+            const alive = { people: e.people };
+            const tile = (label, value) => value == null ? '' : `<div style="background: #0f172a; border-radius: 8px; padding: 8px 12px; min-width: 92px;"><div style="font-size: 18px; font-weight: 700; color: #f8fafc;">${escHtml(value)}</div><div style="font-size: 11px; color: #94a3b8;">${escHtml(label)}</div></div>`;
+            return tile('day', data.today) + tile('alive now', alive.people) + tile('adults', e.adults) + tile('children', e.children)
+                + tile('couples', e.couples) + tile('with a home', e.homes) + tile('buildings', e.buildings)
+                + tile('know-how kept', e.knows) + tile('governments', e.governments) + tile('faiths', e.faiths)
+                + (e.age ? tile('age', e.age) : '');
+        }
+        function sinceSummary(since) {
+            const bits = [];
+            const n = (v, one, many) => v ? `${v} ${v === 1 ? one : many}` : null;
+            [n(since.born, 'born', 'born'), n(since.died, 'died', 'died'), n(since.couples, 'new couple', 'new couples'),
+             n(since.parted, 'parting', 'partings'), n(since.firsts, 'first', 'firsts'), n(since.taught, 'lesson', 'lessons'),
+             n(since.inventions, 'invention', 'inventions')].forEach(b => b && bits.push(b));
+            if (since.people_then != null && since.people_now != null) bits.push(`${since.people_then} → ${since.people_now} people`);
+            return bits.join(' · ');
+        }
+        function markCaughtUp() {
+            annalsSinceDismissed = true;
+            writeLastSeen(latestTick);
+            $safe('annals-since').style.display = 'none';
+            $safe('away-strip').style.display = 'none';
+        }
+        function renderSince(data) {
+            const box = $safe('annals-since');
+            const since = data.since;
+            if (!since || annalsSinceDismissed || !lastSeenAtLoad) { box.style.display = 'none'; return; }
+            const lines = since.notable || [];
+            box.style.display = 'block';
+            box.liveHTML = `<div style="display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; align-items: baseline;">
+                    <h3 style="margin: 0; color: #38bdf8; font-size: 18px;">📬 Since You Were Last Here</h3>
+                    <button onclick="markCaughtUp()" style="background: #0c4a6e; border: 1px solid #38bdf8; color: #e0f2fe; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px;">✓ Caught up</button>
+                </div>
+                <div style="font-size: 13px; color: #cbd5e1; margin: 6px 0 10px;">From day ${escHtml(since.from_day)} to day ${escHtml(data.today)}: ${escHtml(sinceSummary(since)) || 'nothing much changed'}.</div>
+                ${lines.map(h => annalLine(h, true)).join('') || '<div style="font-size: 12px; color: #64748b;">Nothing notable: births, deaths, couples, firsts and disasters show here.</div>'}`;
+        }
+        function sinceDay() {
+            if (!lastSeenAtLoad || latestTick == null || lastSeenAtLoad.tick > latestTick) return null;   // a newer world than the one last seen
+            return Math.floor(lastSeenAtLoad.tick / 144) + 1;
+        }
+        async function fetchAnnals() {
+            try {
+                const since = sinceDay();
+                const response = await fetch(`/annals?days=${annalsDayCount}` + (since ? `&since_day=${since}` : ''));
+                if (!response.ok) return;
+                const data = await response.json();
+                latestTick = data.tick;
+                renderSince(data);
+                $safe('annals-now').liveHTML = annalsNow(data);
+                $safe('annals-population').liveHTML = populationChart(data.population);
+                const chapters = (data.chapters || []).slice().reverse();
+                $safe('annals-chapters').liveHTML = chapters.length ? chapters.map(annalChapter).join('') : emptyNote('The first hour is still going');
+                const days = data.days || [];
+                $safe('annals-days').liveHTML = days.length ? days.map(annalDay).join('') : emptyNote('The first hour is still going');
+                const more = $safe('annals-more');
+                more.style.display = data.earliest_day && days.length && days[days.length - 1].day > data.earliest_day && annalsDayCount < 60 ? 'block' : 'none';
+                $safe('annals-houses').liveHTML = (data.houses || []).length === 0 ? emptyNote('No family has children yet')
+                    : data.houses.map(h => `<div style="background: #0f172a; border-radius: 6px; padding: 8px 12px; margin-bottom: 6px; font-size: 13px; color: #e2e8f0;">
+                        ${dlink('agent', h.id, h.name)}${h.alive ? '' : ' <span style="color: #64748b;">†</span>'}${h.partner ? ` &amp; ${dlink('agent', h.partner_id, h.partner)}` : ''}
+                        <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">${escHtml(h.descendants)} descendants · ${escHtml(h.living)} living · ${escHtml(h.generations)} generations</div></div>`).join('');
+                $safe('annals-lives').liveHTML = (data.lives || []).length === 0 ? emptyNote('Nobody stands out yet')
+                    : data.lives.map(l => `<div style="font-size: 13px; color: #e2e8f0; margin-bottom: 6px;">${dlink('agent', l.id, l.name)}${l.alive ? '' : ' <span style="color: #64748b;">†</span>'} <span style="color: #94a3b8;">${escHtml(l.why)}</span></div>`).join('');
+            } catch (error) {
+                console.warn('Annals unavailable:', error);
+            }
+        }
+        function showEarlierDays() {
+            annalsDayCount = Math.min(60, annalsDayCount + 10);
+            fetchAnnals();
+        }
+        // An open day stays open when the list is refreshed
+        $safe('annals-days').addEventListener('toggle', ev => {
+            const day = Number(ev.target?.dataset?.annalDay);
+            if (!day) return;
+            if (ev.target.open) openAnnalDays.add(day); else openAnnalDays.delete(day);
+        }, true);
+
+        // While you were away: a line above the tabs when something happened since this browser last looked
+        async function checkWhileAway() {
+            try {
+                const health = await (await fetch('/health', { cache: 'no-store' })).json();
+                latestTick = health.tick;
+                const since = sinceDay();
+                if (!since || !lastSeenAtLoad || health.tick - lastSeenAtLoad.tick < 6) return;
+                const data = await (await fetch(`/annals?days=1&since_day=${since}`)).json();
+                const s = data.since || {};
+                const summary = sinceSummary(s);
+                if (!summary || annalsSinceDismissed) return;
+                const strip = $safe('away-strip');
+                strip.innerHTML = `📬 <strong>While you were away</strong> (day ${escHtml(s.from_day)} → day ${escHtml(data.today)}): ${escHtml(summary)}. `
+                    + `<span class="dlink" style="cursor: pointer; color: #7dd3fc; text-decoration: underline;" onclick="document.querySelector('.nav-tab[data-tab=chronicle]').click()">Read the chronicle ›</span>`
+                    + ` <span style="float: right; cursor: pointer; color: #7dd3fc;" title="Mark as caught up" onclick="markCaughtUp()">✓</span>`;
+                strip.style.display = 'block';
+            } catch (error) { /* not connected yet */ }
         }
 
         function renderFamily(person) {
@@ -8406,7 +8663,8 @@
         fetchChronicle();
         fetchSociety();
         // Live while their tab is open (and every 15 s otherwise, so they're fresh when opened)
-        setInterval(() => { if ($safe('chronicle').classList.contains('active')) fetchChronicle(); }, 3000);
+        setInterval(() => { if ($safe('chronicle').classList.contains('active')) fetchChronicle(); }, 10000);
+        checkWhileAway();
         setInterval(() => { if ($safe('society').classList.contains('active')) fetchSociety(); }, 3000);
         setInterval(() => { fetchChronicle(); fetchSociety(); }, 15000);
         document.querySelector('.nav-tab[data-tab="chronicle"]')?.addEventListener('click', fetchChronicle);
