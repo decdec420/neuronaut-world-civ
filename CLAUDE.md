@@ -186,15 +186,17 @@ wildfire. Round 7 started worlds at the dawn of time (`world/knowhow.py`).
 6. **Far guests can't reach a gathering** (LEAD_TICKS): anyone more than
    ~20 tiles away arrives after the end. Letting them set off in time
    lowered attendance in every test. Measure before trying again.
-7. **Dashboard, after Round 9** (every tab audited on a day-20 dawn world):
-   still thin or separate: Culture's celebrations (698 in 20 days, generic
-   names) run beside the village's gatherings and don't link to them; the
-   materials era (Tech tab, below the know-how age) comes from experiments,
-   is unrelated to know-how and still decides which experiments are tried
-   (`engine/handlers/knowledge.py`); Experimentation lists every material
-   whether or not anyone has made it. Eleven small governments form in the
-   first days: an agent joins the government of someone it likes and founds
-   its own when it likes nobody in one, which on day 1 is everyone.
+7. **Dashboard, after Round 11**: Culture (GET /culture) and Experimentation
+   (GET /lab) are records now. Celebrations happen only when someone chooses
+   to celebrate (finished buildings and discoveries used to throw parties
+   that handed out belonging to everyone near: 698 in 20 days); without that
+   free belonging dawn births fell 87 -> 71 over 8 seeds, 74 once time with
+   a partner eased belonging too (settlers 44 -> 47). Still separate: the
+   materials era (Tech tab, below the know-how age) comes from experiments
+   and decides which experiments are tried (`engine/handlers/knowledge.py`).
+   Eleven small governments form in the first days: an agent joins the
+   government of someone it likes and founds its own when it likes nobody
+   in one, which on day 1 is everyone.
 8. **Buildings wear only by disasters** (each hit takes half a building's
    condition) and, since Round 10, can be mended (`engine/handlers/repair.py`;
    a damaged home pulls its people, `_repair_pull`). 16 settlers seeds x 4000
