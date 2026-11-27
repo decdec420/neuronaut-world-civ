@@ -177,3 +177,51 @@ def roles_snapshot(sim) -> Dict:
                        for n, c in sorted(roles.role_vocabulary.items(), key=lambda kv: -kv[1])[:24]],
         "alive": len(alive),
     }
+
+
+def culture_snapshot(sim) -> Dict:
+    """What people do for joy (GET /culture): celebrations someone chose to
+    throw, with the host and who came; the gatherings people organized and
+    went to; art and who made it; games, who played and who won. In sim
+    time, with ids so each person opens."""
+    fun = sim.fun_system
+    by_id = {a.id: a for a in sim.world.agents}
+
+    def person(agent_id):
+        a = by_id.get(agent_id)
+        return {"id": agent_id, "name": a.name if a else "someone"}
+
+    def when(tick):
+        return f"day {tick // TICKS_PER_DAY + 1}, {tick // 6 % 24:02d}:00" if tick is not None else None
+
+    def celebration(c, live):
+        return {"id": c.id, "name": c.celebration_name or "A celebration", "kind": c.celebration_type.value,
+                "why": c.trigger_event, "host": person(c.organizer_id), "live": live,
+                "guests": [person(g) for g in sorted(c.participants) if g != c.organizer_id],
+                "when": when(getattr(c, "start_tick", None)),
+                "hours_left": round(c.duration_ticks / 6, 1) if live else None}
+
+    celebrations = ([celebration(c, True) for c in fun.active_celebrations.values()]
+                    + [celebration(c, False) for c in reversed(fun.celebration_history[-30:])])
+    art = sorted(fun.art_pieces.values(), key=lambda a: getattr(a, "tick", None) or -1, reverse=True)
+    finest = sorted(fun.art_pieces.values(), key=lambda a: -a.quality)[:6]
+
+    def art_row(a):
+        return {"id": a.id, "title": a.title, "kind": a.art_type, "maker": person(a.creator_id),
+                "quality": round(a.quality, 2), "when": when(getattr(a, "tick", None))}
+
+    games = [{"kind": g.game_type.value, "players": [person(p) for p in g.players],
+              "winner": person(g.winner) if g.winner else None, "when": when(getattr(g, "tick", None))}
+             for g in reversed(fun.game_history[-12:])]
+    life = village_life(sim)
+    return {
+        "counts": {"celebrations": fun.total_celebrations, "games": fun.total_games,
+                   "art": fun.total_art_created,
+                   "gatherings_held": len(sim.gatherings.history),   # the last 50 are kept
+                   "live": len(fun.active_celebrations)},
+        "celebrations": celebrations,
+        "kinds": dict(sorted(fun.traditions.items(), key=lambda kv: -kv[1])),
+        "gatherings": {"upcoming": life.get("upcoming", []), "recent": life.get("recent", [])},
+        "art": {"latest": [art_row(a) for a in art[:10]], "finest": [art_row(a) for a in finest]},
+        "games": games,
+    }

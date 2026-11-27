@@ -272,7 +272,7 @@ async def broadcast_updates():
 # the old code: it then finds no ids and nothing opens. The page compares this
 # number and code_changed (below) and says to restart. Raise it when the
 # dashboard starts relying on something new from the server.
-DASHBOARD_API = 10
+DASHBOARD_API = 11
 _CODE_DIRS = ("api", "engine", "world", "agents", "economy", "social", "life")
 
 
@@ -1169,61 +1169,6 @@ async def get_politics():
         }
 
 
-@app.get("/culture")
-async def get_culture():
-    """Get cultural data - groups, traditions, shared values, celebrations"""
-    if not simulation:
-        raise HTTPException(status_code=503, detail="Simulation not running")
-
-    try:
-        # Get all social groups with cultural aspects
-        groups = []
-        for group in simulation.group_manager.groups.values():
-            groups.append({
-                "id": group.id,
-                "name": group.name,
-                "members": len(group.members),
-                "leader": _name_of(group.leader_id),
-                "leader_id": group.leader_id,
-                "cohesion": group.cohesion if hasattr(group, 'cohesion') else 0.5,
-                "purpose": group.purpose if hasattr(group, 'purpose') else "General"
-            })
-        
-        # Get fun system cultural data (celebrations, traditions, art)
-        fun_stats = simulation.fun_system.get_stats() if hasattr(simulation, 'fun_system') else {}
-        
-        # Get knowledge system cultural knowledge
-        cultural_knowledge = []
-        if hasattr(simulation, 'knowledge_system'):
-            for kr in simulation.knowledge_system.knowledge_records.values():
-                if hasattr(kr, 'knowledge_type') and 'culture' in kr.knowledge_type.lower():
-                    cultural_knowledge.append({
-                        "name": kr.name,
-                        "type": kr.knowledge_type,
-                        "discoverer": kr.discoverer_id if hasattr(kr, 'discoverer_id') else None
-                    })
-        
-        return {
-            "groups": groups,
-            "total_groups": len(groups),
-            "celebrations_held": fun_stats.get('celebrations_held', 0),
-            "games_played": fun_stats.get('games_played', 0),
-            "art_created": fun_stats.get('art_created', 0),
-            "traditions": fun_stats.get('traditions', {}),
-            "cultural_knowledge": cultural_knowledge[:20],  # Top 20
-            "statistics": {
-                "social_cohesion": sum(g.cohesion if hasattr(g, 'cohesion') else 0.5 for g in simulation.group_manager.groups.values()) / max(len(groups), 1)
-            }
-        }
-    except Exception as e:
-        logger.error(f"Error getting culture data: {e}")
-        return {
-            "groups": [],
-            "total_groups": 0,
-            "error": str(e)
-        }
-
-
 @app.get("/governments")
 async def get_governments():
     """Get all governments"""
@@ -1487,6 +1432,16 @@ async def get_fun_statistics():
             "total_created": stats['total_art']
         }
     }
+
+
+@app.get("/culture")
+async def get_culture():
+    """Celebrations people chose to throw (host, guests, why), gatherings,
+    art and its makers, games and their winners (engine/society.py)."""
+    if not simulation:
+        raise HTTPException(status_code=503, detail="Simulation not running")
+    from engine.society import culture_snapshot
+    return culture_snapshot(simulation)
 
 
 @app.get("/fun/celebrations")
