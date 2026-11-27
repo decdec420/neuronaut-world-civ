@@ -190,6 +190,12 @@ wildfire. Round 7 started worlds at the dawn of time (`world/knowhow.py`).
    seeds, still no separations (the diff is described in PR #7).
 3. **Content agents have little to do:** rest is ~40% of actions (night
    sleep is about 30%); much of the day goes to patrol and gatherings.
+   **Security sits at its top for most people** in a dawn world before
+   shelters: little eases it, so it climbs to 1.0 and stays (a 30-day dawn
+   world, day 32: 25 of 36 at 1.0, the most pressing need for 18). Round 12
+   kept needs within 0-1 (trespassing pushed security to 1.1) and let the
+   dead's land go, but land claims (radius 15) still cover the village
+   centre. Measure what eases security before changing any of it.
 4. **Resources have no maximum** (`world/simulation.py` Resource.regenerate):
    food tiles grow +0.5 a tick forever; and since water stopped drawing on
    the global pool, droughts no longer affect water (they only lowered that
