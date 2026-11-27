@@ -138,6 +138,16 @@ class SaveManager:
             self._refresh()
             return sorted(self.metadata["saves"], key=lambda x: x.get("last_played", ""), reverse=True)
 
+    def newest_first(self) -> List[Dict]:
+        """Saves by when they were made, newest first. Two made in the same
+        second are told apart by their place in the index, which keeps the
+        order they were made in (list_saves orders by when last played)."""
+        with self._lock:
+            self._refresh()
+            made = list(enumerate(self.metadata["saves"]))
+        made.sort(key=lambda pair: (pair[1].get("created_at", ""), pair[0]), reverse=True)
+        return [entry for _, entry in made]
+
     def load_save(self, save_id: str) -> Optional[Dict]:
         """
         Load a save's summary by ID
@@ -158,6 +168,12 @@ class SaveManager:
             save_entry["last_played"] = datetime.now().strftime('%Y%m%d_%H%M%S')
             self._save_metadata()
         return world_data
+
+    def entry(self, save_id: str) -> Optional[Dict]:
+        """A save's entry in the index (name, when, stats), or None."""
+        with self._lock:
+            self._refresh()
+            return self._entry(save_id)
 
     def state_path(self, save_id: str) -> Optional[Path]:
         """The save's full-state file, if it has one (older saves don't)."""

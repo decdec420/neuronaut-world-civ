@@ -5257,7 +5257,23 @@
             }
         }
 
+        // Where the running world came from, and what a restart does (GET /health 'world')
+        async function showWorldOrigin() {
+            try {
+                const health = await (await fetch('/health', { cache: 'no-store' })).json();
+                const w = health.world;
+                if (!w) { setTextSafe('world-origin-note', 'This server begins a new world each time it starts: save a world to keep it.'); return; }
+                const from = w.kind === 'resumed' ? `Carried on from “${escHtml(w.save)}” when the server started.`
+                    : w.kind === 'loaded' ? `Loaded from “${escHtml(w.save)}”.`
+                    : 'Begun new.';
+                $safe('world-origin-note').innerHTML = `<strong>This world:</strong> ${from} `
+                    + (w.saved_on_stop ? 'It is saved when the server stops and carries on when it starts again (start with <code>RESUME=new</code>, or 🔄 Reset World, to begin a new one).'
+                                       : 'Saves are off (<code>AUTOSAVE_EVERY=0</code>): it is not kept when the server stops.');
+            } catch (error) { /* not connected */ }
+        }
+
         async function loadSavesList() {
+            showWorldOrigin();
             try {
                 const response = await fetch('/saves');
                 const data = await response.json();
@@ -5285,7 +5301,7 @@
                         <div style="background: #1e293b; border: 2px solid #334155; border-radius: 12px; padding: 20px; margin-bottom: 16px;">
                             <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 16px;">
                                 <div style="flex: 1;">
-                                    <h4 style="color: #10b981; font-size: 18px; margin-bottom: 8px;">${save.name}</h4>
+                                    <h4 style="color: #10b981; font-size: 18px; margin-bottom: 8px;">${escHtml(save.name)}</h4>
                                     <div style="font-size: 12px; color: #64748b;">
                                         Created: ${createdDate.toLocaleString()}
                                     </div>
@@ -5294,10 +5310,10 @@
                                     </div>
                                 </div>
                                 <div style="display: flex; gap: 8px;">
-                                    <button onclick="loadSave('${save.id}')" style="background: #10b981; border: none; padding: 10px 16px; border-radius: 8px; color: white; font-weight: 700; cursor: pointer; font-size: 13px;">
+                                    <button onclick="loadSave('${escHtml(save.id)}')" style="background: #10b981; border: none; padding: 10px 16px; border-radius: 8px; color: white; font-weight: 700; cursor: pointer; font-size: 13px;">
                                         📂 Load
                                     </button>
-                                    <button onclick="deleteSave('${save.id}', '${save.name}')" style="background: #ef4444; border: none; padding: 10px 16px; border-radius: 8px; color: white; font-weight: 700; cursor: pointer; font-size: 13px;">
+                                    <button onclick="deleteSave('${escHtml(save.id)}', ${escHtml(JSON.stringify(String(save.name)))})" style="background: #ef4444; border: none; padding: 10px 16px; border-radius: 8px; color: white; font-weight: 700; cursor: pointer; font-size: 13px;">
                                         🗑️ Delete
                                     </button>
                                 </div>
@@ -6172,11 +6188,16 @@
             staleDismissed = true;
             $safe('server-stale-banner').style.display = 'none';
         }
-        function showStaleBanner(why) {
+        function showStaleBanner(why, health) {
             if (staleDismissed) return;
+            // A server that saves its world when it stops carries it on when it
+            // starts again; an older one begins a new world
+            const keeps = health && health.world && health.world.saved_on_stop;
             $safe('server-stale-text').innerHTML = `<strong>⚠️ Restart the server to use this page fully.</strong> ${escHtml(why)}<br>`
                 + 'Where it\'s running, press <strong>Ctrl+C</strong>, start it again (e.g. <code>civstart</code>), then reload this page. '
-                + 'A restart begins a new world: to keep this one, save it first (💾 Save/Load) and load it again afterwards.';
+                + (keeps ? 'The world is saved as the server stops and carries on when it starts again.'
+                         : 'This server begins a new world when it restarts: to keep this one, save it first (💾 Save/Load). '
+                           + 'Once restarted on the new code, it carries on from the newest save by itself.');
             $safe('server-stale-banner').style.display = 'block';
         }
         async function checkServerVersion() {
@@ -6184,9 +6205,9 @@
                 const response = await fetch('/health', { cache: 'no-store' });
                 const health = await response.json();
                 if (health.dashboard_api === undefined || health.dashboard_api < DASHBOARD_API) {
-                    showStaleBanner('The server is running older code than this page, so cards and names have nothing to open.');
+                    showStaleBanner('The server is running older code than this page, so some panels have nothing to show.', health);
                 } else if (health.code_changed) {
-                    showStaleBanner('The code changed after the server started (an update was pulled), so it is still running the old code.');
+                    showStaleBanner('The code changed after the server started (an update was pulled), so it is still running the old code.', health);
                 } else {
                     $safe('server-stale-banner').style.display = 'none';
                 }
@@ -8417,6 +8438,7 @@
             </div>
             <div class="modal-body" style="padding: 24px;">
                 <!-- QUICK ACTIONS -->
+                <div id="world-origin-note" style="font-size: 13px; color: #cbd5e1; background: #0f172a; border-left: 3px solid #10b981; border-radius: 6px; padding: 10px 14px; margin-bottom: 16px;"></div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px;">
                     <button onclick="showCreateSaveDialog()" style="background: linear-gradient(135deg, #10b981, #059669); border: 2px solid #047857; padding: 16px; border-radius: 12px; color: white; font-weight: 700; cursor: pointer; font-size: 15px; box-shadow: 0 4px 8px rgba(0,0,0,0.3); transition: all 0.2s;">
                         💾 Create New Save
