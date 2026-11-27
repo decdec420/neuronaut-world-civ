@@ -56,6 +56,7 @@ class Celebration:
     # What triggered this celebration
     trigger_event: Optional[str] = None
     celebration_name: Optional[str] = None
+    start_tick: Optional[int] = None   # sim time (start_time is the wall clock)
     
     # Resources spent (food, decorations, etc)
     resources_spent: Dict[str, int] = field(default_factory=dict)
@@ -84,6 +85,7 @@ class Game:
     
     start_time: datetime = field(default_factory=datetime.now)
     completed: bool = False
+    tick: Optional[int] = None   # sim time it was played
 
 
 @dataclass
@@ -100,6 +102,7 @@ class ArtPiece:
     cultural_value: float = 0.0
     
     created_at: datetime = field(default_factory=datetime.now)
+    tick: Optional[int] = None   # sim time it was made
     viewers: Set[str] = field(default_factory=set)
     reactions: Dict[str, float] = field(default_factory=dict)  # agent_id -> enjoyment (0-1)
 
@@ -151,7 +154,9 @@ class FunSystem:
         organizer_name: str,
         trigger_event: str,
         location: Tuple[float, float],
-        nearby_agents: List[str] = None
+        nearby_agents: List[str] = None,
+        tick: Optional[int] = None,
+        name: Optional[str] = None
     ) -> Celebration:
         """
         Trigger a celebration event!
@@ -179,9 +184,10 @@ class FunSystem:
             participants={organizer_id},
             location=location,
             trigger_event=trigger_event,
-            celebration_name=celebration_names.get(celebration_type, "Celebration"),
+            celebration_name=name or celebration_names.get(celebration_type, "Celebration"),
             duration_ticks=random.randint(15, 30),
-            mood_boost=0.3
+            mood_boost=0.3,
+            start_tick=tick,
         )
         
         # Invite nearby agents
