@@ -8355,9 +8355,21 @@
                     <div style="font-size: 13px; color: #e2e8f0;">💰 ${escHtml(Math.round(economy.money || 0))} coins among the living · 🤝 ${escHtml(economy.trades || 0)} trades</div>
                     <div style="font-size: 13px; color: #e2e8f0; margin-top: 4px;">🪙 ${escHtml(economy.coins_minted || 0)} minting runs · 🏦 ${escHtml(economy.banks || 0)} banks</div>
                     ${(economy.richest || []).length ? `<div style="font-size: 12px; color: #94a3b8; margin-top: 8px;">Richest: ${economy.richest.map(r => `${dlink('agent', r.id, r.name)} (${escHtml(r.wealth)})`).join(', ')}</div>` : ''}`;
+                // What the village uses first (the most widely known), then the
+                // newest; most inventions stay with their inventor
+                const shared = inventions.filter(i => i.known_by > 1).sort((a, b) => b.known_by - a.known_by);
+                const alone = inventions.length - shared.length;
+                const most = Math.max(1, ...shared.map(i => i.known_by));
+                const inventionRow = i => `
+                        <div style="font-size: 12px; color: #e2e8f0; margin-bottom: 5px;">
+                            <div>💡 ${dlink('invention', i.id, i.name)} <span style="color: #64748b;">by </span>${dlink('agent', i.inventor_id, i.inventor || '?')}<span style="color: #64748b;"> · known by ${escHtml(i.known_by)}</span></div>
+                            ${i.known_by > 1 ? `<div style="height: 3px; background: #1e293b; border-radius: 2px; margin-top: 2px;"><div style="height: 100%; width: ${100 * i.known_by / most}%; background: #eab308; border-radius: 2px;"></div></div>` : ''}
+                        </div>`;
                 $safe('society-inventions-list').liveHTML = inventions.length === 0 ? emptyNote('Nothing invented yet')
-                    : inventions.slice(-30).reverse().map(i => `
-                        <div style="font-size: 12px; color: #e2e8f0; margin-bottom: 4px;">💡 ${dlink('invention', i.id, i.name)} <span style="color: #64748b;">(${escHtml(i.type)}) by </span>${dlink('agent', i.inventor_id, i.inventor || '?')}<span style="color: #64748b;">, known by ${escHtml(i.known_by)}</span></div>`).join('');
+                    : `<div style="font-size: 12px; color: #94a3b8; margin-bottom: 8px;">${escHtml(inventions.length)} in all: ${escHtml(shared.length)} passed on to others, ${escHtml(alone)} known only to whoever made them.</div>`
+                    + (shared.length ? `<div style="font-size: 11px; color: #eab308; text-transform: uppercase; margin: 6px 0 4px;">Most widely known</div>` + shared.slice(0, 15).map(inventionRow).join('') : '')
+                    + `<div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; margin: 10px 0 4px;">Newest</div>`
+                    + inventions.slice(-8).reverse().map(inventionRow).join('');
                 const life = data.village_life || {};
                 const works = life.works || {};
                 const gatheringLine = (g, done) => `<div class="openable" ${openAttr('gathering', g.id)} style="font-size: 12px; color: #e2e8f0; margin-bottom: 4px; border-radius: 4px; padding: 2px 4px;">${done ? '🎉' : (g.on ? '🔴' : '📅')} ${dlink('agent', g.host_id, g.host)}'s ${escHtml(g.kind)} at ${escHtml(g.place)}, ${escHtml(g.when)}`
