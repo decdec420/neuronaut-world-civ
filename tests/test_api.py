@@ -86,13 +86,21 @@ def test_updates_carry_on_after_a_snapshot_fails(client):
         if failures["left"] > 0:
             failures["left"] -= 1
             raise RuntimeError("snapshot failed")
-        return real()
+        snapshot = dict(real())
+        snapshot["after_failures"] = True
+        return snapshot
 
     with client.websocket_connect("/ws") as ws:
         _receive(ws)                       # the first snapshot
         sim.get_state_snapshot = flaky
-        update = _receive(ws)              # before the fix: the loop died, this never came
-        assert update["type"] == "simulation_update"
+        # An update built before the swap can still be on its way (one every
+        # 0.05 s); the loop must go on to send one built after both failures.
+        # Before the fix it died at the first failure and none came.
+        for _ in range(20):
+            update = _receive(ws)
+            if update["data"].get("after_failures"):
+                break
+        assert update["type"] == "simulation_update" and update["data"].get("after_failures")
         assert failures["left"] == 0
 
 
