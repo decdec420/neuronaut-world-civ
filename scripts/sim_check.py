@@ -123,6 +123,16 @@ def emergence_metrics(sim, initial_ids, actions, successes) -> dict:
         "with_a_home": sum(1 for a in alive if getattr(a, "home_id", None)),
         "agents_in_water": sum(1 for a in alive if _wet(sim, a.location.x, a.location.y)),
         "buildings_on_water": sum(1 for b in sim.dynamic_building_system.buildings.values() if _wet(sim, *b.location)),
+        # What becomes of buildings: fallen (disasters, collapse), damaged now
+        # (condition under half), the mean condition of those standing, repairs
+        "buildings_fallen": sum(1 for b in sim.dynamic_building_system.buildings.values() if b.collapsed),
+        "buildings_damaged": sum(1 for b in sim.dynamic_building_system.buildings.values()
+                                 if b.is_complete and not b.collapsed and b.durability < 0.5),
+        "building_condition": round(sum(b.durability for b in sim.dynamic_building_system.buildings.values()
+                                        if b.is_complete and not b.collapsed)
+                                    / max(1, sum(1 for b in sim.dynamic_building_system.buildings.values()
+                                                 if b.is_complete and not b.collapsed)), 2),
+        "repairs": successes.get("repair", 0),
         "nights_slept_at_home": (f"{sim.life_events['slept_home'] / (sim.life_events['slept_home'] + sim.life_events['slept_out']):.0%}"
                                  if sim.life_events['slept_home'] + sim.life_events['slept_out'] else None),
         "kinds_of_things_made": len(sim.products),
