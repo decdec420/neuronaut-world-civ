@@ -218,6 +218,7 @@ FAITH_PULL = 0.6         # one's own faith, felt more as it fades unpractised
 COMMIT_PULL = 0.8        # carrying on with what one set out to do (x 0.5-1.5 by conscientiousness)
 FAITH_ACTIONS = {"pray", "worship", "perform_ritual"}
 WARNING_PULL = 2.5       # a warned disaster that will reach where one stands: take shelter
+REPAIR_PULL = 1.0        # one's own home in poor repair (x how damaged, x 0.5-1.5 by conscientiousness)
 SEVERITY = {"minor": 0.25, "moderate": 0.5, "major": 0.75, "catastrophic": 1.0}
 NIGHT_REST_PULL = 2.5
 WORK_PULL = 0.3
@@ -320,6 +321,8 @@ class UtilityBrain:
         disaster is coming its way feels the pull of shelter."""
         if action == "hide":
             return self._warning_pull(agent)
+        if action == "repair":
+            return self._repair_pull(agent)
         if action in FAITH_ACTIONS:
             return self._faith_pull(agent)
         if action == "attend_event":
@@ -355,6 +358,21 @@ class UtilityBrain:
             return 0.0
         since = self.sim.world.time.current_tick - last
         return FAITH_PULL * min(1.0, max(0, since) / religion.LAPSE_TICKS)
+
+    def _repair_pull(self, agent) -> float:
+        """One's own home in poor repair: felt more the worse it is (a damaged
+        home shelters less in a disaster) and more by a careful agent. A home
+        relieves the shelter need whatever its state, so damage used to weigh
+        nothing: in one world seven damaged houses stood for days, repair open
+        to someone 9,923 times, and nobody chose it. (The LLM brain is told
+        its home's condition in its perception.)"""
+        from life import homes
+        from engine.handlers.repair import needs_repair, quality
+        home = homes.home_of(self.sim.dynamic_building_system, agent)
+        if home is None or not needs_repair(home):
+            return 0.0
+        damage = max(0.0, 1.0 - home.durability / quality(home))
+        return REPAIR_PULL * damage * (0.5 + agent.personality.get_trait("conscientiousness"))
 
     def _warning_pull(self, agent) -> float:
         """The worst warned disaster that will reach where the agent is: more

@@ -94,3 +94,20 @@ def test_at_the_dawn_only_those_who_can_build_shelters_can_mend_them():
 def _action(name):
     from agents.agent import Action, ActionType
     return Action(ActionType(name))
+
+
+def test_a_damaged_home_draws_its_people_to_mend_it_more_the_worse_it_is():
+    """A home relieves the shelter need whatever its state, so damage weighed
+    nothing in the rule brain (agents/utility_brain.py _repair_pull)."""
+    sim, roles = make_world()
+    a = roles["actor"]
+    brain = sim._agent_updater.utility_brain
+    home = house(sim, "home", (a.location.x, a.location.y), 0.9, quality=0.9)
+    a.home_id = "home"
+    assert brain._repair_pull(a) == 0.0                           # sound: nothing to feel
+    home.durability = 0.45
+    slight = brain._repair_pull(a)
+    home.durability = 0.1
+    assert brain._repair_pull(a) > slight > 0.0
+    a.home_id = None
+    assert brain._repair_pull(a) == 0.0                           # someone else's house: no pull
