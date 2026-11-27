@@ -48,3 +48,22 @@ def test_the_culture_endpoint_serves_people_with_ids():
     with TestClient(server.app) as client:
         data = client.get("/culture").json()
         assert {"counts", "celebrations", "gatherings", "art", "games"} <= set(data)
+
+
+def test_the_lab_tells_what_was_made_by_whom_and_what_keeps_failing():
+    from engine.society import lab_snapshot
+    sim, roles = make_world()
+    a = roles["actor"]
+    sim.world.time.current_tick = 300
+    for _ in range(12):
+        act(sim, a, "experiment")
+    lab = lab_snapshot(sim)
+    assert lab["counts"]["tried"] == 12 and lab["counts"]["made"] + lab["counts"]["failed"] == 12
+    assert lab["experimenters"][0]["id"] == a.id
+    if lab["most_made"]:
+        first = lab["most_made"][0]
+        assert first["by"]["id"] == a.id and first["when"] == "day 3, 02:00" and first["from"]
+        assert first["times"] >= 1 and first["makers"] == 1
+        assert sum(m["times"] for m in lab["most_made"]) <= lab["counts"]["made"]
+    if lab["counts"]["failed"]:
+        assert lab["failures_by_reason"] and lab["failing_combinations"]

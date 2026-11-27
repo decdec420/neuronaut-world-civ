@@ -264,6 +264,7 @@ class Discovery:
     # Context
     description: str = ""
     discovery_context: Dict = field(default_factory=dict)
+    tick: Optional[int] = None   # sim time (discovery_date is the wall clock)
 
 
 class ExperimentationEngine:
@@ -278,6 +279,7 @@ class ExperimentationEngine:
         self.materials: Dict[str, Material] = BASE_MATERIALS.copy()
         self.discoveries: Dict[str, Discovery] = {}
         self.failed_experiments: List[Dict] = []
+        self.time = None   # the world's clock (SimulationEngine._wire_clocks), for when things happened
 
     def _determine_experiment_category(
         self,
@@ -475,7 +477,8 @@ class ExperimentationEngine:
                 known_by={agent_id},
                 description=f"{agent_name} discovered this!",
                 discovery_context=context,
-                intent=intent  # Store the chain-of-thought reasoning
+                intent=intent,  # Store the chain-of-thought reasoning
+                tick=self.time.current_tick if getattr(self, 'time', None) is not None else None,
             )
 
             self.discoveries[discovery.id] = discovery
@@ -485,6 +488,7 @@ class ExperimentationEngine:
         elif not result.success:
             self.failed_experiments.append({
                 "agent_id": agent_id,
+                "tick": self.time.current_tick if getattr(self, 'time', None) is not None else None,
                 "inputs": inputs,
                 "method": (method if isinstance(method, str) else method.value),
                 "category": category.value,

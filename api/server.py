@@ -1001,6 +1001,16 @@ async def get_buildings():
     return {"buildings": buildings, "total": len(buildings)}
 
 
+@app.get("/lab")
+async def get_lab():
+    """What experimenting has come to: what's been made and by whom, the
+    newest, who experiments, what keeps failing (engine/society.py)."""
+    if not simulation:
+        raise HTTPException(status_code=503, detail="Simulation not running")
+    from engine.society import lab_snapshot
+    return lab_snapshot(simulation)
+
+
 @app.get("/experiments")
 async def get_experiments():
     """Get all experiments - discoveries and failures with rich detail"""
