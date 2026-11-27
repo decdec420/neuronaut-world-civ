@@ -196,7 +196,6 @@ class ConstructionHandler(ActionHandler):
             >>> if result.metadata.get('building_complete'):
             ...     print("Building finished!")
         """
-        from world.fun_system import CelebrationType
         from engine.events import EventCategory, EventImportance
         from engine.psychology import EmotionType
 
@@ -417,7 +416,6 @@ class ConstructionHandler(ActionHandler):
         story_generator, story_feed
     ) -> ActionResult:
         """Handle completion of building - knowledge, needs, celebration, achievements."""
-        from world.fun_system import CelebrationType
         from engine.events import EventCategory, EventImportance
 
         logger.info(f"🏛️ {agent.name} COMPLETED BUILDING: {building.name}")
@@ -495,32 +493,9 @@ class ConstructionHandler(ActionHandler):
                 [agent.id]
             )
 
-        # Celebration
-        if fun_system:
-            nearby_agents = [
-                a.id for a in self.context.world.agents
-                if abs(a.location.x - building.location[0]) < 25 and
-                   abs(a.location.y - building.location[1]) < 25 and
-                   a.id != agent.id
-            ]
-            celebration = fun_system.trigger_celebration(
-                CelebrationType.BUILDING_COMPLETION,
-                agent.id,
-                agent.name,
-                f"Completion of {building.name}",
-                building.location,
-                nearby_agents
-            )
-
-            if event_logger:
-                event_logger.log_event(
-                    EventCategory.CULTURAL,
-                    EventImportance.MODERATE,
-                    f"🏛️ Grand Opening Celebration",
-                    f"{agent.name} celebrates the completion of {building.name}! {len(celebration.participants)} agents attended the grand opening.",
-                    current_tick,
-                    list(celebration.participants)
-                )
+        # No automatic party: a finished building used to throw one, adding
+        # 70% of everyone within 25 tiles as guests who got belonging and joy
+        # without choosing anything. Whoever wants to celebrate can (celebrate).
 
         # Achievement tracking
         if achievement_tracker and story_generator and story_feed:

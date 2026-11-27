@@ -72,7 +72,7 @@ class EntertainmentHandler(ActionHandler):
         elif action.action_type == ActionType.CREATE_ART:
             return self._handle_create_art(agent, fun_system, current_tick)
         elif action.action_type == ActionType.CELEBRATE:
-            return self._handle_celebrate(agent, fun_system, current_tick)
+            return self._handle_celebrate(agent, fun_system, current_tick, action)
         elif action.action_type == ActionType.TELL_STORY:
             return self._handle_tell_story(agent, action, current_tick)
 
@@ -92,6 +92,7 @@ class EntertainmentHandler(ActionHandler):
             players=[(agent.id, agent.name), (target.id, target.name)],
             stakes=stakes
         )
+        game.tick = current_tick
         result = fun_system.resolve_dice_game(game)
 
         if result and 'winner' in result:
@@ -139,6 +140,7 @@ class EntertainmentHandler(ActionHandler):
             game = fun_system.start_race(
                 racers=[(agent.id, agent.name, agent_speed), (target.id, target.name, target_speed)]
             )
+            game.tick = current_tick
             result = fun_system.resolve_race(game, {agent.id: agent_speed, target.id: target_speed})
 
             if result and 'winner' in result:
@@ -202,6 +204,7 @@ class EntertainmentHandler(ActionHandler):
             creativity_skill,
             relevant_skill
         )
+        art.tick = current_tick
 
         emotional_impact = 0.2 + (art.quality * 0.3)
         agent.emotions.trigger_emotion(EmotionType.JOY, emotional_impact)
@@ -219,7 +222,7 @@ class EntertainmentHandler(ActionHandler):
             metadata={'art_type': art_type, 'quality': art.quality, 'title': art.title}
         )
 
-    def _handle_celebrate(self, agent, fun_system, current_tick):
+    def _handle_celebrate(self, agent, fun_system, current_tick, action=None):
         from world.fun_system import CelebrationType
         from engine.psychology import EmotionType
 
@@ -233,13 +236,18 @@ class EntertainmentHandler(ActionHandler):
                a.id != agent.id and a.alive
         ]
 
+        # What it's for, in the agent's own words if it gave any (the AI brain's DETAILS)
+        reason = str(((getattr(action, 'parameters', None) or {}).get('details')) or '').strip()[:120] \
+            or "for the joy of it"
         celebration = fun_system.trigger_celebration(
             CelebrationType.ACHIEVEMENT_PARTY,
             agent.id,
             agent.name,
-            "Organized for fun and social bonding",
+            reason,
             (agent.location.x, agent.location.y),
-            nearby_agents
+            nearby_agents,
+            tick=current_tick,
+            name=f"{agent.name}'s celebration",
         )
 
         agent.emotions.trigger_emotion(EmotionType.JOY, 0.3)

@@ -30,6 +30,13 @@ class LifeStage(Enum):
     ANCIENT = "ancient"  # 81+
 
 
+# The ideal number of children, as U.S. adults answered it in 2023 (Gallup,
+# June-July 2023, n=2,028: 0: 2%, 1: 3%, 2: 44%, 3: 29%, 4: 12%, 5: 2%,
+# 6 or more: 2%; mean 2.7; the 6% without an answer left out). Each person
+# draws their own; nobody is made to have any.
+IDEAL_FAMILY_SIZE = ((0, 2), (1, 3), (2, 44), (3, 29), (4, 12), (5, 2), (6, 2))
+
+
 class LifePhilosophy(Enum):
     """How agent approaches life"""
     WEALTH_BUILDER = "wealth_builder"  # Accumulate resources, build dynasty
@@ -176,14 +183,13 @@ class LifeSystem:
         profile.wealth_priority = agent_personality.get('conscientiousness', 0.5)
         profile.experience_priority = agent_personality.get('openness', 0.5)
 
-        # Reproductive preferences
-        profile.wants_children = agent_personality.get('agreeableness', 0.5) > 0.4
-        if profile.philosophy in [LifePhilosophy.WEALTH_BUILDER, LifePhilosophy.LEGACY_SEEKER]:
-            profile.ideal_children_count = random.randint(2, 4)  # Build dynasty
-        elif profile.philosophy in [LifePhilosophy.ADVENTURE_SEEKER, LifePhilosophy.PLEASURE_SEEKER]:
-            profile.ideal_children_count = random.randint(0, 2)  # Freedom first
-        else:
-            profile.ideal_children_count = random.randint(1, 3)  # Moderate
+        # How many children they'd like, as real people answer it (IDEAL_FAMILY_SIZE).
+        # It used to be 0-2, 1-3 or 2-4 by life philosophy, and anyone with
+        # agreeableness under 0.4 wanted none: a couple stopped at the smaller of
+        # two such numbers, about one child, and most villages shrank.
+        sizes, weights = zip(*IDEAL_FAMILY_SIZE)
+        profile.ideal_children_count = random.choices(sizes, weights=weights)[0]
+        profile.wants_children = profile.ideal_children_count > 0
 
         # Generate initial life goals
         profile.current_goals = self._generate_initial_goals(

@@ -177,3 +177,110 @@ def roles_snapshot(sim) -> Dict:
                        for n, c in sorted(roles.role_vocabulary.items(), key=lambda kv: -kv[1])[:24]],
         "alive": len(alive),
     }
+
+
+def culture_snapshot(sim) -> Dict:
+    """What people do for joy (GET /culture): celebrations someone chose to
+    throw, with the host and who came; the gatherings people organized and
+    went to; art and who made it; games, who played and who won. In sim
+    time, with ids so each person opens."""
+    fun = sim.fun_system
+    by_id = {a.id: a for a in sim.world.agents}
+
+    def person(agent_id):
+        a = by_id.get(agent_id)
+        return {"id": agent_id, "name": a.name if a else "someone"}
+
+    def when(tick):
+        return f"day {tick // TICKS_PER_DAY + 1}, {tick // 6 % 24:02d}:00" if tick is not None else None
+
+    def celebration(c, live):
+        return {"id": c.id, "name": c.celebration_name or "A celebration", "kind": c.celebration_type.value,
+                "why": c.trigger_event, "host": person(c.organizer_id), "live": live,
+                "guests": [person(g) for g in sorted(c.participants) if g != c.organizer_id],
+                "when": when(getattr(c, "start_tick", None)),
+                "hours_left": round(c.duration_ticks / 6, 1) if live else None}
+
+    celebrations = ([celebration(c, True) for c in fun.active_celebrations.values()]
+                    + [celebration(c, False) for c in reversed(fun.celebration_history[-30:])])
+    art = sorted(fun.art_pieces.values(), key=lambda a: getattr(a, "tick", None) or -1, reverse=True)
+    finest = sorted(fun.art_pieces.values(), key=lambda a: -a.quality)[:6]
+
+    def art_row(a):
+        return {"id": a.id, "title": a.title, "kind": a.art_type, "maker": person(a.creator_id),
+                "quality": round(a.quality, 2), "when": when(getattr(a, "tick", None))}
+
+    games = [{"kind": g.game_type.value, "players": [person(p) for p in g.players],
+              "winner": person(g.winner) if g.winner else None, "when": when(getattr(g, "tick", None))}
+             for g in reversed(fun.game_history[-12:])]
+    life = village_life(sim)
+    return {
+        "counts": {"celebrations": fun.total_celebrations, "games": fun.total_games,
+                   "art": fun.total_art_created,
+                   "gatherings_held": len(sim.gatherings.history),   # the last 50 are kept
+                   "live": len(fun.active_celebrations)},
+        "celebrations": celebrations,
+        "kinds": dict(sorted(fun.traditions.items(), key=lambda kv: -kv[1])),
+        "gatherings": {"upcoming": life.get("upcoming", []), "recent": life.get("recent", [])},
+        "art": {"latest": [art_row(a) for a in art[:10]], "finest": [art_row(a) for a in finest]},
+        "games": games,
+    }
+
+
+def lab_snapshot(sim) -> Dict:
+    """What experimenting has come to (GET /lab): what's been made, the
+    things worked out most often first (by how many people), who made each
+    first and from what; the newest; who experiments most; and what keeps
+    failing, by reason and by the combination tried. In sim time, with ids."""
+    from collections import Counter
+    engine = sim.experimentation_engine
+    by_id = {a.id: a for a in sim.world.agents}
+
+    def person(agent_id):
+        a = by_id.get(agent_id)
+        return {"id": agent_id, "name": a.name if a else "someone"}
+
+    def when(tick):
+        return f"day {tick // TICKS_PER_DAY + 1}, {tick // 6 % 24:02d}:00" if tick is not None else None
+
+    def made_from(recipe):
+        inputs = (recipe or {}).get("inputs") or {}
+        method = str((recipe or {}).get("method") or "").replace("_", " ")
+        parts = " + ".join(f"{q} {m.replace('_', ' ')}" for m, q in sorted(inputs.items()))
+        return f"{method}: {parts}" if method else parts
+
+    def row(d):
+        return {"id": d.id, "name": d.name.replace("_", " "), "by": person(d.discovered_by),
+                "when": when(getattr(d, "tick", None)), "from": made_from(d.recipe),
+                "known_by": len(d.known_by), "used": d.times_used, "kind": d.category.value,
+                "properties": sorted(p.value for p in (d.properties or ()))[:4]}
+
+    found = list(engine.discoveries.values())
+    failed = list(engine.failed_experiments)
+    # The same thing is often worked out again by someone else (each is its
+    # own record, known only to its maker): group them by what was made
+    groups = {}
+    for d in found:
+        groups.setdefault(d.name, []).append(d)
+
+    def made_thing(name, ds):
+        first = min(ds, key=lambda d: (getattr(d, "tick", None) is None, getattr(d, "tick", None) or 0))
+        makers = {d.discovered_by for d in ds}
+        return {**row(first), "times": len(ds), "makers": len(makers)}
+
+    made = Counter(d.discovered_by for d in found)
+    missed = Counter(f["agent_id"] for f in failed)
+    people = sorted(set(made) | set(missed), key=lambda i: (-(made[i] + missed[i]), i))
+    ticked = [d for d in found if getattr(d, "tick", None) is not None]
+    newest = sorted(ticked, key=lambda d: d.tick, reverse=True)[:10] if ticked else list(reversed(found[-10:]))
+    return {
+        "counts": {"tried": len(found) + len(failed), "made": len(found), "failed": len(failed),
+                   "people": len(people)},
+        "distinct": len(groups),
+        "most_made": [made_thing(n, ds) for n, ds in sorted(groups.items(), key=lambda kv: (-len(kv[1]), kv[0]))[:20]],
+        "newest": [row(d) for d in newest],
+        "experimenters": [{**person(i), "made": made[i], "failed": missed[i]} for i in people[:10]],
+        "failures_by_reason": Counter(str(f.get("reason")) for f in failed).most_common(8),
+        "failing_combinations": Counter(made_from({"inputs": f.get("inputs"), "method": f.get("method")})
+                                        for f in failed).most_common(8),
+    }

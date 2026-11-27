@@ -160,14 +160,20 @@ Chronicle shows the living by generation. Alive on day 100: 25, 19, 17, 40
 (baseline 8, 2, 3, 2), up to 6 generations, every death old age but one
 wildfire. Round 7 started worlds at the dawn of time (`world/knowhow.py`).
 
-1. **Births don't quite replace old age.** Seeds 1-3 shrink slowly from day
-   40 (100 days: born 36/35/26, died 36/41/34); seed 4 grows (59 born).
-   Couples who could have children are 1-7 at a time; about a quarter of
-   people don't want children (life profile: agreeableness > 0.4), and
-   try_for_child seldom wins against time with a partner (utility_brain:
-   FAMILY_WEIGHT x family_priority ~0.5 vs ROMANCE_WEIGHT x liking ~0.8).
-   A year of life per sim day leaves a short fertile window. Measure on
-   100-day runs before changing any of it.
+1. **Births replace old age now; the cap of 60 is what limits them.**
+   Until Round 11 a person wanted 0-2, 1-3 or 2-4 children by life
+   philosophy, and none if agreeableness was under 0.4; a couple stopped
+   at the smaller wish, about one child (100 days, seeds 1-4: born
+   30/13/20/63, alive on day 100 17/4/9/46). Each person now draws an
+   ideal family size from real answers (`IDEAL_FAMILY_SIZE` in
+   `life/life_system.py`, Gallup 2023, mean 2.7), and a child who died no
+   longer counts. Same seeds: born 77/83/53/77, died 50/54/46/49, alive
+   on day 100 52/54/32/53 (seed 3 lost 13 to a tsunami). Three of four
+   reach `MAX_POPULATION` (60, a CPU limit, `engine/handlers/family.py`)
+   by day 30-80 and then have children only as people die; the founding
+   band dies of old age together around days 80-100, so numbers dip then.
+   A tick at 60 people costs more CPU (issue 9). Measure on 100-day runs
+   before changing any of it.
 2. **Couples never separate** (0 in every run) and **liking ignores
    personality** (every bond reaches 1.0 with enough contact). Tried in
    Round 8 and reverted: exchanges that go badly by fit and stress, couples'
@@ -186,15 +192,17 @@ wildfire. Round 7 started worlds at the dawn of time (`world/knowhow.py`).
 6. **Far guests can't reach a gathering** (LEAD_TICKS): anyone more than
    ~20 tiles away arrives after the end. Letting them set off in time
    lowered attendance in every test. Measure before trying again.
-7. **Dashboard, after Round 9** (every tab audited on a day-20 dawn world):
-   still thin or separate: Culture's celebrations (698 in 20 days, generic
-   names) run beside the village's gatherings and don't link to them; the
-   materials era (Tech tab, below the know-how age) comes from experiments,
-   is unrelated to know-how and still decides which experiments are tried
-   (`engine/handlers/knowledge.py`); Experimentation lists every material
-   whether or not anyone has made it. Eleven small governments form in the
-   first days: an agent joins the government of someone it likes and founds
-   its own when it likes nobody in one, which on day 1 is everyone.
+7. **Dashboard, after Round 11**: Culture (GET /culture) and Experimentation
+   (GET /lab) are records now. Celebrations happen only when someone chooses
+   to celebrate (finished buildings and discoveries used to throw parties
+   that handed out belonging to everyone near: 698 in 20 days); without that
+   free belonging dawn births fell 87 -> 71 over 8 seeds, 74 once time with
+   a partner eased belonging too (settlers 44 -> 47). Still separate: the
+   materials era (Tech tab, below the know-how age) comes from experiments
+   and decides which experiments are tried (`engine/handlers/knowledge.py`).
+   Eleven small governments form in the first days: an agent joins the
+   government of someone it likes and founds its own when it likes nobody
+   in one, which on day 1 is everyone.
 8. **Buildings wear only by disasters** (each hit takes half a building's
    condition) and, since Round 10, can be mended (`engine/handlers/repair.py`;
    a damaged home pulls its people, `_repair_pull`). 16 settlers seeds x 4000

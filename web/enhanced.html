@@ -1692,9 +1692,49 @@
 
             <!-- EXPERIMENTATION -->
             <div class="tab-panel" id="experimentation">
-                <h2 style="margin-bottom: 15px;">🔬 Research & Development - Material Science Lab</h2>
-                <p style="color: #94a3b8; margin-bottom: 20px;">Track discoveries, categorized materials, and research progress. Inspired by Civilization, RimWorld, and Factorio.</p>
-
+                <h2 style="margin-bottom: 15px;">🔬 Experimentation</h2>
+                <p style="color: #94a3b8; margin-bottom: 20px;">People combine and work materials to see what happens. Most attempts fail; what works becomes something they know, and spreads when they teach it. Click a person to see their life.</p>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 20px; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 15px; border-radius: 12px; border: 2px solid #334155;">
+                    <div style="text-align: center;">
+                        <div style="font-size: 30px; font-weight: 700; color: #e2e8f0;" id="lab-tried">0</div>
+                        <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">🧪 Experiments tried</div>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 30px; font-weight: 700; color: #10b981;" id="lab-made">0</div>
+                        <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">✨ Things made</div>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 30px; font-weight: 700; color: #ef4444;" id="lab-failed">0</div>
+                        <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">💥 Failed</div>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 30px; font-weight: 700; color: #a78bfa;" id="lab-people">0</div>
+                        <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">🧑‍🔬 People who tried</div>
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 20px; margin-bottom: 20px;">
+                    <div class="card">
+                        <h3 style="margin: 0 0 6px; color: #10b981;">✨ What they've made</h3>
+                        <div style="font-size: 12px; color: #64748b; margin-bottom: 12px;" id="lab-made-note">What's been worked out most often first (each person works it out for themselves): who did it first, when, and from what</div>
+                        <div id="lab-widely"></div>
+                    </div>
+                    <div class="card">
+                        <h3 style="margin: 0 0 12px; color: #34d399;">🆕 Newest</h3>
+                        <div id="lab-newest"></div>
+                        <h3 style="margin: 16px 0 12px; color: #a78bfa;">🧑‍🔬 Who experiments</h3>
+                        <div id="lab-people-list"></div>
+                    </div>
+                </div>
+                <div class="card" style="margin-bottom: 20px;">
+                    <h3 style="margin: 0 0 6px; color: #ef4444;">💥 What keeps failing</h3>
+                    <div style="font-size: 12px; color: #64748b; margin-bottom: 12px;">Why experiments fail, and the combinations people keep trying that don't work</div>
+                    <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px;">
+                        <div id="lab-reasons"></div>
+                        <div id="lab-combos"></div>
+                    </div>
+                </div>
+                <details id="lab-everything" style="margin-bottom: 20px;" ontoggle="if (this.open) fetchExperimentationDetails()">
+                    <summary style="cursor: pointer; color: #94a3b8; font-size: 14px; padding: 8px 0;">Every material in the world, and every experiment one by one</summary>
                 <!-- CATEGORY FILTER TABS -->
                 <div style="display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; background: #1e293b; padding: 12px; border-radius: 8px;">
                     <button class="material-filter-btn active" data-category="all" onclick="filterMaterialCategory('all')"
@@ -1768,6 +1808,7 @@
                         </div>
                     </div>
                 </div>
+                </details>
             </div>
 
             <!-- ARCHITECTURE & INFRASTRUCTURE -->
@@ -2614,58 +2655,50 @@
 
             <!-- CULTURE TAB -->
             <div class="tab-panel" id="culture">
-                <h2 style="margin-bottom: 15px;">🎉 Culture & Entertainment - Autonomous Fun</h2>
-                <p style="color: #94a3b8; margin-bottom: 20px;">Celebrations, games, art, and social traditions emerging organically</p>
-
-                <!-- CULTURE METRICS BAR -->
+                <h2 style="margin-bottom: 15px;">🎉 Culture</h2>
+                <p style="color: #94a3b8; margin-bottom: 20px;">What people do for joy, each by their own choice: the celebrations they throw and who comes, the gatherings they organize, the art they make, the games they play. Click anyone to see their life.</p>
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 20px; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 15px; border-radius: 12px; border: 2px solid #334155;">
                     <div style="text-align: center;">
-                        <div style="font-size: 32px; font-weight: 700; color: #f59e0b;" id="culture-celebrations-total">0</div>
-                        <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">🎊 Total Celebrations</div>
+                        <div style="font-size: 30px; font-weight: 700; color: #f59e0b;" id="culture-celebrations-total">0</div>
+                        <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">🎊 Celebrations thrown</div>
                     </div>
                     <div style="text-align: center;">
-                        <div style="font-size: 32px; font-weight: 700; color: #10b981;" id="culture-celebrations-active">0</div>
-                        <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">🎉 Active Now</div>
+                        <div style="font-size: 30px; font-weight: 700; color: #10b981;" id="culture-celebrations-active">0</div>
+                        <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">🎉 Going on now</div>
                     </div>
                     <div style="text-align: center;">
-                        <div style="font-size: 32px; font-weight: 700; color: #8b5cf6;" id="culture-games-total">0</div>
-                        <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">🎮 Games Played</div>
+                        <div style="font-size: 30px; font-weight: 700; color: #38bdf8;" id="culture-gatherings">0</div>
+                        <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">🔥 Gatherings (last 50)</div>
                     </div>
                     <div style="text-align: center;">
-                        <div style="font-size: 32px; font-weight: 700; color: #ec4899;" id="culture-art-total">0</div>
-                        <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">🎨 Art Created</div>
+                        <div style="font-size: 30px; font-weight: 700; color: #8b5cf6;" id="culture-games-total">0</div>
+                        <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">🎮 Games played</div>
                     </div>
                     <div style="text-align: center;">
-                        <div style="font-size: 32px; font-weight: 700; color: #3b82f6;" id="culture-traditions">0</div>
-                        <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">📜 Traditions</div>
+                        <div style="font-size: 30px; font-weight: 700; color: #ec4899;" id="culture-art-total">0</div>
+                        <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">🎨 Works of art</div>
                     </div>
                 </div>
-
-                <!-- ACTIVE CELEBRATIONS -->
-                <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border: 2px solid #f59e0b; border-radius: 12px; padding: 20px; margin-bottom: 20px;">
-                    <h3 style="margin: 0 0 16px 0; color: #f59e0b; font-size: 18px; display: flex; align-items: center; gap: 8px;">
-                        <span>🎊</span>
-                        <span>Active Celebrations</span>
-                        <span style="background: #f59e0b; color: #0f172a; padding: 2px 8px; border-radius: 12px; font-size: 11px; margin-left: auto; font-weight: 700;">LIVE</span>
-                    </h3>
-                    <div id="active-celebrations" style="display: grid; gap: 12px;">
-                        <div style="text-align: center; color: #64748b; padding: 40px;">No active celebrations</div>
+                <div style="display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 20px;">
+                    <div class="card">
+                        <h3 style="margin: 0 0 6px; color: #f59e0b;">🎊 Celebrations</h3>
+                        <div style="font-size: 12px; color: #64748b; margin-bottom: 12px;">Thrown by someone who chose to; those nearby who joined, and what it was for</div>
+                        <div id="culture-celebrations"></div>
+                    </div>
+                    <div class="card">
+                        <h3 style="margin: 0 0 6px; color: #38bdf8;">🔥 Gatherings</h3>
+                        <div style="font-size: 12px; color: #64748b; margin-bottom: 12px;">Announced ahead; word spreads by mouth and people decide whether to go</div>
+                        <div id="culture-gatherings-list"></div>
                     </div>
                 </div>
-
-                <!-- RECENT CELEBRATIONS -->
-                <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border: 2px solid #8b5cf6; border-radius: 12px; padding: 20px; margin-bottom: 20px;">
-                    <h3 style="margin: 0 0 16px 0; color: #8b5cf6; font-size: 18px;">📅 Recent Celebrations</h3>
-                    <div id="recent-celebrations" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px;">
-                        <!-- Will be populated -->
+                <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; margin-top: 20px;">
+                    <div class="card">
+                        <h3 style="margin: 0 0 12px; color: #ec4899;">🎨 Art</h3>
+                        <div id="culture-art"></div>
                     </div>
-                </div>
-
-                <!-- CULTURAL TRADITIONS -->
-                <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border: 2px solid #10b981; border-radius: 12px; padding: 20px;">
-                    <h3 style="margin: 0 0 16px 0; color: #10b981; font-size: 18px;">📜 Cultural Traditions</h3>
-                    <div id="traditions-breakdown" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px;">
-                        <!-- Will be populated -->
+                    <div class="card">
+                        <h3 style="margin: 0 0 12px; color: #8b5cf6;">🎮 Games</h3>
+                        <div id="culture-games"></div>
                     </div>
                 </div>
             </div>
@@ -3210,9 +3243,47 @@
         let allMaterialsData = [];
         let currentMaterialFilter = 'all';
 
+        // ===== THE LAB (GET /lab): what's been made, by whom, what keeps failing =====
+        async function fetchLab() {
+            try {
+                const response = await fetch('/lab');
+                if (!response.ok) return;
+                const data = await response.json();
+                const c = data.counts || {};
+                setTextSafe('lab-tried', c.tried || 0);
+                setTextSafe('lab-made', c.made || 0);
+                setTextSafe('lab-failed', c.failed || 0);
+                setTextSafe('lab-people', c.people || 0);
+                const made = d => `
+                    <div style="background: #0f172a; border-radius: 6px; padding: 7px 10px; margin-bottom: 5px; font-size: 12px;">
+                        <div><strong style="color: #f1f5f9;">${escHtml(d.name)}</strong> <span style="color: #64748b;">· ${escHtml(d.kind.replace(/_/g, ' '))}</span>
+                            ${d.times ? `<span style="float: right; color: ${d.makers > 1 ? '#34d399' : '#64748b'};">made ${escHtml(d.times)}× by ${escHtml(d.makers)} ${d.makers === 1 ? 'person' : 'people'}</span>` : ''}</div>
+                        <div style="color: #94a3b8;">first by ${dlink('agent', d.by.id, d.by.name)}${d.when ? ', ' + escHtml(d.when) : ''} · ${escHtml(d.from)}</div>
+                        ${d.properties.length ? `<div style="color: #64748b; font-size: 11px;">${escHtml(d.properties.join(', ').replace(/_/g, ' '))}</div>` : ''}
+                    </div>`;
+                $safe('lab-widely').liveHTML = (data.most_made || []).length
+                    ? `<div style="font-size: 12px; color: #94a3b8; margin-bottom: 8px;">${escHtml(data.distinct)} different things made, ${escHtml(c.made)} times in all.</div>` + data.most_made.map(made).join('')
+                    : emptyNote('Nothing made yet');
+                $safe('lab-newest').liveHTML = (data.newest || []).length
+                    ? data.newest.map(d => `<div style="font-size: 12px; color: #e2e8f0; margin-bottom: 4px;">${escHtml(d.name)} <span style="color: #64748b;">by </span>${dlink('agent', d.by.id, d.by.name)}<span style="color: #64748b;">${d.when ? ' · ' + escHtml(d.when) : ''}</span></div>`).join('')
+                    : emptyNote('Nothing made yet');
+                $safe('lab-people-list').liveHTML = (data.experimenters || []).length
+                    ? data.experimenters.map(p => `<div style="font-size: 12px; color: #e2e8f0; margin-bottom: 4px;">${dlink('agent', p.id, p.name)} <span style="color: #64748b;">· made ${escHtml(p.made)}, failed ${escHtml(p.failed)}</span></div>`).join('')
+                    : emptyNote('Nobody has tried yet');
+                const counted = (rows, empty) => rows.length ? rows.map(([what, n]) => `<div style="display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: #e2e8f0; margin-bottom: 4px;"><span>${escHtml(what)}</span><span style="color: #f87171;">${escHtml(n)}×</span></div>`).join('') : emptyNote(empty);
+                $safe('lab-reasons').liveHTML = `<div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; margin-bottom: 6px;">Why</div>` + counted(data.failures_by_reason || [], 'No failures yet');
+                $safe('lab-combos').liveHTML = `<div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; margin-bottom: 6px;">Tried again and again</div>` + counted(data.failing_combinations || [], 'No failures yet');
+            } catch (error) {
+                console.warn('Lab unavailable:', error);
+            }
+        }
+
         // Fetch and render detailed experimentation data
         async function fetchExperimentationDetails() {
             try {
+                fetchLab();
+                // The full lists (about a thousand cards) only while they're opened
+                if (!$safe('lab-everything').open) return;
                 const [experimentsResp, materialsResp] = await Promise.all([
                     fetch('/experiments'),
                     fetch('/materials')
@@ -5667,131 +5738,55 @@
         // ===== CULTURE - Fun System (Celebrations, Games, Art) =====
         async function fetchCulture() {
             try {
-                const [statsResponse, celebrationsResponse] = await Promise.all([
-                    fetch('/fun/stats'),
-                    fetch('/fun/celebrations')
-                ]);
+                const response = await fetch('/culture');
+                if (!response.ok) return;
+                const data = await response.json();
+                const counts = data.counts || {};
+                setTextSafe('culture-celebrations-total', counts.celebrations || 0);
+                setTextSafe('culture-celebrations-active', counts.live || 0);
+                setTextSafe('culture-gatherings', counts.gatherings_held || 0);
+                setTextSafe('culture-games-total', counts.games || 0);
+                setTextSafe('culture-art-total', counts.art || 0);
+                const people = list => list.map(p => dlink('agent', p.id, p.name)).join(', ');
 
-                const stats = await statsResponse.json();
-                const celebrations = await celebrationsResponse.json();
+                const celebrations = data.celebrations || [];
+                $safe('culture-celebrations').liveHTML = celebrations.length === 0
+                    ? emptyNote('Nobody has chosen to throw a celebration yet')
+                    : celebrations.slice(0, 15).map(c => `
+                        <div style="background: #0f172a; border: 1px solid ${c.live ? '#10b981' : '#334155'}; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px;">
+                            <div style="display: flex; justify-content: space-between; gap: 8px;">
+                                <div style="font-weight: 700; color: #fbbf24;">${dlink('agent', c.host.id, c.host.name)}<span style="color: #fbbf24;">'s celebration</span></div>
+                                <div style="font-size: 11px; color: ${c.live ? '#10b981' : '#64748b'}; white-space: nowrap;">${c.live ? `going on, ${escHtml(c.hours_left)}h left` : escHtml(c.when || '')}</div>
+                            </div>
+                            <div style="font-size: 12px; color: #cbd5e1; margin-top: 3px; font-style: italic;">${escHtml(c.why || '')}</div>
+                            <div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">${c.guests.length ? `${c.guests.length} joined: ${people(c.guests)}` : 'nobody else joined'}</div>
+                        </div>`).join('');
 
-                // Update metrics
-                document.getElementById('culture-celebrations-total').textContent = stats.celebrations?.total || 0;
-                document.getElementById('culture-celebrations-active').textContent = stats.celebrations?.active || 0;
-                document.getElementById('culture-games-total').textContent = stats.games?.total || 0;
-                document.getElementById('culture-art-total').textContent = stats.art?.total_created || 0;
-                document.getElementById('culture-traditions').textContent = stats.celebrations?.traditions_count || 0;
+                const g = data.gatherings || {};
+                const gatheringRow = (x, done) => `
+                    <div class="openable" ${openAttr('gathering', x.id)} style="font-size: 12px; color: #e2e8f0; margin-bottom: 6px; border-radius: 4px; padding: 3px 5px;">
+                        ${done ? '🎉' : (x.on ? '🔴' : '📅')} ${dlink('agent', x.host_id, x.host)}'s ${escHtml(x.kind)} at ${escHtml(x.place)}
+                        <div style="font-size: 11px; color: #64748b;">${escHtml(x.when)} · ${escHtml(x.heard)} heard${done ? `, ${escHtml(x.came)} came` : (x.on ? `, ${escHtml(x.here)} there now` : '')}</div>
+                    </div>`;
+                $safe('culture-gatherings-list').liveHTML =
+                    `<div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; margin-bottom: 4px;">Coming up</div>`
+                    + ((g.upcoming || []).map(x => gatheringRow(x, false)).join('') || emptyNote('None planned'))
+                    + `<div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; margin: 10px 0 4px;">Recently</div>`
+                    + ((g.recent || []).map(x => gatheringRow(x, true)).join('') || emptyNote('None yet'));
 
-                // Render active celebrations
-                renderActiveCelebrations(celebrations.active || []);
+                const art = data.art || {};
+                const artRow = a => `<div style="font-size: 12px; color: #e2e8f0; margin-bottom: 5px;">“${escHtml(a.title)}” <span style="color: #64748b;">(${escHtml(a.kind)}) by </span>${dlink('agent', a.maker.id, a.maker.name)}<span style="color: #64748b;"> · quality ${escHtml(Math.round(a.quality * 100))}%${a.when ? ' · ' + escHtml(a.when) : ''}</span></div>`;
+                $safe('culture-art').liveHTML = (art.latest || []).length === 0 ? emptyNote('Nobody has made any art yet')
+                    : `<div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; margin-bottom: 4px;">Finest</div>${(art.finest || []).map(artRow).join('')}`
+                      + `<div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; margin: 10px 0 4px;">Latest</div>${(art.latest || []).map(artRow).join('')}`;
 
-                // Render recent celebrations
-                renderRecentCelebrations(celebrations.recent || []);
-
-                // Render traditions
-                renderTraditions(celebrations.traditions || {});
-
+                const games = data.games || [];
+                $safe('culture-games').liveHTML = games.length === 0 ? emptyNote('No games played yet')
+                    : games.map(x => `<div style="font-size: 12px; color: #e2e8f0; margin-bottom: 5px;">${escHtml(x.kind.replace(/_/g, ' '))}: ${people(x.players)}
+                        <span style="color: #64748b;">${x.winner ? '· won by ' : ''}</span>${x.winner ? dlink('agent', x.winner.id, x.winner.name) : ''}<span style="color: #64748b;">${x.when ? ' · ' + escHtml(x.when) : ''}</span></div>`).join('');
             } catch (error) {
                 console.error('Error fetching culture:', error);
             }
-        }
-
-        function renderActiveCelebrations(active) {
-            const container = document.getElementById('active-celebrations');
-
-            if (active.length === 0) {
-                container.innerHTML = '<div style="text-align: center; color: #64748b; padding: 40px;">No active celebrations</div>';
-                return;
-            }
-
-            container.innerHTML = active.map(celebration => `
-                <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border: 2px solid #f59e0b; border-radius: 12px; padding: 16px; position: relative;">
-                    <div style="position: absolute; top: 12px; right: 12px; background: #10b981; color: white; padding: 4px 10px; border-radius: 12px; font-size: 10px; font-weight: 700; animation: pulse 2s infinite;">
-                        LIVE
-                    </div>
-                    <div style="font-size: 24px; margin-bottom: 8px;">${getCelebrationIcon(celebration.type)}</div>
-                    <div style="font-weight: 700; color: #f59e0b; margin-bottom: 6px; font-size: 16px;">${celebration.name || 'Celebration'}</div>
-                    <div style="font-size: 12px; color: #94a3b8; margin-bottom: 10px;">${celebration.trigger_event}</div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 11px; margin-bottom: 12px;">
-                        <div style="color: #cbd5e1;">
-                            <span style="color: #64748b;">👥</span> ${celebration.participant_count} attending
-                        </div>
-                        <div style="color: #cbd5e1;">
-                            <span style="color: #64748b;">⏱️</span> ${Math.ceil(celebration.duration_remaining || 0)}h left
-                        </div>
-                        <div style="color: #cbd5e1; grid-column: span 2;">
-                            <span style="color: #64748b;">😊</span> +${((celebration.mood_boost || 0) * 100).toFixed(0)}% mood boost
-                        </div>
-                    </div>
-                    <div style="background: rgba(0,0,0,0.3); height: 4px; border-radius: 2px; overflow: hidden;">
-                        <div style="background: linear-gradient(90deg, #f59e0b, #fbbf24); height: 100%; width: ${((celebration.duration_remaining || 0) / 24 * 100).toFixed(0)}%;"></div>
-                    </div>
-                </div>
-            `).join('');
-        }
-
-        function renderRecentCelebrations(recent) {
-            const container = document.getElementById('recent-celebrations');
-
-            if (recent.length === 0) {
-                container.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #64748b; padding: 40px;">No recent celebrations</div>';
-                return;
-            }
-
-            container.innerHTML = recent.slice(0, 12).map(celebration => `
-                <div style="background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 12px;">
-                    <div style="font-size: 20px; margin-bottom: 6px;">${getCelebrationIcon(celebration.type)}</div>
-                    <div style="font-weight: 600; color: #8b5cf6; margin-bottom: 4px; font-size: 13px;">${celebration.name || 'Celebration'}</div>
-                    <div style="font-size: 11px; color: #94a3b8; margin-bottom: 8px;">${celebration.trigger_event}</div>
-                    <div style="font-size: 10px; color: #64748b;">
-                        <span style="color: #94a3b8;">👥 ${celebration.participant_count} attended</span>
-                    </div>
-                </div>
-            `).join('');
-        }
-
-        function renderTraditions(traditions) {
-            const container = document.getElementById('traditions-breakdown');
-
-            const entries = Object.entries(traditions);
-            if (entries.length === 0) {
-                container.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #64748b; padding: 40px;">No traditions established</div>';
-                return;
-            }
-
-            const total = entries.reduce((sum, [_, count]) => sum + count, 0);
-
-            container.innerHTML = entries.map(([tradition, count]) => {
-                const percentage = ((count / total) * 100).toFixed(1);
-                return `
-                    <div style="background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 12px;">
-                        <div style="font-size: 20px; margin-bottom: 6px;">${getCelebrationIcon(tradition)}</div>
-                        <div style="font-weight: 600; color: #10b981; margin-bottom: 4px; font-size: 13px; text-transform: capitalize;">
-                            ${tradition.replace(/_/g, ' ')}
-                        </div>
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 11px;">
-                            <span style="color: #94a3b8;">${count} times</span>
-                            <span style="color: #10b981; font-weight: 700;">${percentage}%</span>
-                        </div>
-                        <div style="background: rgba(0,0,0,0.3); height: 4px; border-radius: 2px; overflow: hidden;">
-                            <div style="background: linear-gradient(90deg, #10b981, #3b82f6); height: 100%; width: ${percentage}%;"></div>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-        }
-
-        function getCelebrationIcon(type) {
-            const icons = {
-                'building_completion': '🏛️',
-                'discovery_party': '🔬',
-                'achievement_party': '🏆',
-                'harvest_festival': '🌾',
-                'wedding': '💒',
-                'funeral': '⚰️',
-                'trade_fair': '🛒'
-            };
-            return icons[type] || '🎉';
         }
 
         // ===== POLITICS - Government System =====
@@ -6171,7 +6166,7 @@
         // The page is read from disk on every load; the server keeps running
         // the code it started with. After a `git pull` without a restart, the
         // old server sends nothing to open (no ids, no /details), so say so.
-        const DASHBOARD_API = 10;          // api/server.py DASHBOARD_API
+        const DASHBOARD_API = 11;          // api/server.py DASHBOARD_API
         let staleDismissed = false;
         function dismissStaleBanner() {
             staleDismissed = true;

@@ -200,3 +200,41 @@ def test_a_wish_for_a_child_does_not_carry_over_to_a_new_partner():
     result, _ = _try(sim, d)                       # d says it wants one...
     assert "like a child" in result.message        # ...which a never said to d
     assert not (a.is_pregnant or d.is_pregnant)
+
+
+def test_ideal_family_size_is_drawn_like_real_people_answer_it():
+    """Gallup 2023: 2% none, 3% one, 44% two, 29% three, 12% four, 2% five,
+    2% six or more (life/life_system.py IDEAL_FAMILY_SIZE). It used to be
+    0-4 by life philosophy, with a quarter wanting none."""
+    import random
+    from collections import Counter
+    from life.life_system import LifeSystem
+    random.seed(11)
+    life = LifeSystem()
+    sizes = Counter()
+    for i in range(2000):
+        p = life.create_life_profile(f"a{i}", {"agreeableness": random.random(), "openness": random.random(),
+                                               "conscientiousness": random.random()})
+        sizes[p.ideal_children_count] += 1
+        assert p.wants_children == (p.ideal_children_count > 0)
+    share = {n: sizes[n] / 2000 for n in range(7)}
+    assert 0.40 < share[2] < 0.54 and 0.25 < share[3] < 0.37 and share[0] < 0.05
+    mean = sum(n * c for n, c in sizes.items()) / 2000
+    assert 2.5 < mean < 2.9
+
+
+def test_a_child_who_died_no_longer_counts_toward_the_family_wanted():
+    from test_reachability import make_world
+    sim, roles = make_world()
+    a, b = roles["actor"], roles["partner"]
+    a.partner_id, b.partner_id = b.id, a.id
+    profile = sim.life_system.life_profiles.get(a.id)
+    if profile is None:
+        profile = sim.life_system.create_life_profile(a.id, {"agreeableness": 0.8})
+    profile.wants_children, profile.ideal_children_count, profile.family_priority = True, 1, 0.7
+    child = roles["neighbour"]
+    a.children_ids = [child.id]
+    brain = sim._agent_updater.utility_brain
+    assert brain._child_wish(a)[1] < 0                  # has the one child they wanted
+    child.alive = False
+    assert brain._child_wish(a)[1] == 0.7               # lost them: wants a child again

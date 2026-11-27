@@ -247,7 +247,6 @@ class KnowledgeActionHandler(ActionHandler):
         from world.civilization_progression import Era
         from world.experimentation import ExperimentMethod
         from engine.events import EventCategory, EventImportance
-        from world.fun_system import CelebrationType
         from engine.psychology import EmotionType
 
         # Get required systems
@@ -372,21 +371,9 @@ class KnowledgeActionHandler(ActionHandler):
                     agent.emotions.emotions[EmotionType.JOY].intensity = 0.9
                     logger.info(f"🏆 MILESTONE! {agent.name} discovered {milestone.name}!")
 
-            # Trigger discovery celebration
-            if fun_system:
-                nearby_agents = [
-                    a.id for a in self.context.world.agents
-                    if abs(a.location.x - agent.location.x) < 20 and
-                       abs(a.location.y - agent.location.y) < 20 and
-                       a.id != agent.id
-                ]
-                fun_system.trigger_celebration(
-                    CelebrationType.DISCOVERY_PARTY,
-                    agent.id, agent.name,
-                    f"Discovery of {result.discovered_material.name}",
-                    (agent.location.x, agent.location.y),
-                    nearby_agents
-                )
+            # No automatic party for a discovery (it used to throw one, with
+            # nearby people as guests who hadn't chosen to come); celebrating
+            # is the discoverer's choice (celebrate)
 
             # Create knowledge record with full recipe
             if knowledge_system:

@@ -796,7 +796,8 @@ class SimulationEngine:
         """Systems that date what happens read the world's clock (sim ticks;
         their own timestamps were wall-clock, useless for "on day 4")."""
         for system in (self.relationship_manager, self.governance_manager, self.innovation_manager,
-                       self.religion, getattr(self, 'dynamic_building_system', None)):
+                       self.religion, getattr(self, 'dynamic_building_system', None),
+                       getattr(self, 'experimentation_engine', None)):
             if system is not None and getattr(system, 'time', None) is None:
                 system.time = self.world.time
 
