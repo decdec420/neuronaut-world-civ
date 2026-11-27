@@ -49,7 +49,7 @@ from engine.psychology import NeedType as N
 # Actions whose effect comes later than their first step, or only on success, or
 # only rarely: one run can't see it, so their entries are read from the handlers,
 # each with a note on why.
-EFFECT_LATER = {"attend_event", "hide", "build", "gather_water", "discover_element", "discover_material",
+EFFECT_LATER = {"attend_event", "hide", "build", "repair", "gather_water", "discover_element", "discover_material",
                 "discover_energy", "make_law", "fight", "separate", "experiment"}
 
 ACTION_NEEDS: Dict[str, Dict[N, float]] = {
@@ -90,6 +90,7 @@ ACTION_NEEDS: Dict[str, Dict[N, float]] = {
     "harvest": {N.ACHIEVEMENT: 0.6, N.RESOURCES: 0.4},
     "heal": {N.ACHIEVEMENT: 0.55, N.MEANING: 0.45},
     "hide": {N.SECURITY: 0.3},  # on arriving; kept low on purpose, see _warning_pull
+    "repair": {N.SHELTER: 0.4, N.SECURITY: 0.3, N.ACHIEVEMENT: 0.3},  # once there (engine/handlers/repair.py; shelter 0.3 for one's home)
     "hunt": {N.HUNGER: 0.8, N.ACHIEVEMENT: 0.2},
     "join_tax_revolt": {N.STATUS: 1},
     "make_law": {N.STATUS: 1},  # when the law is proposed (governance handler)
@@ -141,6 +142,7 @@ ACTION_TRAITS: Dict[str, Dict[str, float]] = {
     "chop_wood": {"conscientiousness": 0.4},
     "mine": {"conscientiousness": 0.4, "risk_taking": 0.2},
     "build": {"conscientiousness": 0.5, "ambition": 0.3},
+    "repair": {"conscientiousness": 0.6, "agreeableness": 0.2},
     "build_road": {"conscientiousness": 0.4, "agreeableness": 0.3, "ambition": 0.2},
     "dig_well": {"conscientiousness": 0.4, "agreeableness": 0.3},
     "build_streetlight": {"creativity": 0.3, "agreeableness": 0.3, "conscientiousness": 0.2},

@@ -67,6 +67,7 @@ from engine.handlers import (
     InfrastructureHandler,
     GatheringHandler,
     ShelterHandler,
+    RepairHandler,
 )
 
 # UTILITIES
@@ -92,7 +93,7 @@ UNHANDLED_ACTION_FALLBACKS = {
     'preserve_food': 'gather_food', 'feast': 'eat',
     # Building / crafting
     'build_house': 'build', 'build_workshop': 'build', 'build_market': 'build',
-    'build_wall': 'build', 'repair': 'build', 'demolish': 'gather_materials',
+    'build_wall': 'build', 'demolish': 'gather_materials',
     'craft': 'experiment', 'craft_tool': 'experiment', 'craft_weapon': 'experiment',
     'craft_armor': 'experiment', 'craft_clothing': 'experiment',
     'craft_furniture': 'experiment', 'craft_jewelry': 'experiment',
@@ -388,6 +389,7 @@ class SimulationEngine:
             # Gatherings people are invited to by word of mouth
             GatheringHandler(self._action_context),
             ShelterHandler(self._action_context),
+            RepairHandler(self._action_context),
         ]
 
         self._handler_registry.register_multiple(handlers)

@@ -63,6 +63,8 @@ ACTION_INFO = {
     "chop_wood": ("building", "cut wood"),
     "mine": ("building", "dig stone or ore"),
     "build": ("building", "build a home, workshop, store or hall"),
+    "repair": ("building", "mend a damaged building (3 wood, stone or clay): your home first; "
+                           "a building in poor repair shelters you less and falls more easily"),
     "experiment": ("crafting and invention", "combine materials to discover things"),
     "smelt_ore": ("crafting and invention", "smelt ore into metal"),
     "refine_material": ("crafting and invention", "refine ore into metal or sand into glass "

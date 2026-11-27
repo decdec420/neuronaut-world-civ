@@ -26,6 +26,7 @@ from engine.handlers.family import FamilyHandler
 from engine.handlers.infrastructure import InfrastructureHandler
 from engine.handlers.gatherings import GatheringHandler
 from engine.handlers.shelter import ShelterHandler
+from engine.handlers.repair import RepairHandler
 
 __all__ = [
     'MovementActionHandler',
@@ -49,4 +50,5 @@ __all__ = [
     'InfrastructureHandler',
     'GatheringHandler',
     'ShelterHandler',
+    'RepairHandler',
 ]
