@@ -74,9 +74,11 @@ class Need:
         self.level = min(1.0, self.level + self.decay_rate * delta_time)
 
     def satisfy(self, amount: float):
-        """Reduce need level"""
+        """Reduce need level (a negative amount makes it more pressing), within 0-1.
+        A negative amount had no ceiling: trespassing raised security by 0.1 a
+        tick past the 1.0 that update() allows, so most of a village sat at 1.1."""
         old_level = self.level
-        self.level = max(0.0, self.level - amount)
+        self.level = min(1.0, max(0.0, self.level - amount))
         logger.debug(f"SATISFY: {self.need_type.value} {old_level:.2f} → {self.level:.2f} (reduced by {amount:.2f})")
 
     def get_urgency(self) -> float:

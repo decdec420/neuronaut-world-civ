@@ -144,6 +144,13 @@ class Config:
             print("⚠️  Invalid AUTOSAVE_EVERY value, using default 1000")
             self.autosave_every = 1000
         self.autosave_keep = _int_env('AUTOSAVE_KEEP', 3)
+        # What the server does when it starts: 'last' carries on the newest
+        # saved world (the server saves it when it stops); 'new' begins one
+        resume = os.getenv('RESUME', 'last').strip().lower()
+        if resume not in ('last', 'new'):
+            print(f"⚠️  Invalid RESUME={resume!r} (use 'last' or 'new'), using 'last'")
+            resume = 'last'
+        self.resume = resume
 
         # Population cap: a technical limit for performance (each agent costs
         # tick time, and AI-brain calls when those are on), not a design rule.

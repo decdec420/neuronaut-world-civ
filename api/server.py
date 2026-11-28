@@ -201,18 +201,102 @@ def _drop_websocket(ws: WebSocket) -> None:
         active_websockets.remove(ws)
 
 
+# Where the running world came from, for the dashboard: begun when the server
+# started, carried on from a save, loaded, or reset
+world_origin: Dict = {"kind": "new"}
+
+
+def _new_world() -> SimulationEngine:
+    """A world at its beginning (WORLD_SEED, if set, makes it the same one
+    every time), with NUM_AGENTS people, half of each sex."""
+    _seed_world()
+    sim = SimulationEngine(world_width=100, world_height=100)
+    sim.initialize_world(num_agents=load_config().num_agents)
+    return sim
+
+
+def _newest_playable_save():
+    """The newest save that can be played on: it holds the whole world and
+    someone in it was alive. (entry, path), or None."""
+    try:
+        manager = SaveManager()
+        saves = manager.newest_first()
+    except OSError:
+        logger.exception("Couldn't read the saves")
+        return None
+    for entry in saves:
+        if not entry.get("state_filename") or (entry.get("stats") or {}).get("alive_agents", 1) == 0:
+            continue
+        path = manager.state_path(entry["id"])
+        if path is not None:
+            return entry, path
+    return None
+
+
+def _start_world() -> SimulationEngine:
+    """RESUME=last (the default): carry on the newest saved world, which the
+    server saves when it stops. RESUME=new, no such save, or a save that
+    won't load: a new world. Before, every start began a new world and
+    whatever happened since the last autosave (up to 1,000 ticks) was gone."""
+    global world_origin
+    if load_config().resume == "last":
+        found = _newest_playable_save()
+        if found is not None:
+            entry, path = found
+            try:
+                from engine.persistence import load_full_state
+                sim = load_full_state(str(path))
+            except Exception:  # noqa: BLE001 - an unreadable save mustn't stop the server
+                logger.exception("Couldn't carry on '%s'; beginning a new world instead", entry.get("name"))
+            else:
+                world_origin = {"kind": "resumed", "save": entry.get("name"), "id": entry.get("id"),
+                                "tick": sim.world.time.current_tick}
+                print(f"🔁 Carrying on '{entry.get('name')}' (day {sim.world.time.current_tick // 144 + 1}). "
+                      f"Start with RESUME=new for a new world.")
+                return sim
+    world_origin = {"kind": "new", "tick": 0}
+    return _new_world()
+
+
+async def _stop_world() -> None:
+    """Stop the running world and wait for its loop to end, so nothing is
+    half-way through a tick when it is saved or replaced."""
+    global simulation_task
+    if simulation is not None:
+        simulation.stop()
+    task, simulation_task = simulation_task, None
+    if task is not None:
+        task.cancel()
+        try:
+            await task
+        except (asyncio.CancelledError, Exception):  # noqa: BLE001 - it's stopping either way
+            pass
+
+
+def _save_on_stop() -> None:
+    """Save the world as the server stops, so the next start carries on from
+    here. Not when saves are off (AUTOSAVE_EVERY=0) or nobody is alive; a
+    folder that can't be written is logged, and the server still stops."""
+    cfg = load_config()
+    if simulation is None or cfg.autosave_every <= 0 or not any(a.alive for a in simulation.world.agents):
+        return
+    day = simulation.world.time.current_tick // 144 + 1
+    try:
+        manager = SaveManager()
+        manager.create_save(f"Stopped on day {day}", simulation.persistence.create_snapshot(),
+                            simulation=simulation, autosave=True)
+        manager.cleanup_old_autosaves(keep_count=cfg.autosave_keep)
+        print(f"💾 Saved the world (day {day}); it carries on when the server starts again.")
+    except OSError:
+        logger.exception("Couldn't save the world as the server stopped")
+
+
 async def startup_event():
-    """Initialize simulation on startup"""
+    """Carry on the newest saved world (or begin one) and start broadcasting it."""
     global simulation, simulation_task, broadcast_task
 
     print("🌍 Starting Neuronaut World...")
-
-    # Create simulation (WORLD_SEED, if set, makes it the same world every time)
-    _seed_world()
-    simulation = SimulationEngine(world_width=100, world_height=100)
-
-    # NUM_AGENTS agents (default 25 at the dawn, 12 settlers), half of each sex
-    simulation.initialize_world(num_agents=load_config().num_agents)
+    simulation = _start_world()
 
     # Start simulation loop in background
     simulation_task = asyncio.create_task(simulation.run())
@@ -224,14 +308,11 @@ async def startup_event():
 
 
 async def shutdown_event():
-    """Cleanup on shutdown"""
-    if simulation:
-        simulation.stop()
-
-    for task in (simulation_task, broadcast_task):
-        if task:
-            task.cancel()
-
+    """Stop the world, save it, and stop broadcasting."""
+    if broadcast_task:
+        broadcast_task.cancel()
+    await _stop_world()
+    _save_on_stop()
     print("Neuronaut World stopped")
 
 
@@ -272,7 +353,7 @@ async def broadcast_updates():
 # the old code: it then finds no ids and nothing opens. The page compares this
 # number and code_changed (below) and says to restart. Raise it when the
 # dashboard starts relying on something new from the server.
-DASHBOARD_API = 11
+DASHBOARD_API = 12
 _CODE_DIRS = ("api", "engine", "world", "agents", "economy", "social", "life")
 
 
@@ -320,6 +401,9 @@ async def health():
         "viewers": len(active_websockets),
         "dashboard_api": DASHBOARD_API,
         "code_changed": code_changed(),
+        # Begun at start, carried on from a save, loaded or reset; and
+        # whether it is saved when the server stops (AUTOSAVE_EVERY > 0)
+        "world": {**world_origin, "saved_on_stop": load_config().autosave_every > 0},
     }
     return JSONResponse(status_code=200 if running else 503, content=body)
 
@@ -736,6 +820,17 @@ async def get_chronicle(limit: int = 100):
     return data
 
 
+@app.get("/annals")
+async def get_annals(since_day: Optional[int] = None, before_day: Optional[int] = None, days: int = 10):
+    """The village's history day by day (engine/annals.py): the latest `days`
+    days in full (or those before `before_day`), every day's population,
+    chapters, families and lives; with since_day, what happened since then."""
+    if not simulation:
+        raise HTTPException(status_code=503, detail="Simulation not running")
+    from engine.annals import annals_view
+    return annals_view(simulation, since_day=since_day, before_day=before_day, days=max(1, min(days, 60)))
+
+
 @app.get("/society")
 async def get_society():
     """Governments and laws, faiths, families, economy and inventions (engine/society.py)."""
@@ -773,7 +868,7 @@ async def create_save(save_request: SaveRequest):
 @app.post("/saves/{save_id}/load")
 async def load_save(save_id: str):
     """Load a save"""
-    global simulation, simulation_task
+    global simulation, simulation_task, world_origin
 
     world_data = save_manager.load_save(save_id)
     if not world_data:
@@ -784,15 +879,20 @@ async def load_save(save_id: str):
         # used to "succeed" here and start a fresh, empty world instead.)
         raise HTTPException(status_code=409, detail="This save holds only a summary and can't be loaded")
 
-    # Stop current simulation
-    if simulation and simulation.running:
-        simulation.stop()
-
-    # Load the world exactly as it was saved, and carry on
+    # Read it before stopping the world that's running: a save that won't
+    # load leaves that world running
     from engine.persistence import load_full_state
-    simulation = load_full_state(str(state_path))
-    if simulation_task:
-        simulation_task.cancel()
+    try:
+        loaded = load_full_state(str(state_path))
+    except Exception as e:  # noqa: BLE001 - say why instead of a bare 500
+        logger.exception("Couldn't load save %s", save_id)
+        raise HTTPException(status_code=422, detail=f"This save couldn't be loaded: {type(e).__name__}")
+
+    # Stop the current world, then carry on the loaded one exactly as it was saved
+    await _stop_world()
+    simulation = loaded
+    world_origin = {"kind": "loaded", "save": (save_manager.entry(save_id) or {}).get("name"), "id": save_id,
+                    "tick": simulation.world.time.current_tick}
     simulation_task = asyncio.create_task(simulation.run())
 
     return {"success": True, "message": "World loaded successfully"}
@@ -811,20 +911,11 @@ async def delete_save(save_id: str):
 @limiter.limit("1/minute")  # Max 1 reset per minute (destructive operation)
 async def reset_world(request: Request):
     """Reset to a fresh world"""
-    global simulation, simulation_task
+    global simulation, simulation_task, world_origin
 
-    # Stop current simulation
-    if simulation and simulation.running:
-        simulation.stop()
-
-    # Create new simulation
-    _seed_world()
-    simulation = SimulationEngine(world_width=100, world_height=100)
-    simulation.initialize_world(num_agents=load_config().num_agents)
-
-    # Start new simulation
-    if simulation_task:
-        simulation_task.cancel()
+    await _stop_world()
+    simulation = _new_world()
+    world_origin = {"kind": "new", "tick": 0}
     simulation_task = asyncio.create_task(simulation.run())
 
     return {"success": True, "message": "World reset successfully"}

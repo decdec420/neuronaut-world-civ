@@ -102,9 +102,18 @@ with being human (finding food and water, resting, talking, love, play) and
 carry almost nothing. Fire, stone tools, shelter, farming, metal, writing and
 the rest have to be worked out by someone, and spread only when people watch
 or teach each other; when the last person who knew something dies, it's lost.
-The **Chronicle** tab sets each first beside when humans first did it. Set
-`WORLD_START=settlers` to start instead with a village that knows everything
-and carries supplies.
+The **Chronicle** tab is the village's history, written down hour by hour
+and kept for as long as the world lasts: each day told in a few sentences
+(who was born to whom, who died of what, who paired up, what was worked out
+and taught, governments, faiths, disasters), chapters of ten days, the
+population over time, families and lives worth remembering, and each first
+beside when humans first did it. When you come back, it tells you what
+happened since you last looked. Set `WORLD_START=settlers` to start instead
+with a village that knows everything and carries supplies.
+
+**The world carries on.** The server saves the world when it stops (Ctrl+C)
+and picks it up where it left off when it starts again, so you can stop and
+come back. Start it with `RESUME=new` (or press 🔄 Reset World) for a new one.
 
 ## Running It for Real
 
@@ -135,7 +144,8 @@ All settings are environment variables (or a `.env` file; see `.env.example`).
 | `NUM_AGENTS` | `25` at the dawn, `12` settlers | People in a new world. |
 | `WORLD_SEED` | none | The same number gives the same world every run (with the rule-based brain; a model's answers can't be replayed). Unset: a new world each time. |
 | `SAVE_DIR` | `save_states` | Where saves go (relative to the repository). |
-| `AUTOSAVE_EVERY` / `AUTOSAVE_KEEP` | `1000` / `3` | Autosave every N ticks (0 = off), keeping the newest few. Autosaves show in Save/Load. |
+| `AUTOSAVE_EVERY` / `AUTOSAVE_KEEP` | `1000` / `3` | Autosave every N ticks (0 = off), keeping the newest few. Autosaves show in Save/Load. The world is also saved when the server stops (not when this is 0). |
+| `RESUME` | `last` | `last`: when the server starts, carry on the newest saved world in which someone is alive. `new`: begin a new world. |
 | `LOG_LEVEL` | `INFO` | `DEBUG` logs every action. |
 | `USE_LLM_DECISIONS` | `true` | Let agents think with a model (Ollama or an API key; see `.env.example`). Without one they use the rule-based brain. |
 

@@ -172,6 +172,15 @@ class LifecycleManager:
             f"{partner.name} lost their partner {dead.name}",
             f"{partner.name} mourns {dead.name}.", self.sim.world.time.current_tick, [partner.id, dead.id])
 
+    def _release_land(self) -> None:
+        """The dead stop guarding, and their land is no one's (world/territory.py)."""
+        territory = getattr(self.sim, 'territory', None)
+        if territory is None:
+            return
+        alive = {a.id for a in self.sim.world.agents if a.alive}
+        for name in territory.forget_the_dead(lambda agent_id: agent_id in alive):
+            logger.info("🗺️  %s is no one's now: whoever held it has died", name)
+
     def handle_deaths(self):
         """
         Process agent deaths and cleanup.
@@ -195,6 +204,7 @@ class LifecycleManager:
                 agent.death_tick = current_tick
             if agent.partner_id:
                 self._widow(agent)
+            self._release_land()
             death_cause = agent.death_cause or "unknown causes"
             agent.death_cause = death_cause
 

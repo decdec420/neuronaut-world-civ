@@ -285,6 +285,29 @@ class TerritoryManager:
 
         return True
 
+    def forget_the_dead(self, is_alive) -> List[str]:
+        """The dead guard nothing and hold nothing: they leave every guard
+        list (land with no living guard is undefended), and land whose owner
+        is dead is no one's, free to claim again. Nothing did this: a dead
+        owner's land stayed defended by dead guards for good, and everyone
+        standing in it went on feeling they trespassed. Returns the names of
+        the lands let go."""
+        released = []
+        for territory_id in sorted(self.territories):
+            territory = self.territories[territory_id]
+            dead = {g for g in territory.guards if not is_alive(g)}
+            if dead:
+                territory.guards -= dead
+                territory.defended = bool(territory.guards)
+            territory.allowed_agents = {a for a in territory.allowed_agents if is_alive(a)}
+            if not is_alive(territory.owner_id):
+                released.append(territory.name)
+                del self.territories[territory_id]
+                for border_id in [b for b, border in self.borders.items()
+                                  if territory_id in (border.territory1_id, border.territory2_id)]:
+                    del self.borders[border_id]
+        return released
+
     def remove_guard(self, territory_id: str, guard_id: str) -> bool:
         """Remove guard from territory"""
 

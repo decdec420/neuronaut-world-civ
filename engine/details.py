@@ -92,13 +92,13 @@ def agent(sim, agent_id: str) -> Optional[Dict]:
     home = homes.home_of(sim.dynamic_building_system, a)
 
     if a.alive:
-        doing = (story['doing'] or 'nothing yet').replace('_', ' ')
-        summary = f"{a.name} is {doing}."
+        summary = f"{a.name} is {_doing(story['doing'])}."
         if story['set_out']:
             s = story['set_out']
             summary += f" They set out {s['hours_ago']} hours ago to {s['action'].replace('_', ' ')}, {s['distance']} tiles to go."
     else:
-        summary = f"{a.name} died of {getattr(a, 'death_cause', None) or 'unknown causes'} at {a.age}."
+        from engine.annals import death_words
+        summary = f"{a.name} died {death_words(getattr(a, 'death_cause', None))} at {a.age}."
 
     facts = [_fact("Age", f"{a.age}, {a.life_stage}"), _fact("Generation", getattr(a, 'generation', 1))]
     if a.alive:
@@ -166,14 +166,53 @@ def agent(sim, agent_id: str) -> Optional[Dict]:
     if story['memories']:
         sections.append({"title": "Remembers", "items": [{"text": m['text'], "note": f"day {m['day']}"}
                                                          for m in story['memories']]})
+    # Their life from the annals (engine/annals.py): born, came of age, paired up,
+    # children, what they learned and taught, what they founded, how they died
+    from engine.annals import life_of
+    life = life_of(sim, a.id)
+    if life:
+        sections.append({"title": "Their life", "timeline": [_annal_line(names, h) for h in life]})
     events = sim.event_logger.get_events_involving_agent(a.id, 25)
     if events:
-        sections.append({"title": "Their life so far", "timeline": [_event_line(names, e) for e in reversed(events)]})
+        sections.append({"title": "Lately", "timeline": [_event_line(names, e) for e in reversed(events)]})
 
     return {"kind": "agent", "id": a.id, "icon": "🧑", "title": a.name,
             "subtitle": f"{a.age}, {a.life_stage}, generation {getattr(a, 'generation', 1)}"
                         + ("" if a.alive else " · died"),
             "summary": summary, "facts": facts, "sections": sections}
+
+
+def _annal_line(names, h) -> Dict:
+    links = [p for p in (names.person(x["id"]) for x in h["people"]) if p]
+    ref = h.get("ref")
+    if ref and ref.get("kind") != "agent":
+        links.append(link(ref["kind"], ref["id"], {"government": "the government", "faith": "the faith",
+                                                    "law": "the law", "knowhow": "the know-how",
+                                                    "invention": "the invention", "gathering": "the gathering",
+                                                    "building": "the building"}.get(ref["kind"], "open")))
+    return {"tick": h["tick"], "when": when(h["tick"]), "text": h["text"], "links": links}
+
+
+# "socialize" -> "socializing", "gather_food" -> "gathering food" (it said "Laura is socialize")
+_ING = {'sit': 'sitting', 'dig': 'digging', 'chat': 'chatting', 'plan': 'planning', 'run': 'running',
+        'swim': 'swimming', 'set': 'setting', 'shop': 'shopping', 'be': 'being', 'see': 'seeing', 'flee': 'fleeing',
+        'lie': 'lying', 'die': 'dying', 'tie': 'tying', 'begin': 'beginning', 'stop': 'stopping'}
+
+
+def _doing(action: Optional[str]) -> str:
+    if not action:
+        return "doing nothing in particular yet"
+    words = str(action).split('_')
+    verb = words[0]
+    if verb in _ING:
+        ing = _ING[verb]
+    elif verb.endswith('ie'):
+        ing = verb[:-2] + 'ying'
+    elif verb.endswith('e') and not verb.endswith('ee'):
+        ing = verb[:-1] + 'ing'
+    else:
+        ing = verb + 'ing'
+    return " ".join([ing] + words[1:])
 
 
 def _event_line(names, e) -> Dict:
